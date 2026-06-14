@@ -558,6 +558,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
 
     <div class="row">
       <button id="word-cancel" type="button">CLOSE</button>
+      <button id="word-export-all" type="button">EXPORT ALL</button>
       <button id="word-collect-all" type="button">COLLECT ALL</button>
     </div>
   </div>
@@ -697,6 +698,7 @@ const DICT={
     'word.list':'登録済み',
     'word.add':'追加',
     'word.collectall':'すべて収集',
+    'word.exportall':'一括出力',
     'hd.keywords':'キーワード管理',
     'hd.kw.watch':'WATCH(気になる)',
     'hd.kw.block':'BLOCK(ブロック)',
@@ -784,6 +786,7 @@ const DICT={
     'word.list':'Registered',
     'word.add':'ADD',
     'word.collectall':'COLLECT ALL',
+    'word.exportall':'EXPORT ALL',
     'hd.keywords':'KEYWORD RULES',
     'hd.kw.watch':'WATCH (Highlight)',
     'hd.kw.block':'BLOCK (Hide)',
@@ -855,6 +858,7 @@ function applyI18N(){
   $('#hd-word-list').textContent=t('word.list');
   $('#word-add').textContent=t('word.add');
   $('#word-collect-all').textContent=t('word.collectall');
+  $('#word-export-all').textContent=t('word.exportall');
   $('#word-cancel').textContent=t('btn.close');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-vault').textContent=t('btn.vault');
@@ -1941,8 +1945,20 @@ const WordExporter={
     return all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived)
               .sort((a,b)=>(b.publishedAt||b.timestamp)-(a.publishedAt||a.timestamp));
   },
+  // 収集イベントから word: タグを除いた頻出タグを集計する
+  aggregateTags(events){
+    const counts=new Map();
+    for(const ev of events){
+      for(const tg of [...(ev.meta?.autoTags||[]),...(ev.meta?.userTags||[])]){
+        if(!tg||tg.startsWith('word:'))continue;
+        counts.set(tg,(counts.get(tg)||0)+1);
+      }
+    }
+    return [...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20);
+  },
   toDossier(word,events){
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,'---'].join('\n');
+    const srcList=['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join(', ')||'-';
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`sources: ${srcList}`,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.wiki?.extract){
       parts.push('## 定義','',word.wiki.extract,'');
@@ -1961,6 +1977,10 @@ const WordExporter={
       }
       parts.push('');
     }
+    const tags=this.aggregateTags(events);
+    if(tags.length){
+      parts.push('## タグ','',tags.map(([t,n])=>`- ${t} (${n})`).join('\n'),'');
+    }
     return parts.join('\n');
   },
   async downloadMd(word){
@@ -1978,6 +1998,15 @@ const WordExporter={
     const events=await this.gather(word);
     const ok=await VaultWriter.exportWordDossier(word,this.toDossier(word,events));
     if(ok)toast(currentLang==='ja'?'Vaultへ書き出し':'written to vault','ok');
+  },
+  // 全watchwordを1つのMarkdownにまとめて出力(アウトプット一括)
+  async downloadAllMd(){
+    const words=(await Store.listWords()).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    if(words.length===0){toast(currentLang==='ja'?'単語がありません':'no words','err');return;}
+    const docs=[];
+    for(const w of words)docs.push(this.toDossier(w,await this.gather(w)));
+    downloadFile(`neus-words-${new Date().toISOString().slice(0,10)}.md`,docs.join('\n\n'),'text/markdown');
+    toast(currentLang==='ja'?`${words.length}単語を書き出し`:`exported ${words.length} word(s)`,'ok');
   },
 };
 
@@ -2559,6 +2588,7 @@ async function addWord(){
   const normalized=term.toLowerCase();
   if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
   const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked};
+  if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   const word={id:uuid(),term,normalized,lang:currentLang,sources,enabled:true,createdAt:Date.now(),lastCollectedAt:null,lastCount:0,wiki:null};
   await Store.putWord(word);
   $('#word-input').value='';
@@ -2570,6 +2600,7 @@ async function addWord(){
 $('#word-add').addEventListener('click',addWord);
 $('#word-input').addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();addWord();}});
 $('#word-collect-all').addEventListener('click',async()=>{await WordCollector.collectAll();await renderWordList();await refreshCounts();await renderView();});
+$('#word-export-all').addEventListener('click',()=>WordExporter.downloadAllMd());
 $('#word-list').addEventListener('click',async(e)=>{
   const btn=e.target.closest('button[data-wmact]');if(!btn)return;
   const word=await Store.getWord(btn.dataset.id);if(!word)return;

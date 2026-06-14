@@ -5,10 +5,24 @@ import { describe, it, expect } from 'vitest';
 
 const isoDate = (ms) => new Date(ms).toISOString();
 const wordSlug = (s) => (s || 'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'word';
+const WORD_FEEDS = { news: {}, reddit: {}, hn: {}, arxiv: {} };
+
+// Mirrored from WordExporter.aggregateTags
+function aggregateTags(events) {
+  const counts = new Map();
+  for (const ev of events) {
+    for (const tg of [...(ev.meta?.autoTags || []), ...(ev.meta?.userTags || [])]) {
+      if (!tg || tg.startsWith('word:')) continue;
+      counts.set(tg, (counts.get(tg) || 0) + 1);
+    }
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
+}
 
 // Mirrored from WordExporter.toDossier
 function toDossier(word, events) {
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, '---'].join('\n');
+  const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
+  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `sources: ${srcList}`, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.wiki?.extract) {
     parts.push('## 定義', '', word.wiki.extract, '');
@@ -26,10 +40,14 @@ function toDossier(word, events) {
     }
     parts.push('');
   }
+  const tags = aggregateTags(events);
+  if (tags.length) {
+    parts.push('## タグ', '', tags.map(([t, n]) => `- ${t} (${n})`).join('\n'), '');
+  }
   return parts.join('\n');
 }
 
-const mkEvent = (o) => ({ source: { name: o.src }, content: { title: o.title, snippet: o.snippet || '' }, url: o.url, publishedAt: o.publishedAt });
+const mkEvent = (o) => ({ source: { name: o.src }, content: { title: o.title, snippet: o.snippet || '' }, url: o.url, publishedAt: o.publishedAt, meta: { autoTags: o.autoTags || [], userTags: o.userTags || [] } });
 
 describe('wordSlug', () => {
   it('slugifies ASCII terms', () => expect(wordSlug('Web GPU!!')).toBe('web-gpu'));
@@ -69,5 +87,41 @@ describe('WordExporter.toDossier', () => {
     const md = toDossier({ term: 'X', lang: 'ja', normalized: 'x' }, []);
     expect(md).not.toContain('## 定義');
     expect(md).toContain('## 収集アイテム (0)');
+  });
+
+  it('lists enabled sources in the frontmatter', () => {
+    const w = { ...word, sources: { wikipedia: true, news: true, arxiv: true, reddit: false } };
+    const md = toDossier(w, events);
+    expect(md).toContain('sources: wikipedia, news, arxiv');
+  });
+
+  it('records last_collected in the frontmatter when present', () => {
+    const w = { ...word, lastCollectedAt: Date.parse('2026-01-03T00:00:00Z') };
+    expect(toDossier(w, events)).toContain('last_collected: 2026-01-03T00:00:00.000Z');
+    expect(toDossier(word, events)).not.toContain('last_collected:');
+  });
+});
+
+describe('WordExporter.aggregateTags', () => {
+  const events = [
+    mkEvent({ src: 'A', title: 't1', autoTags: ['word:webgpu', 'watch:ai', 'graphics'] }),
+    mkEvent({ src: 'B', title: 't2', autoTags: ['watch:ai'], userTags: ['fav'] }),
+  ];
+
+  it('counts tags across items, excluding word: tags', () => {
+    const tags = aggregateTags(events);
+    expect(tags).toEqual([['watch:ai', 2], ['graphics', 1], ['fav', 1]]);
+    expect(tags.some(([t]) => t.startsWith('word:'))).toBe(false);
+  });
+
+  it('renders a タグ section in the dossier', () => {
+    const md = toDossier({ term: 'WebGPU', lang: 'en', normalized: 'webgpu' }, events);
+    expect(md).toContain('## タグ');
+    expect(md).toContain('- watch:ai (2)');
+  });
+
+  it('omits the タグ section when no non-word tags exist', () => {
+    const md = toDossier({ term: 'X', lang: 'en', normalized: 'x' }, [mkEvent({ src: 'A', title: 't', autoTags: ['word:x'] })]);
+    expect(md).not.toContain('## タグ');
   });
 });

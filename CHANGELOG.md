@@ -38,6 +38,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Wikipedia定義は端末言語に記事が無い/曖昧さ回避ページの場合、英語版へ自動フォールバック
 - 単語収集のフィード取得に一時的ネットワーク障害向けの1回リトライを追加(POLLの簡易版)
 - WORDSモーダルの ADD / すべて収集 ボタンを i18n 対応(JA/EN)
+- WORDSモーダルの登録済みリストで、各単語の収集ソース(Wikipedia/News/Reddit/HN/arXiv)を行内チェックボックスで即時切替可能に(削除→再登録が不要)
+- WORDSビューにヘッダー(単語数 + COLLECT ALL)を追加。モーダルを開かずに一括収集可能
+- Wikipedia定義が7日以上前/未取得の場合、各単語に「定義を更新 / Refresh definition」リンクを表示しその場で再取得
+- 単語ドシエを拡充: frontmatter に `sources` / `last_collected` を追加、収集アイテムの頻出タグを集計する `## タグ` セクションを追加
+- WORDSモーダルに EXPORT ALL を追加。全watchwordを1つのMarkdownへ一括出力
+- 収集ソース未選択での単語登録をバリデーションで防止
 
 #### Tests
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
