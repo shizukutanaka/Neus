@@ -9,6 +9,26 @@ const WORD_FEEDS = { news: {}, reddit: {}, hn: {}, arxiv: {} };
 // Mirrored from newSinceReview in index.html
 const newSinceReview = (events, reviewedAt) => events.filter(e => (e.timestamp || 0) > (reviewedAt || 0));
 
+// Mirrored from sourceTier / tierBreakdown in index.html
+const TIER_DEFS = [
+  { key: 'research', ja: '一次(研究)', en: 'research' },
+  { key: 'press', ja: '報道', en: 'press' },
+  { key: 'discussion', ja: '議論', en: 'discussion' },
+  { key: 'other', ja: 'その他', en: 'other' },
+];
+function sourceTier(name) {
+  const label = ((name || '').split('·').pop() || '').trim().toLowerCase();
+  if (label.includes('arxiv')) return 'research';
+  if (label.includes('reddit') || label.includes('hacker')) return 'discussion';
+  if (label.includes('news')) return 'press';
+  return 'other';
+}
+function tierBreakdown(events) {
+  const counts = new Map();
+  for (const ev of events) { const k = sourceTier(ev.source?.name); counts.set(k, (counts.get(k) || 0) + 1); }
+  return TIER_DEFS.filter(d => counts.get(d.key)).map(d => ({ tier: d.key, ja: d.ja, en: d.en, count: counts.get(d.key) }));
+}
+
 // Mirrored from WordExporter.aggregateTags
 function aggregateTags(events) {
   const counts = new Map();
@@ -31,6 +51,12 @@ function toDossier(word, events) {
   if (word.wiki?.extract) {
     parts.push('## 定義', '', word.wiki.extract, '');
     if (word.wiki.url) parts.push(`[Wikipedia](${word.wiki.url})`, '');
+  }
+  const tiers = tierBreakdown(events);
+  if (tiers.length) {
+    parts.push('## 出所', '');
+    for (const tb of tiers) parts.push(`- ${tb.ja} (${tb.en}): ${tb.count}`);
+    parts.push('');
   }
   if (fresh.length) {
     parts.push(`## 新着 (${fresh.length})`, '');
@@ -185,5 +211,51 @@ describe('WordExporter.toDossier — intent + delta', () => {
     const md = toDossier({ term: 'X', lang: 'en', normalized: 'x', reviewedAt: 0 }, []);
     expect(md).not.toContain('intent:');
     expect(md).not.toMatch(/^> /m);
+  });
+});
+
+// Episteme vs doxa: not all collected information carries equal weight (Socratic reframe).
+describe('sourceTier', () => {
+  it('classifies feeds into epistemic tiers by label suffix', () => {
+    expect(sourceTier('WebGPU · arXiv')).toBe('research');
+    expect(sourceTier('WebGPU · Google News')).toBe('press');
+    expect(sourceTier('WebGPU · Reddit')).toBe('discussion');
+    expect(sourceTier('WebGPU · Hacker News')).toBe('discussion');
+  });
+  it('ranks discussion before press so "Hacker News" is not mistaken for press', () => {
+    expect(sourceTier('X · Hacker News')).not.toBe('press');
+  });
+  it('falls back to "other" for unknown sources', () => {
+    expect(sourceTier('Some Blog')).toBe('other');
+    expect(sourceTier('')).toBe('other');
+  });
+});
+
+describe('tierBreakdown', () => {
+  const events = [
+    mkEvent({ src: 'WebGPU · arXiv', title: 'paper' }),
+    mkEvent({ src: 'WebGPU · Google News', title: 'press a' }),
+    mkEvent({ src: 'WebGPU · Google News', title: 'press b' }),
+    mkEvent({ src: 'WebGPU · Reddit', title: 'thread' }),
+    mkEvent({ src: 'WebGPU · Hacker News', title: 'hn' }),
+  ];
+  it('counts items per tier in research > press > discussion order', () => {
+    expect(tierBreakdown(events)).toEqual([
+      { tier: 'research', ja: '一次(研究)', en: 'research', count: 1 },
+      { tier: 'press', ja: '報道', en: 'press', count: 2 },
+      { tier: 'discussion', ja: '議論', en: 'discussion', count: 2 },
+    ]);
+  });
+  it('omits empty tiers', () => {
+    expect(tierBreakdown([mkEvent({ src: 'WebGPU · arXiv', title: 'p' })])).toEqual([
+      { tier: 'research', ja: '一次(研究)', en: 'research', count: 1 },
+    ]);
+  });
+  it('renders a 出所 section in the dossier', () => {
+    const md = toDossier({ term: 'WebGPU', lang: 'en', normalized: 'webgpu', reviewedAt: 0 }, events);
+    expect(md).toContain('## 出所');
+    expect(md).toContain('- 一次(研究) (research): 1');
+    expect(md).toContain('- 報道 (press): 2');
+    expect(md).toContain('- 議論 (discussion): 2');
   });
 });

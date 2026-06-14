@@ -86,6 +86,9 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-new{font-family:var(--font-mono);font-size:11px;color:var(--accent);border:1px solid var(--accent-line);border-radius:10px;padding:1px 8px;vertical-align:middle;}
 .word-note{margin:2px 0 8px;font-size:13px;color:var(--fg-2);font-style:italic;}
 .word-note::before{content:"? ";color:var(--fg-3);font-style:normal;}
+.word-prov{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;}
+.word-prov-tier{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:10px;padding:1px 8px;}
+.word-prov-tier.tier-research{color:var(--accent);border-color:var(--accent-line);}
 .word-meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);}
 .word-wiki{margin:8px 0;font-size:13px;color:var(--fg-2);line-height:1.6;}
 .word-wiki p{margin:0 0 6px;}
@@ -1957,6 +1960,26 @@ const MarkdownExporter={
 const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||'word';
 // 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
 const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
+// エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
+const TIER_DEFS=[
+  {key:'research',ja:'一次(研究)',en:'research'},
+  {key:'press',   ja:'報道',      en:'press'},
+  {key:'discussion',ja:'議論',    en:'discussion'},
+  {key:'other',   ja:'その他',    en:'other'},
+];
+// source.name 末尾(' · {label}')のフィードラベルから層を判定。議論をニュースより先に。
+function sourceTier(name){
+  const label=((name||'').split('·').pop()||'').trim().toLowerCase();
+  if(label.includes('arxiv'))return 'research';
+  if(label.includes('reddit')||label.includes('hacker'))return 'discussion';
+  if(label.includes('news'))return 'press';
+  return 'other';
+}
+function tierBreakdown(events){
+  const counts=new Map();
+  for(const ev of events){const k=sourceTier(ev.source?.name);counts.set(k,(counts.get(k)||0)+1);}
+  return TIER_DEFS.filter(d=>counts.get(d.key)).map(d=>({tier:d.key,ja:d.ja,en:d.en,count:counts.get(d.key)}));
+}
 const WordExporter={
   // 単語に紐づく収集イベント(アーカイブ除く)を新しい順で取得
   async gather(word){
@@ -1985,6 +2008,13 @@ const WordExporter={
     if(word.wiki?.extract){
       parts.push('## 定義','',word.wiki.extract,'');
       if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
+    }
+    // 出所(知の階層): 研究 > 報道 > 議論。何を「知り」何を「聞いた」かを区別する。
+    const tiers=tierBreakdown(events);
+    if(tiers.length){
+      parts.push('## 出所','');
+      for(const tb of tiers)parts.push(`- ${tb.ja} (${tb.en}): ${tb.count}`);
+      parts.push('');
     }
     if(fresh.length){
       parts.push(`## 新着 (${fresh.length})`,'');
@@ -2242,10 +2272,13 @@ async function renderWords(){
     const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
     const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
+    const tiers=tierBreakdown(items);
+    const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
+      ${provLine}
       ${wiki}
       <div class="word-actions">
         <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
