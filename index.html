@@ -688,6 +688,8 @@ const DICT={
     'word.input':'単語(入力してADD)',
     'word.src':'収集ソース',
     'word.list':'登録済み',
+    'word.add':'追加',
+    'word.collectall':'すべて収集',
     'hd.keywords':'キーワード管理',
     'hd.kw.watch':'WATCH(気になる)',
     'hd.kw.block':'BLOCK(ブロック)',
@@ -773,6 +775,8 @@ const DICT={
     'word.input':'Word (type then ADD)',
     'word.src':'Collect from',
     'word.list':'Registered',
+    'word.add':'ADD',
+    'word.collectall':'COLLECT ALL',
     'hd.keywords':'KEYWORD RULES',
     'hd.kw.watch':'WATCH (Highlight)',
     'hd.kw.block':'BLOCK (Hide)',
@@ -842,6 +846,8 @@ function applyI18N(){
   $('#lbl-word-input').textContent=t('word.input');
   $('#hd-word-src').textContent=t('word.src');
   $('#hd-word-list').textContent=t('word.list');
+  $('#word-add').textContent=t('word.add');
+  $('#word-collect-all').textContent=t('word.collectall');
   $('#word-cancel').textContent=t('btn.close');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-vault').textContent=t('btn.vault');
@@ -1231,6 +1237,8 @@ const NetworkMonitor=(()=>{
 const SourceFailTracker=(()=>{
   const fails=new Map();
   Bus.subscribe('inbound.error',async({source})=>{
+    // word由来の合成ソースは登録RSSソースではないため自動無効化の対象外
+    if(typeof source.id==='string'&&source.id.startsWith('word:'))return;
     const n=(fails.get(source.id)||0)+1;fails.set(source.id,n);
     if(n>=CONFIG.sourceMaxFails){
       const s=await Store.findSourceByUrl(source.url);
@@ -1650,18 +1658,23 @@ const WORD_FEEDS={
 };
 const WordCollector=(()=>{
   // Wikipedia REST summary(JSON)をワーカー経由で取得。失敗時はnull。
-  async function fetchWiki(word){
-    const lang=word.lang||'en';
-    const title=encodeURIComponent((word.term||'').trim().replace(/\s+/g,'_'));
+  async function fetchWikiLang(term,lang){
+    const title=encodeURIComponent((term||'').trim().replace(/\s+/g,'_'));
     const api=`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${title}`;
     const url=`${CONFIG.proxy}/json?url=${encodeURIComponent(api)}`;
     try{
       const res=await fetch(url);
       if(!res.ok)return null;
       const j=await res.json();
-      if(!j||!j.extract)return null;
-      return{title:j.title||word.term,extract:j.extract,url:j.content_urls?.desktop?.page||'',thumbnail:j.thumbnail?.source||''};
+      if(!j||!j.extract||j.type==='disambiguation')return null;
+      return{title:j.title||term,extract:j.extract,url:j.content_urls?.desktop?.page||'',thumbnail:j.thumbnail?.source||''};
     }catch{return null;}
+  }
+  // 端末言語のWikipediaに記事が無ければ英語版へフォールバックする
+  async function fetchWiki(word){
+    const langs=[...new Set([word.lang||'en','en'])];
+    for(const lang of langs){const w=await fetchWikiLang(word.term,lang);if(w)return w;}
+    return null;
   }
   // 1単語を収集: Wikipedia要約 + 有効な各検索フィードを取得し event パイプラインへ流す。
   async function collectOne(word){
@@ -1677,8 +1690,13 @@ const WordCollector=(()=>{
       // wordTerm を付与すると正規化ハンドラが word: タグを付け、source.type を 'word' にする
       const source={id:'word:'+word.id,type:'word',name:`${word.term} · ${WORD_FEEDS[key].label}`,url:feedUrl,wordTerm:word.normalized};
       const proxyUrl=`${CONFIG.proxy}/rss?url=${encodeURIComponent(feedUrl)}`;
-      let res;
-      try{res=await fetch(proxyUrl);}catch{Bus.publish('inbound.error',{source,error:'network'});continue;}
+      // 一時的ネットワーク障害には1回だけリトライ(POLLの簡易版)
+      let res,netErr;
+      for(let attempt=0;attempt<2;attempt++){
+        if(attempt>0)await new Promise(r=>setTimeout(r,400));
+        try{res=await fetch(proxyUrl);netErr=null;break;}catch(e){netErr=e;}
+      }
+      if(netErr){Bus.publish('inbound.error',{source,error:'network'});continue;}
       if(!res.ok){Bus.publish('inbound.error',{source,error:`http_${res.status}`});continue;}
       let items;
       try{items=RSSPoller.parseFeed(await res.text(),source);}catch{Bus.publish('inbound.error',{source,error:'parse'});continue;}

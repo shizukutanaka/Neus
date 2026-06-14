@@ -62,6 +62,31 @@ describe('Wikipedia summary URL', () => {
   });
 });
 
+describe('SourceFailTracker word-source guard', () => {
+  // Mirrors the guard added to the inbound.error subscriber
+  const isWordSource = (id) => typeof id === 'string' && id.startsWith('word:');
+  it('skips auto-disable bookkeeping for synthetic word sources', () => {
+    expect(isWordSource('word:abc-123')).toBe(true);
+    expect(isWordSource('rss-source-uuid')).toBe(false);
+    expect(isWordSource(undefined)).toBe(false);
+  });
+  it('index.html guards the inbound.error handler against word: ids', () => {
+    expect(html).toContain("source.id.startsWith('word:')");
+  });
+});
+
+describe('Wikipedia language fallback order', () => {
+  // Mirrors fetchWiki: try [word.lang, 'en'] de-duplicated
+  const langOrder = (lang) => [...new Set([lang || 'en', 'en'])];
+  it('tries the localized language first, then English', () => {
+    expect(langOrder('ja')).toEqual(['ja', 'en']);
+  });
+  it('does not duplicate when already English', () => {
+    expect(langOrder('en')).toEqual(['en']);
+    expect(langOrder(undefined)).toEqual(['en']);
+  });
+});
+
 describe('source drift guard (index.html / _worker.js)', () => {
   it('index.html declares the expected feed hosts', () => {
     for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary']) {

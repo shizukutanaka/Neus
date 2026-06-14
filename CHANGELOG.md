@@ -33,9 +33,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - IndexedDB に `words` ストアを追加(dbVersion 1→2、非破壊アップグレード)。バックアップ/復元にも対応
 - JA/EN 文言、アクセント色 `#00C4CC` 準拠、絵文字なし
 
+#### 改善・修正
+- **Fixed**: word由来の合成ソース(`word:*`)が `SourceFailTracker` の自動無効化対象になり、誤解を招く "auto-disabled" トーストを出していた問題を修正(対象外に)
+- Wikipedia定義は端末言語に記事が無い/曖昧さ回避ページの場合、英語版へ自動フォールバック
+- 単語収集のフィード取得に一時的ネットワーク障害向けの1回リトライを追加(POLLの簡易版)
+- WORDSモーダルの ADD / すべて収集 ボタンを i18n 対応(JA/EN)
+
 #### Tests
-- `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード)
+- `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
+- `tests/word-collect-integration.test.mjs`(フィードXML→パース→word:タグ付与→ドシエ出力のE2Eをjsdomで検証)
 
 ## [v0.11.0] - 2026-05-30
 
