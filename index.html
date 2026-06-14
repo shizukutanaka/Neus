@@ -1,0 +1,2796 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.workers.dev https://api.anthropic.com; base-uri 'self'; form-action 'none'; object-src 'none'; manifest-src 'self'; worker-src 'self'">
+<title>Neus — Personal Information Hub</title>
+<meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
+<meta name="application-name" content="Neus">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Neus — Personal Information Hub">
+<meta property="og:description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:locale:alternate" content="en_US">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Neus — Personal Information Hub">
+<meta name="twitter:description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
+<meta name="robots" content="index,follow">
+<meta name="format-detection" content="telephone=no">
+<link rel="canonical" href="/">
+<link rel="dns-prefetch" href="https://fonts.googleapis.com">
+<link rel="dns-prefetch" href="https://api.anthropic.com">
+<link rel="dns-prefetch" href="https://api.openai.com">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"Neus","description":"Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.","applicationCategory":"ProductivityApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Person","name":"shizukutanaka"}}</script>
+<meta name="theme-color" content="#00C4CC">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="none" stroke="%2300C4CC" stroke-width="3"/><circle cx="16" cy="16" r="5" fill="%2300C4CC"/></svg>'>
+<!-- iOS PWA -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Neus">
+<link rel="apple-touch-icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180"><rect width="180" height="180" rx="40" fill="%230a0d0e"/><circle cx="90" cy="90" r="72" fill="none" stroke="%2300C4CC" stroke-width="12"/><circle cx="90" cy="90" r="24" fill="%2300C4CC"/></svg>'>
+<!-- Performance: font preconnect + non-blocking load -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap">
+<link rel="stylesheet" id="font-stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap" media="print">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap"></noscript>
+<meta name="color-scheme" content="dark">
+<style>
+:root {
+  --bg:#0a0d0e; --bg-2:#11151a; --bg-3:#161b22;
+  --fg:#e6edf3; --fg-2:#9da7b3; --fg-3:#838b96;
+  --accent:#00C4CC; --accent-dim:#00C4CC22; --accent-line:#00C4CC44;
+  --line:#21262d; --pass:#3fb950; --warn:#d29922; --err:#f85149;
+  --radius:4px;
+  --font-sans:"Noto Sans JP",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,"SF Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
+body{font-family:var(--font-sans);background:var(--bg);color:var(--fg);line-height:1.6;letter-spacing:.01em;-webkit-font-smoothing:antialiased;overflow-x:hidden;min-height:100vh;min-height:100dvh;}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;min-height:24px;min-width:24px;}
+/* WCAG 2.5.8 Target Size (Minimum) AA — interactive elements 24x24 CSS pixels */
+a[role="button"],input[type="button"],input[type="submit"],input[type="reset"],select{min-height:24px;min-width:24px;}
+/* Touch-friendly larger targets on mobile */
+@media(pointer:coarse){button,a[role="button"],input[type="button"],select{min-height:44px;min-width:44px;}}
+input,select,textarea{font:inherit;color:inherit;}
+.skip-link{position:absolute;top:-40px;left:8px;background:var(--accent);color:var(--bg);padding:8px 16px;font-family:var(--font-mono);font-size:12px;border-radius:4px;z-index:1000;text-decoration:none;}
+.skip-link:focus{top:8px;}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;box-shadow:0 0 0 5px var(--accent-dim);}
+
+.app{display:grid;grid-template-rows:auto auto 1fr;min-height:100vh;min-height:100dvh;}
+
+.header{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--bg-2);position:sticky;top:0;z-index:10;flex-wrap:wrap;}
+.header .brand{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-weight:700;font-size:16px;letter-spacing:.04em;}
+.header .brand .dot{width:10px;height:10px;background:var(--accent);border-radius:50%;}
+.header .brand .lock{width:8px;height:8px;background:var(--warn);border-radius:50%;margin-left:4px;display:none;}
+.header .brand .lock.show{display:block;}
+.header .search{flex:1;min-width:160px;max-width:400px;padding:6px 12px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;color:var(--fg);}
+.header .search:focus{border-color:var(--accent);outline:none;}
+.header .actions{display:flex;gap:4px;flex-wrap:wrap;}
+.header .actions button{padding:6px 10px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--fg-3);border:1px solid var(--line);border-radius:var(--radius);transition:color .15s,border-color .15s;}
+.header .actions button:hover{color:var(--accent);border-color:var(--accent-line);}
+.menu-wrap{position:relative;display:inline-block;}
+#btn-menu{font-size:16px;line-height:1;padding:6px 10px;min-width:38px;}
+.overflow-menu{display:none;position:absolute;top:calc(100% + 6px);right:0;flex-direction:column;gap:2px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:6px;min-width:160px;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.overflow-menu.show{display:flex;}
+.overflow-menu button{text-align:left;padding:10px 12px;min-height:44px;width:100%;border:1px solid transparent!important;border-radius:var(--radius);}
+.overflow-menu button:hover{background:var(--bg-3);}
+.header .actions button.on{color:var(--accent);border-color:var(--accent-line);}
+.header .actions button:disabled{opacity:.4;cursor:not-allowed;}
+
+.nav{display:flex;gap:0;padding:0 20px;border-bottom:1px solid var(--line);background:var(--bg-2);overflow-x:auto;scrollbar-width:none;}
+.nav::-webkit-scrollbar{display:none;}
+.nav button{padding:12px 16px;font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;color:var(--fg-3);border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s,border-color .15s;}
+.nav button.active{color:var(--accent);border-bottom-color:var(--accent);}
+.nav button:hover:not(.active){color:var(--fg-2);}
+.nav .count{display:inline-block;margin-left:6px;padding:0 6px;font-size:10px;background:var(--bg-3);border-radius:10px;color:var(--fg-3);}
+.nav button.active .count{color:var(--accent);background:var(--accent-dim);}
+
+.view{padding:20px;max-width:900px;width:100%;margin:0 auto;}
+
+.card{background:var(--bg-2);border:1px solid var(--line);border-left:2px solid var(--line);border-radius:var(--radius);padding:16px 20px;margin-bottom:12px;transition:border-color .15s;cursor:pointer;}
+.card.unread{border-left-color:var(--accent);}
+.card.share-type{border-left-color:var(--warn);}
+.card.exported{border-left-color:var(--pass);}
+.card:hover{border-color:var(--accent-line);}
+.card .meta{display:flex;gap:12px;flex-wrap:wrap;font-family:var(--font-mono);font-size:11px;color:var(--fg-3);letter-spacing:.05em;margin-bottom:8px;}
+.card .meta .source{color:var(--accent);}
+.card .meta .source.share{color:var(--warn);}
+.card .meta .score-hit{color:var(--warn);}
+.card .meta .exported-badge{color:var(--pass);}
+.card .meta .watch-badge{color:var(--warn);font-weight:700;cursor:help;}
+.card .meta .block-badge{color:var(--err);font-weight:700;cursor:help;}
+.stats-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--line);}
+.stats-row:last-child{border-bottom:none;}
+.stats-row .label{color:var(--fg-3);}
+.stats-row .val{color:var(--accent);font-weight:700;}
+kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid var(--line);border-radius:3px;font-family:var(--font-mono);font-size:11px;color:var(--accent);}
+.shortcut-row td{padding:8px 12px;border-bottom:1px solid var(--line);}
+.shortcut-row td:first-child{width:120px;white-space:nowrap;}
+.card .tag{cursor:pointer;}
+.card .tag:hover{border-color:var(--accent);}
+.filter-bar{position:sticky;top:55px;z-index:9;background:var(--bg);padding:8px 20px;border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:11px;color:var(--accent);display:none;}
+.filter-bar.show{display:flex;gap:12px;align-items:center;}
+.filter-bar .clear{margin-left:auto;color:var(--fg-3);cursor:pointer;border:1px solid var(--line);padding:2px 8px;border-radius:3px;}
+.filter-bar .clear:hover{color:var(--err);border-color:var(--err);}
+.card.watch-hit{border-left-color:var(--warn);}
+.card.block-hit{opacity:0.5;}
+.card.selected{outline:2px solid var(--accent);outline-offset:-2px;background:var(--bg-3);}
+.card .meta .source[data-filter-source]{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px;}
+.card .meta .source[data-filter-source]:hover{color:var(--accent);}
+.filter-bar{display:flex;align-items:center;gap:8px;padding:8px 20px;background:var(--bg-3);border-bottom:1px solid var(--line);font-family:var(--font-mono);font-size:11px;}
+.filter-bar .filter-label{color:var(--fg-3);}
+.filter-bar .filter-value{color:var(--accent);font-weight:700;}
+.filter-bar button{padding:2px 8px;color:var(--err);border:1px solid var(--line);border-radius:4px;font-size:10px;}
+.card h2{font-size:15px;font-weight:700;line-height:1.4;margin-bottom:8px;letter-spacing:-.01em;}
+.card h2 a{color:var(--fg);text-decoration:none;}
+.card h2 a:hover{color:var(--accent);}
+.card .snippet{font-size:13px;color:var(--fg-2);line-height:1.6;margin-bottom:10px;}
+.card .summary{background:var(--accent-dim);border-left:2px solid var(--accent);padding:8px 12px;font-size:12px;color:var(--fg-2);margin-bottom:10px;white-space:pre-wrap;}
+.card .tags,.card .links{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px;}
+.card .tag{font-family:var(--font-mono);font-size:10px;padding:2px 8px;background:var(--bg-3);border:1px solid var(--line);border-radius:10px;color:var(--fg-2);}
+.card .tag.auto{color:var(--fg-3);}
+.card .tag.user{color:var(--accent);border-color:var(--accent-line);}
+.card .link-chip{font-family:var(--font-mono);font-size:10px;padding:2px 8px;background:var(--bg-3);border:1px dashed var(--accent-line);border-radius:10px;color:var(--accent);}
+.card .actions{display:flex;gap:4px;flex-wrap:wrap;}
+.card .actions button{padding:4px 10px;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--fg-3);border:1px solid var(--line);border-radius:var(--radius);transition:color .15s,border-color .15s;}
+.card .actions button:hover{color:var(--accent);border-color:var(--accent-line);}
+.card .actions button.star.on{color:var(--warn);border-color:var(--warn);}
+.card .actions button.vault-btn{color:var(--pass);border-color:var(--pass);}
+.card .actions button.vault-btn.done{opacity:.5;}
+
+.empty{text-align:center;padding:80px 20px;color:var(--fg-3);font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;}
+.empty .icon{font-size:32px;margin-bottom:16px;opacity:.4;}
+.empty .hint{margin-top:12px;color:var(--fg-2);}
+.empty button{margin-top:20px;padding:10px 20px;font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;color:var(--accent);border:1px solid var(--accent-line);border-radius:var(--radius);}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:10px 20px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;color:var(--fg);z-index:200;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;}
+.install-banner{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(150%);width:min(440px,calc(100vw - 32px));background:var(--bg-2);border:1px solid var(--accent-line,var(--line));border-radius:14px;padding:16px;z-index:250;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);transition:transform .25s ease;}
+.install-banner.show{transform:translateX(-50%) translateY(0);}
+.install-text{display:flex;flex-direction:column;gap:4px;}
+.install-text strong{font-family:var(--font-mono);font-size:14px;color:var(--accent);}
+.install-text span{font-size:12px;color:var(--fg-2);}
+.install-actions{display:flex;gap:8px;justify-content:flex-end;}
+.install-actions button{padding:10px 18px;min-height:44px;border-radius:var(--radius);font-family:var(--font-mono);font-size:13px;border:1px solid var(--line);background:var(--bg);color:var(--fg-2);}
+.install-actions button.primary{background:var(--accent);color:var(--bg);border-color:var(--accent);}
+@media(prefers-reduced-motion:reduce){.install-banner{transition:none;}}
+@media print{.install-banner{display:none!important;}}
+.toast.show{opacity:1;}
+.toast.err{border-color:var(--err);color:var(--err);}
+.toast.ok{border-color:var(--pass);color:var(--pass);}
+
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;}
+.modal.show{display:flex;}
+.modal-card{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:24px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;}
+.modal-card h3{font-family:var(--font-mono);font-size:12px;letter-spacing:.15em;color:var(--accent);margin-bottom:16px;}
+.modal-card h4{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--fg-3);margin:16px 0 8px;text-transform:uppercase;}
+.modal-card label{display:block;font-size:12px;color:var(--fg-2);margin-bottom:6px;font-family:var(--font-mono);letter-spacing:.05em;}
+.modal-card input,.modal-card select,.modal-card textarea{width:100%;padding:10px 12px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);color:var(--fg);font-family:var(--font-mono);font-size:13px;margin-bottom:14px;}
+.modal-card textarea{font-family:var(--font-sans);resize:vertical;min-height:80px;}
+.modal-card input:focus,.modal-card select:focus,.modal-card textarea:focus{border-color:var(--accent);outline:none;}
+.modal-card .row{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;}
+.modal-card button{padding:8px 16px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;border:1px solid var(--line);border-radius:var(--radius);color:var(--fg-2);}
+.modal-card button.primary{color:var(--accent);border-color:var(--accent-line);}
+.modal-card button.primary:hover{background:var(--accent-dim);}
+.modal-card button.danger{color:var(--err);border-color:var(--err);}
+.modal-card .hint-text{font-size:11px;color:var(--fg-3);margin-top:-8px;margin-bottom:14px;line-height:1.5;}
+.modal-card .info-row{font-family:var(--font-mono);font-size:11px;color:var(--fg-2);margin-bottom:8px;}
+.modal-card .info-row .accent{color:var(--accent);}
+.modal-card .info-row .pass{color:var(--pass);}
+.modal-card .info-row .err{color:var(--err);}
+
+.sources-list{margin-top:12px;}
+.source-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:6px;font-family:var(--font-mono);font-size:12px;}
+.source-item .url{color:var(--fg-3);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+.source-item .name{color:var(--fg);}
+.source-item.disabled{opacity:.5;}
+.source-item button{padding:2px 8px;font-size:10px;color:var(--err);border:1px solid var(--line);border-radius:var(--radius);}
+
+.bookmarklet-box{background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-top:12px;}
+.bookmarklet-box p{font-size:12px;color:var(--fg-2);margin-bottom:8px;}
+.bookmarklet-link{display:inline-block;padding:6px 12px;background:var(--accent-dim);border:1px solid var(--accent-line);border-radius:var(--radius);font-family:var(--font-mono);font-size:11px;color:var(--accent);text-decoration:none;word-break:break-all;}
+.bookmarklet-link:hover{background:var(--accent);color:var(--bg);}
+
+.detail-meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;}
+.detail-meta .accent{color:var(--accent);}
+.detail-title{font-size:18px;font-weight:700;margin-bottom:8px;letter-spacing:-.01em;line-height:1.3;}
+.detail-title a{color:var(--fg);text-decoration:none;}
+.detail-title a:hover{color:var(--accent);}
+.detail-summary{background:var(--accent-dim);border-left:2px solid var(--accent);padding:10px 14px;font-size:13px;color:var(--fg);margin:16px 0;white-space:pre-wrap;}
+.detail-body{font-size:13px;color:var(--fg-2);margin-bottom:16px;white-space:pre-wrap;}
+.detail-vault-list{margin-bottom:14px;}
+.detail-vault-list a{display:block;padding:6px 10px;margin-bottom:4px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-mono);font-size:11px;color:var(--accent);text-decoration:none;}
+.detail-vault-list a:hover{border-color:var(--accent-line);}
+.detail-vault-list .vault-score{color:var(--fg-3);margin-left:8px;}
+
+.tag-input-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+.tag-input-row .tag-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:var(--accent-dim);border:1px solid var(--accent-line);border-radius:10px;font-family:var(--font-mono);font-size:10px;color:var(--accent);}
+.tag-input-row .tag-chip button{padding:0;margin:0;background:none;border:none;color:var(--accent);font-size:12px;line-height:1;}
+.tag-input-row input{width:auto;min-width:120px;margin:0;padding:4px 8px;font-size:11px;}
+
+/* ===== Onboarding ===== */
+.onboarding{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:100;padding:20px;}
+.onboarding.show{display:flex;}
+.onboard-card{background:var(--bg-2);border:1px solid var(--accent-line);border-radius:var(--radius);padding:32px;width:100%;max-width:520px;}
+.onboard-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;}
+.onboard-brand{font-family:var(--font-mono);font-weight:700;font-size:20px;color:var(--accent);letter-spacing:.04em;}
+.onboard-steps{display:flex;gap:4px;}
+.onboard-step-dot{width:8px;height:8px;background:var(--bg-3);border:1px solid var(--line);border-radius:50%;}
+.onboard-step-dot.done{background:var(--accent);border-color:var(--accent);}
+.onboard-step-dot.current{background:var(--accent-dim);border-color:var(--accent);}
+.onboard-title{font-family:var(--font-mono);font-size:11px;letter-spacing:.2em;color:var(--accent);margin-bottom:8px;}
+.onboard-desc{font-size:14px;color:var(--fg-2);margin-bottom:24px;line-height:1.6;}
+.onboard-body{margin-bottom:24px;}
+.onboard-footer{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;}
+.onboard-footer button{padding:10px 18px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;border:1px solid var(--line);border-radius:var(--radius);color:var(--fg-2);}
+.onboard-footer button.primary{color:var(--accent);border-color:var(--accent-line);}
+.onboard-footer button.primary:hover{background:var(--accent-dim);}
+
+.lang-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+.lang-opt{padding:16px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);text-align:center;cursor:pointer;transition:border-color .15s;}
+.lang-opt:hover,.lang-opt.selected{border-color:var(--accent);background:var(--accent-dim);}
+.lang-opt .flag{font-size:20px;margin-bottom:4px;display:block;font-family:var(--font-mono);}
+.lang-opt .name{font-family:var(--font-mono);font-size:12px;color:var(--fg);}
+
+.preset-grid{display:grid;gap:6px;}
+.preset-opt{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;}
+.preset-opt:hover{border-color:var(--accent-line);}
+.preset-opt input[type="checkbox"]{appearance:none;-webkit-appearance:none;width:16px;height:16px;border:1px solid var(--accent-line);background:transparent;cursor:pointer;position:relative;flex-shrink:0;margin:0;}
+.preset-opt input[type="checkbox"]:checked{background:var(--accent);border-color:var(--accent);}
+.preset-opt input[type="checkbox"]:checked::after{content:"";position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid var(--bg);border-width:0 2px 2px 0;transform:rotate(45deg);}
+.preset-opt .preset-name{font-family:var(--font-mono);font-size:12px;color:var(--fg);}
+.preset-opt .preset-url{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);}
+
+/* ===== Lock screen ===== */
+.lock-screen{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:150;padding:20px;}
+.lock-screen.show{display:flex;}
+.lock-card{background:var(--bg-2);border:1px solid var(--warn);border-radius:var(--radius);padding:32px;width:100%;max-width:400px;text-align:center;}
+.lock-card h2{font-family:var(--font-mono);font-size:14px;letter-spacing:.15em;color:var(--warn);margin-bottom:8px;}
+.lock-card p{font-size:13px;color:var(--fg-2);margin-bottom:20px;}
+.lock-card input{width:100%;padding:10px 12px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);color:var(--fg);font-family:var(--font-mono);font-size:13px;margin-bottom:12px;}
+.lock-card input:focus{border-color:var(--warn);outline:none;}
+.lock-card .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;}
+.lock-card button{padding:10px 20px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;border:1px solid var(--line);border-radius:var(--radius);color:var(--fg-2);}
+.lock-card button.primary{color:var(--warn);border-color:var(--warn);}
+.lock-card button.primary:hover{background:var(--warn);color:var(--bg);}
+
+.chip-field{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border:1px solid var(--line);border-radius:var(--radius);padding:8px;min-height:48px;background:var(--bg);margin-bottom:8px;}
+.chip-field:focus-within{border-color:var(--accent);}
+.chip-field .chip-input{flex:1;min-width:120px;border:none;background:none;color:var(--fg);font-family:var(--font-mono);font-size:13px;padding:6px 4px;outline:none;min-height:32px;}
+.kw-chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg-3);border:1px solid var(--line);border-radius:14px;padding:5px 6px 5px 12px;font-family:var(--font-mono);font-size:12px;color:var(--fg);max-width:100%;}
+.kw-chip[data-kind="watch"]{border-color:var(--warn);}
+.kw-chip[data-kind="block"]{border-color:var(--err);}
+.kw-chip .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;}
+.kw-chip .rm{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;min-width:22px;min-height:22px;border-radius:50%;background:transparent;color:var(--fg-3);font-size:14px;line-height:1;cursor:pointer;padding:0;}
+.kw-chip .rm:hover{background:var(--err);color:#fff;}
+@media(pointer:coarse){.kw-chip{padding:7px 8px 7px 14px;font-size:13px;}.kw-chip .rm{width:28px;height:28px;min-width:28px;min-height:28px;}}
+.sheet-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:flex-end;justify-content:center;}
+.sheet-backdrop.show{display:flex;}
+.sheet-card{background:var(--bg-2);border:1px solid var(--line);border-radius:16px 16px 0 0;padding:12px 16px calc(16px + env(safe-area-inset-bottom)) 16px;width:100%;max-width:520px;animation:sheet-up .2s ease;}
+@keyframes sheet-up{from{transform:translateY(100%);}to{transform:translateY(0);}}
+@media(prefers-reduced-motion:reduce){.sheet-card{animation:none;}}
+.sheet-handle{width:36px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 12px;}
+.sheet-card h3{font-family:var(--font-mono);font-size:15px;word-break:break-all;}
+.sheet-action{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:14px 12px;margin-top:6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg);color:var(--fg);font-family:var(--font-mono);font-size:14px;min-height:48px;}
+.sheet-action:hover{border-color:var(--accent);}
+.sheet-action.cancel{justify-content:center;color:var(--fg-3);margin-top:12px;}
+.sheet-action .dot-warn{width:8px;height:8px;border-radius:50%;background:var(--warn);}
+.sheet-action .dot-err{width:8px;height:8px;border-radius:50%;background:var(--err);}
+@media print{
+  .header .actions,.nav,.filter-bar,.modal,.skip-link,#undo-toast,.card .actions{display:none!important;}
+  body,.app{background:#fff!important;color:#000!important;}
+  .card{break-inside:avoid;border:1px solid #ccc;margin-bottom:8px;}
+  .card h2 a{color:#000!important;text-decoration:none;}
+  a[href]::after{content:" (" attr(href) ")";font-size:10px;color:#555;}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important;}
+}
+@media(max-width:600px){
+  .header{padding:10px 12px;gap:8px;}
+  .header .search{width:100%;max-width:100%;order:3;}
+  .nav{padding:0 8px;}
+  .nav button{padding:10px 12px;}
+  .view{padding:12px;}
+  .card{padding:12px 14px;}
+  .modal-card,.onboard-card{padding:16px;}
+}
+</style>
+</head>
+<body>
+<a href="#view" class="skip-link">Skip to main content</a>
+<div class="app">
+  <header class="header">
+    <h1 class="brand"><span class="dot" aria-hidden="true"></span>NEUS<span class="lock" id="lock-dot" title="encrypted" aria-hidden="true"></span></h1>
+    <input type="search" id="search-input" class="search" placeholder="search..." aria-label="Search events" aria-controls="view" autocomplete="off" spellcheck="false" aria-keyshortcuts="/">
+    <div class="actions">
+      <button id="btn-poll" type="button">POLL</button>
+      <div class="menu-wrap">
+        <button id="btn-menu" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu" aria-controls="overflow-menu">☰</button>
+        <div class="overflow-menu" id="overflow-menu" role="menu" aria-labelledby="btn-menu">
+          <button id="btn-sources" type="button" role="menuitem">SOURCES</button>
+          <button id="btn-keywords" type="button" role="menuitem">KEYWORDS</button>
+          <button id="btn-stats" type="button" role="menuitem">STATS</button>
+          <button id="btn-vault" type="button" role="menuitem">VAULT</button>
+          <button id="btn-settings" type="button" role="menuitem">SETTINGS</button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <nav class="nav" aria-label="Event views">
+    <div role="tablist" aria-label="Event views">
+    <button class="active" data-view="inbox" role="tab" aria-selected="true">INBOX<span class="count" id="cnt-inbox">0</span></button>
+    <button data-view="all" role="tab" aria-selected="false">ALL<span class="count" id="cnt-all">0</span></button>
+    <button data-view="starred" role="tab" aria-selected="false">STARRED<span class="count" id="cnt-starred">0</span></button>
+    <button data-view="archived" role="tab" aria-selected="false">ARCHIVED<span class="count" id="cnt-archived">0</span></button>
+    <button data-view="later" role="tab" aria-selected="false">LATER<span class="count" id="cnt-later">0</span></button>
+    <button data-view="digest" id="nav-digest" role="tab" aria-selected="false">DIGEST</button>
+    <button data-view="search" id="nav-search" role="tab" aria-selected="false" style="display:none;">SEARCH<span class="count" id="cnt-search">0</span></button>
+    </div>
+  </nav>
+  <div class="filter-bar" id="filter-bar" style="display:none;" role="region" aria-label="Active filters"></div>
+  <main class="view" id="view" role="main" aria-live="polite" aria-busy="false"></main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<!-- PWA install promotion banner -->
+<div class="install-banner" id="install-banner" role="region" aria-label="App install">
+  <div class="install-text">
+    <strong id="install-title">Neusをインストール</strong>
+    <span id="install-desc">ホーム画面に追加してアプリのように使えます</span>
+  </div>
+  <div class="install-actions">
+    <button id="install-later" type="button">後で</button>
+    <button id="install-now" class="primary" type="button">インストール</button>
+  </div>
+</div>
+
+<!-- Lock screen -->
+<div class="lock-screen" id="lock-screen">
+  <div class="lock-card">
+    <h2 id="lock-title">LOCKED</h2>
+    <p id="lock-desc">Enter passphrase to unlock.</p>
+    <input type="password" id="lock-input" placeholder="passphrase...">
+    <div class="row">
+      <button id="lock-skip" type="button">SKIP</button>
+      <button class="primary" id="lock-unlock" type="button">UNLOCK</button>
+    </div>
+    <div id="lock-err" style="font-family:var(--font-mono);font-size:11px;color:var(--err);margin-top:8px;"></div>
+  </div>
+</div>
+
+<!-- Onboarding -->
+<div class="onboarding" id="onboarding">
+  <div class="onboard-card">
+    <div class="onboard-header"><div class="onboard-brand">NEUS</div><div class="onboard-steps" id="onboard-dots"></div></div>
+    <div class="onboard-title" id="onboard-step-label"></div>
+    <div class="onboard-desc" id="onboard-desc"></div>
+    <div class="onboard-body" id="onboard-body"></div>
+    <div class="onboard-footer" id="onboard-footer"></div>
+  </div>
+</div>
+
+<!-- Sources modal -->
+<div class="modal" id="modal-sources" role="dialog" aria-modal="true" aria-labelledby="hd-sources">
+  <div class="modal-card">
+    <h3 id="hd-sources">SOURCES</h3>
+    <label for="src-url" id="lbl-src-url">RSS / Atom URL</label>
+    <input type="url" id="src-url" placeholder="https://example.com/feed.xml">
+    <div class="row">
+      <button id="src-cancel" type="button">CLOSE</button>
+      <button id="opml-import" type="button">IMPORT OPML</button>
+      <button id="opml-export" type="button">EXPORT OPML</button>
+      <button id="bookmarklet-btn" type="button">BOOKMARKLET</button>
+      <button class="primary" id="src-add" type="button">ADD</button>
+    </div>
+    <input type="file" id="opml-file" accept=".opml,.xml,text/xml" style="display:none;">
+    <div id="bookmarklet-area" style="display:none;"></div>
+    <div class="sources-list" id="sources-list"></div>
+  </div>
+</div>
+
+<!-- Vault modal -->
+<div class="modal" id="modal-vault" role="dialog" aria-modal="true" aria-labelledby="hd-vault">
+  <div class="modal-card">
+    <h3 id="hd-vault">VAULT</h3>
+    <p class="hint-text" id="vault-hint">Vaultフォルダを選択すると関連ノートを自動発見し、Markdownで書き出しできる。ファイル名のみ参照、本文不読取。</p>
+    <div class="info-row" id="vault-status">vault: not selected</div>
+    <div class="row">
+      <button id="vault-cancel" type="button">CLOSE</button>
+      <button id="vault-rescan" type="button">RESCAN</button>
+      <button id="vault-export-all" type="button">EXPORT ALL STARRED</button>
+      <button id="vault-clear" type="button" class="danger">DISCONNECT</button>
+      <button class="primary" id="vault-select" type="button">SELECT VAULT</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings modal -->
+<div class="modal" id="modal-settings" role="dialog" aria-modal="true" aria-labelledby="hd-settings">
+  <div class="modal-card">
+    <h3 id="hd-settings">SETTINGS</h3>
+
+    <h4>LANGUAGE</h4>
+    <select id="set-lang">
+      <option value="ja">日本語 (Japanese)</option>
+      <option value="en">English</option>
+    </select>
+
+    <h4>PASSPHRASE (AES-GCM)</h4>
+    <p class="hint-text">パスフレーズでAPIキーを暗号化する。設定後はページ起動時に入力が必要。忘れた場合は復元不可(キー削除して再入力のみ)。</p>
+    <div class="info-row" id="pass-status">status: not set</div>
+    <label for="set-pass-new" id="lbl-pass-new">新しいパスフレーズ</label>
+    <input type="password" id="set-pass-new" placeholder="leave empty to disable">
+
+    <h4>AI SUMMARY (BYOK)</h4>
+    <label for="set-byok-enabled">要約</label>
+    <select id="set-byok-enabled"><option value="false">無効</option><option value="true">有効</option></select>
+    <label for="set-byok-provider">プロバイダ</label>
+    <select id="set-byok-provider">
+      <option value="anthropic">Anthropic (Claude)</option>
+      <option value="openai">OpenAI (GPT)</option>
+      <option value="gemini">Google (Gemini)</option>
+    </select>
+    <label for="set-byok-model">モデル</label>
+    <input type="text" id="set-byok-model" placeholder="claude-haiku-4-5-20251001">
+    <label for="set-byok-key">APIキー</label>
+    <input type="password" id="set-byok-key" placeholder="sk-... / sk-ant-... / AI...">
+    <label for="set-byok-budget">日次予算(リクエスト数)</label>
+    <input type="number" id="set-byok-budget" min="0" value="100">
+
+    <h4 id="lbl-set-sync">AUTO SYNC (定期取得)</h4>
+    <p class="hint-text" id="set-sync-hint">バックグラウンドで自動的にRSS取得。Chromiumブラウザのみ対応。</p>
+    <label for="set-sync-enabled">自動取得</label>
+    <select id="set-sync-enabled"><option value="false">無効</option><option value="true">有効</option></select>
+    <label for="set-sync-interval">取得間隔</label>
+    <select id="set-sync-interval"><option value="1h">1時間</option><option value="6h">6時間</option><option value="12h">12時間</option><option value="24h">24時間</option></select>
+    <label for="set-sync-notify">新着通知</label>
+    <select id="set-sync-notify"><option value="false">無効</option><option value="true">有効</option></select>
+    <div id="sync-status" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-bottom:8px;"></div>
+
+    <h4>STATUS</h4>
+    <div id="byok-status" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-2);"></div>
+    <div class="row">
+      <button id="set-cancel" type="button">CLOSE</button>
+      <button class="primary" id="set-save" type="button">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Keywords modal -->
+<div class="modal" id="modal-keywords" role="dialog" aria-modal="true" aria-labelledby="hd-keywords">
+  <div class="modal-card">
+    <h3 id="hd-keywords">KEYWORDS</h3>
+    <p class="hint-text" id="kw-hint">気になるキーワードでハイライト・自動スター、不要キーワードで自動アーカイブ・破棄。1行1キーワード。詳細ルールはADVANCEDから。</p>
+
+    <h4 id="hd-kw-watch">WATCH(気になる)</h4>
+    <label for="kw-watch-action" id="lbl-kw-watch-action">マッチ時の動作</label>
+    <select id="kw-watch-action">
+      <option value="highlight">ハイライト(スコア+30)</option>
+      <option value="star">自動スター</option>
+      <option value="tag">自動タグ追加</option>
+    </select>
+    <label for="kw-watch-chipinput" id="lbl-kw-watch">キーワード(入力してEnter)</label>
+    <div class="chip-field" id="kw-watch-chips" data-kind="watch">
+      <input type="text" id="kw-watch-chipinput" class="chip-input" placeholder="Rust と入力 → Enter" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" inputmode="text" aria-label="WATCHキーワードを追加">
+    </div>
+
+    <h4 id="hd-kw-block">BLOCK(ブロック)</h4>
+    <label for="kw-block-action" id="lbl-kw-block-action">マッチ時の動作</label>
+    <select id="kw-block-action">
+      <option value="archive">自動アーカイブ</option>
+      <option value="delete">破棄(保存しない)</option>
+    </select>
+    <label for="kw-block-chipinput" id="lbl-kw-block">キーワード(入力してEnter)</label>
+    <div class="chip-field" id="kw-block-chips" data-kind="block">
+      <input type="text" id="kw-block-chipinput" class="chip-input" placeholder="NFT と入力 → Enter" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" inputmode="text" aria-label="BLOCKキーワードを追加">
+    </div>
+
+    <h4 id="hd-kw-adv">ADVANCED RULES</h4>
+    <p class="hint-text" id="kw-adv-hint">JSON形式でmode/scope/caseを指定。mode: contains/exact/prefix/suffix/word/regex。scope: title/snippet/summary/tags/source/all。</p>
+    <textarea id="kw-adv-input" aria-describedby="kw-adv-err" placeholder='{"watch":[{"pattern":"\\bAI\\b","mode":"regex","scope":"title","case":false,"action":"star"}],"block":[]}' style="min-height:120px;font-family:var(--font-mono);font-size:11px;"></textarea>
+    <div id="kw-adv-err" role="alert" aria-live="assertive" style="font-family:var(--font-mono);font-size:11px;color:var(--err);margin-top:-8px;margin-bottom:8px;"></div>
+
+    <h4 id="hd-kw-status">STATUS</h4>
+    <div id="kw-status" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-2);"></div>
+
+    <div class="row">
+      <button id="kw-cancel" type="button">CLOSE</button>
+      <button id="kw-reapply" type="button">REAPPLY TO ALL</button>
+      <button class="primary" id="kw-save" type="button">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stats modal -->
+<!-- Help modal removed: replaced by modal-shortcuts -->
+
+<!-- Stats modal (consolidated v0.2.0) -->
+<div class="modal" id="modal-stats" role="dialog" aria-modal="true" aria-labelledby="hd-stats">
+  <div class="modal-card">
+    <h3 id="hd-stats">STATS</h3>
+    <div id="stats-body" style="font-family:var(--font-mono);font-size:12px;color:var(--fg-2);line-height:2;"></div>
+    <div class="row">
+      <button id="stats-cancel" type="button">CLOSE</button>
+      <button id="stats-backup" type="button">EXPORT JSON</button>
+      <button id="stats-restore" type="button">IMPORT JSON</button>
+      <button id="stats-shortcuts" class="primary" type="button">SHORTCUTS</button>
+    </div>
+    <input type="file" id="restore-file" accept=".json,application/json" style="display:none;">
+  </div>
+</div>
+
+<!-- Shortcuts modal -->
+<div class="modal" id="modal-shortcuts" role="dialog" aria-modal="true" aria-labelledby="hd-shortcuts">
+  <div class="modal-card">
+    <h3 id="hd-shortcuts">KEYBOARD SHORTCUTS</h3>
+    <table style="width:100%;font-family:var(--font-mono);font-size:12px;border-collapse:collapse;">
+      <tbody id="shortcuts-tbody"></tbody>
+    </table>
+    <div class="row">
+      <button id="shortcuts-cancel" class="primary" type="button">CLOSE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm modal (custom confirmAsync UI) -->
+<div class="modal" id="modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-msg">
+  <div class="modal-card" style="max-width:480px;">
+    <h3 id="hd-confirm">CONFIRM</h3>
+    <p id="confirm-msg" style="margin:12px 0 20px;color:var(--fg);"></p>
+    <div class="row">
+      <button id="confirm-cancel" type="button">CANCEL</button>
+      <button id="confirm-ok" class="primary" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context action sheet (long-press / right-click on tag or source) -->
+<div class="sheet-backdrop" id="kw-sheet" role="dialog" aria-modal="true" aria-labelledby="kw-sheet-title">
+  <div class="sheet-card">
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <h3 id="kw-sheet-title">「<span id="kw-sheet-term"></span>」</h3>
+    <p class="hint-text" id="kw-sheet-hint">このキーワードのルールを追加</p>
+    <button class="sheet-action" id="kw-sheet-watch-hl" type="button"><span class="dot-warn" aria-hidden="true"></span>WATCH — ハイライト</button>
+    <button class="sheet-action" id="kw-sheet-watch-star" type="button"><span class="dot-warn" aria-hidden="true"></span>WATCH — 自動スター</button>
+    <button class="sheet-action" id="kw-sheet-block-arch" type="button"><span class="dot-err" aria-hidden="true"></span>BLOCK — アーカイブ</button>
+    <button class="sheet-action" id="kw-sheet-block-del" type="button"><span class="dot-err" aria-hidden="true"></span>BLOCK — 破棄</button>
+    <button class="sheet-action cancel" id="kw-sheet-cancel" type="button">キャンセル</button>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal" id="modal-detail" role="dialog" aria-modal="true" aria-labelledby="hd-detail">
+  <div class="modal-card" id="detail-card"></div>
+</div>
+
+<script type="module">
+'use strict';
+
+// フォントの非ブロッキング読み込み(インラインonload属性をCSP強化のためJS化)
+(()=>{const fs=document.getElementById('font-stylesheet');if(fs)fs.media='all';})();
+
+// ===== CONFIG ===========================================================
+const CONFIG = Object.freeze({
+  proxy: 'https://neus-proxy.example.workers.dev',
+  dbName: 'neus-v1', dbVersion: 1, maxViewItems: 50,
+  byokDefaults: {
+    anthropic:{ model:'claude-haiku-4-5-20251001', endpoint:'https://api.anthropic.com/v1/messages' },
+    openai:   { model:'gpt-4o-mini',               endpoint:'https://api.openai.com/v1/chat/completions' },
+    gemini:   { model:'gemini-1.5-flash',          endpoint:'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent' },
+  },
+  summaryPrompt:'Summarize the following article in 3 short bullet points (each <= 20 words). Match the source language. Output bullets only, no preamble.\n\nTitle: {title}\n\nContent:\n{content}',
+  tagLearnMinFreq:3, tagSuggestMax:3,
+  interestMaxVocab:300, interestMinDf:2, interestBoostMax:25, interestDecay:0.98,
+  dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000,
+  ftsGram:2, ftsScoreMin:0.4,
+  vaultMatchMinTokens:2, vaultMatchMax:5,
+  sourceMaxFails:5,
+  storageQuotaThreshold:0.85,
+  presetSources:[
+    {name:'Hacker News',     url:'https://news.ycombinator.com/rss'},
+    {name:'GitHub Blog',     url:'https://github.blog/feed/'},
+    {name:'Cloudflare Blog', url:'https://blog.cloudflare.com/rss/'},
+    {name:'Dev.to',          url:'https://dev.to/feed'},
+    {name:'AWS Blog',        url:'https://aws.amazon.com/blogs/aws/feed/'},
+  ],
+  pbkdf2Iterations:300000,
+  saltKey:'crypto-salt',
+  ivLen:12,
+  syncIntervals:{'1h':3600,'6h':21600,'12h':43200,'24h':86400},
+});
+
+// ===== I18N =============================================================
+const DICT={
+  ja:{
+    'btn.sources':'ソース','btn.vault':'Vault','btn.settings':'設定','btn.poll':'取得',
+    'btn.add':'追加','btn.close':'閉じる','btn.save':'保存',
+    'btn.import-opml':'OPML取込','btn.export-opml':'OPML出力',
+    'btn.bookmarklet':'ブックマークレット','btn.select-vault':'Vault選択',
+    'btn.rescan':'再スキャン','btn.disconnect':'切断','btn.export-all':'スター済みを一括書出',
+    'lbl.src-url':'RSS / Atom URL','search.placeholder':'タイトル・内容・タグを検索...',
+    'empty.inbox':'INBOXは空','empty.hint':'ソースを追加してPOLLを実行',
+    'vault.hint':'Vaultフォルダを選択すると関連ノートを自動発見し、Markdownで書き出しできる。ファイル名のみ参照、本文不読取。',
+    'lock.title':'ロック','lock.desc':'パスフレーズを入力してください。',
+    'lock.skip':'スキップ','lock.unlock':'解錠',
+    'onboard.lang.title':'STEP 1 — 言語選択','onboard.lang.desc':'使用する言語を選択。後から変更可。',
+    'onboard.pass.title':'STEP 2 — パスフレーズ(任意)',
+    'onboard.pass.desc':'起動時のパスフレーズでAPIキーをAES-GCM暗号化する。現バージョンでスキップ可。後から設定画面で設定できる。',
+    'onboard.byok.title':'STEP 3 — AI要約(任意)',
+    'onboard.byok.desc':'OpenAI/Anthropic/GeminiのAPIキーを登録すると各Eventを自動要約する。後から設定可。',
+    'onboard.preset.title':'STEP 4 — 初期ソース',
+    'onboard.preset.desc':'購読ソースを選択。後からOPML取込やURL追加も可。',
+    'onboard.vault.title':'STEP 5 — Obsidian Vault(任意)',
+    'onboard.vault.desc':'VaultフォルダをNeusと連携すると新規Eventから関連ノートを自動発見し、Markdownで書き出せる。後から設定可。',
+    'onboard.btn.skip':'スキップ','onboard.btn.next':'次へ','onboard.btn.done':'開始する',
+    'onboard.btn.select-vault':'Vaultを選択','share.added':'共有リンクを保存',
+    'exported':'書出済',
+    'btn.keywords':'キーワード',
+    'hd.keywords':'キーワード管理',
+    'hd.kw.watch':'WATCH(気になる)',
+    'hd.kw.block':'BLOCK(ブロック)',
+    'hd.kw.adv':'詳細ルール',
+    'hd.kw.status':'状態',
+    'kw.hint':'気になるキーワードでハイライト・自動スター、不要キーワードで自動アーカイブ・破棄。入力してEnter。カードのタグを長押しで素早く追加。',
+    'kw.adv.hint':'JSON形式でmode/scope/caseを指定。mode: contains/exact/prefix/suffix/word/regex。scope: title/snippet/summary/tags/source/all。',
+    'kw.watch.action':'マッチ時の動作',
+    'kw.block.action':'マッチ時の動作',
+    'kw.watch.input':'キーワード(1行1個)',
+    'kw.block.input':'キーワード(1行1個)',
+    'kw.btn.reapply':'全件に再適用',
+    'kw.watch.highlight':'ハイライト(スコア+30)',
+    'kw.watch.star':'自動スター',
+    'kw.watch.tag':'自動タグ追加',
+    'kw.block.archive':'自動アーカイブ',
+    'kw.block.delete':'破棄(保存しない)',
+    'kw.watched.badge':'WATCH',
+    'kw.blocked.badge':'BLOCKED',
+    'nav.later':'LATER',
+    'nav.digest':'DIGEST',
+    'digest.title':'本日のダイジェスト',
+    'digest.subtitle':'過去24時間に取得したイベント',
+    'digest.top3':'今日のトップ3',
+    'digest.tags':'頻出タグ',
+    'digest.sources':'アクティブソース',
+    'digest.fetched':'取得数',
+    'digest.summarized':'要約済み',
+    'digest.starred.today':'本日スター',
+    'digest.empty':'過去24時間に新着なし。POLLを実行してください。',
+    'digest.week.trend':'週次トレンド',
+    'btn.stats':'統計',
+    'btn.help':'ヘルプ',
+    'stats.events.total':'保存イベント数',
+    'stats.events.unread':'未読',
+    'stats.events.starred':'スター済み',
+    'stats.events.exported':'Vault書出済み',
+    'stats.sources':'登録ソース',
+    'stats.fts':'FTS索引',
+    'stats.summary':'本日要約',
+    'stats.vault':'Vault接続',
+    'stats.keywords':'キーワードルール',
+    'stats.interest':'興味学習',
+    'stats.interest.words':'語',
+    'stats.interest.like':'好み(自動学習)',
+    'stats.interest.dislike':'除外(自動学習)',
+    'stats.storage':'ストレージ',
+    'filter.tag':'タグ',
+    'filter.source':'ソース',
+    'filter.clear':'クリア',
+    'backup.confirm':'現在のデータを置き換えますか?',
+    'backup.imported':'復元完了',
+  },
+  en:{
+    'btn.sources':'SOURCES','btn.vault':'VAULT','btn.settings':'SETTINGS','btn.poll':'POLL',
+    'btn.add':'ADD','btn.close':'CLOSE','btn.save':'SAVE',
+    'btn.import-opml':'IMPORT OPML','btn.export-opml':'EXPORT OPML',
+    'btn.bookmarklet':'BOOKMARKLET','btn.select-vault':'SELECT VAULT',
+    'btn.rescan':'RESCAN','btn.disconnect':'DISCONNECT','btn.export-all':'EXPORT ALL STARRED',
+    'lbl.src-url':'RSS / Atom URL','search.placeholder':'search title / snippet / tags...',
+    'empty.inbox':'inbox is empty','empty.hint':'add sources and trigger POLL',
+    'vault.hint':'Select your Vault folder to auto-detect related notes and export Markdown. Only filenames are read, not note content.',
+    'lock.title':'LOCKED','lock.desc':'Enter passphrase to unlock.',
+    'lock.skip':'Skip','lock.unlock':'UNLOCK',
+    'onboard.lang.title':'STEP 1 — Language','onboard.lang.desc':'Choose your language. You can change this later in Settings.',
+    'onboard.pass.title':'STEP 2 — Passphrase (optional)',
+    'onboard.pass.desc':'Encrypt your API key with a passphrase using AES-GCM. You can skip this or configure it later in Settings.',
+    'onboard.byok.title':'STEP 3 — AI Summary (optional)',
+    'onboard.byok.desc':'Enter an API key to enable automatic article summaries. Configurable later in Settings.',
+    'onboard.preset.title':'STEP 4 — Starter Sources',
+    'onboard.preset.desc':'Choose sources to subscribe to. You can add more via OPML or URL later.',
+    'onboard.vault.title':'STEP 5 — Obsidian Vault (optional)',
+    'onboard.vault.desc':'Link your Obsidian Vault to surface related notes and export Markdown. Configurable later.',
+    'onboard.btn.skip':'Skip','onboard.btn.next':'Next','onboard.btn.done':'Get Started',
+    'onboard.btn.select-vault':'Select Vault','share.added':'Shared link saved',
+    'exported':'exported',
+    'btn.keywords':'KEYWORDS',
+    'hd.keywords':'KEYWORD RULES',
+    'hd.kw.watch':'WATCH (Highlight)',
+    'hd.kw.block':'BLOCK (Hide)',
+    'hd.kw.adv':'ADVANCED RULES',
+    'hd.kw.status':'STATUS',
+    'kw.hint':'Highlight watched keywords, auto-archive blocked ones. Type and press Enter. Long-press a card tag for quick add.',
+    'kw.adv.hint':'JSON format with mode/scope/case. mode: contains/exact/prefix/suffix/word/regex. scope: title/snippet/summary/tags/source/all.',
+    'kw.watch.action':'Match action',
+    'kw.block.action':'Match action',
+    'kw.watch.input':'Keywords (one per line)',
+    'kw.block.input':'Keywords (one per line)',
+    'kw.btn.reapply':'REAPPLY TO ALL',
+    'kw.watch.highlight':'Highlight (score+30)',
+    'kw.watch.star':'Auto-star',
+    'kw.watch.tag':'Auto-tag',
+    'kw.block.archive':'Auto-archive',
+    'kw.block.delete':'Discard (do not save)',
+    'kw.watched.badge':'WATCH',
+    'kw.blocked.badge':'BLOCKED',
+    'nav.later':'LATER',
+    'nav.digest':'DIGEST',
+    'digest.title':"Today's Digest",
+    'digest.subtitle':'Events fetched in last 24 hours',
+    'digest.top3':'Top 3 today',
+    'digest.tags':'Top tags',
+    'digest.sources':'Active sources',
+    'digest.fetched':'Fetched',
+    'digest.summarized':'Summarized',
+    'digest.starred.today':'Starred today',
+    'digest.empty':'No new events in the last 24h. Press POLL to fetch.',
+    'digest.week.trend':'Week trend',
+    'btn.stats':'STATS',
+    'btn.help':'HELP',
+    'stats.events.total':'Total events',
+    'stats.events.unread':'Unread',
+    'stats.events.starred':'Starred',
+    'stats.events.exported':'Exported to Vault',
+    'stats.sources':'Sources',
+    'stats.fts':'FTS index',
+    'stats.summary':'Summaries today',
+    'stats.vault':'Vault status',
+    'stats.keywords':'Keyword rules',
+    'stats.interest':'Interest learning',
+    'stats.interest.words':'words',
+    'stats.interest.like':'Liked (auto-learned)',
+    'stats.interest.dislike':'Filtered (auto-learned)',
+    'stats.storage':'Storage',
+    'filter.tag':'tag',
+    'filter.source':'source',
+    'filter.clear':'clear',
+    'backup.confirm':'Replace current data with backup?',
+    'backup.imported':'restored',
+  },
+};
+
+let currentLang='ja';
+const t=(k)=>DICT[currentLang]?.[k]??DICT.en?.[k]??k;
+
+function applyI18N(){
+  document.documentElement.lang=currentLang;
+  $('#search-input').placeholder=t('search.placeholder');
+  $('#btn-sources').textContent=t('btn.sources');
+  $('#btn-stats').textContent=t('btn.stats');
+  $('#btn-keywords').textContent=t('btn.keywords');
+  $('#btn-stats').textContent=t('btn.stats');
+  $('#btn-vault').textContent=t('btn.vault');
+  $('#btn-settings').textContent=t('btn.settings');
+  $('#btn-poll').textContent=t('btn.poll');
+  $('#hd-sources').textContent=t('btn.sources');
+  $('#lbl-src-url').textContent=t('lbl.src-url');
+  $('#src-cancel').textContent=t('btn.close');
+  $('#opml-import').textContent=t('btn.import-opml');
+  $('#opml-export').textContent=t('btn.export-opml');
+  $('#bookmarklet-btn').textContent=t('btn.bookmarklet');
+  $('#src-add').textContent=t('btn.add');
+  $('#vault-hint').textContent=t('vault.hint');
+  $('#vault-cancel').textContent=t('btn.close');
+  $('#vault-rescan').textContent=t('btn.rescan');
+  $('#vault-export-all').textContent=t('btn.export-all');
+  $('#vault-clear').textContent=t('btn.disconnect');
+  $('#vault-select').textContent=t('btn.select-vault');
+  $('#lbl-pass-new').textContent=currentLang==='ja'?'新しいパスフレーズ':'New passphrase';
+  $('#set-cancel').textContent=t('btn.close');
+  $('#set-save').textContent=t('btn.save');
+  $('#lock-title').textContent=t('lock.title');
+  $('#lock-desc').textContent=t('lock.desc');
+  $('#lock-skip').textContent=t('lock.skip');
+  $('#lock-unlock').textContent=t('lock.unlock');
+  const navMap={inbox:'INBOX',all:'ALL',starred:'STARRED',archived:'ARCHIVED',search:'SEARCH'};
+  $$('.nav button[data-view]').forEach(b=>{
+    const cnt=b.querySelector('.count');
+    b.childNodes[0].nodeValue=navMap[b.dataset.view]||b.dataset.view.toUpperCase();
+    if(cnt)b.appendChild(cnt);
+  });
+}
+
+// ===== UTILITIES ========================================================
+const $=(sel)=>document.querySelector(sel);
+const $$=(sel)=>document.querySelectorAll(sel);
+const uuid=()=>crypto.randomUUID();
+const debounce=(fn,ms)=>{let t;return(...args)=>{clearTimeout(t);t=setTimeout(()=>fn(...args),ms);};};
+
+async function sha256(str){
+  const buf=new TextEncoder().encode(str);
+  const hash=await crypto.subtle.digest('SHA-256',buf);
+  return[...new Uint8Array(hash)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function normalizeUrl(url){
+  try{const u=new URL(url);u.hash='';['utm_source','utm_medium','utm_campaign','utm_term','utm_content','fbclid','gclid'].forEach(p=>u.searchParams.delete(p));return u.toString();}catch{return url;}
+}
+
+const HE={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+const escapeHtml=(s)=>String(s).replace(/[&<>"']/g,c=>HE[c]);
+const escapeAttr=escapeHtml;
+
+function tokenize(text){
+  if(!text)return[];
+  return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(w=>w.length>=2&&w.length<=30);
+}
+
+function jaccard(A,B){
+  if(A.size===0&&B.size===0)return 0;
+  let i=0;for(const x of A)if(B.has(x))i++;
+  return(A.size+B.size-i)?(i/(A.size+B.size-i)):0;
+}
+
+function fmtTime(ms){
+  const d=Date.now()-ms,m=Math.floor(d/60000);
+  if(m<1)return currentLang==='ja'?'たった今':'now';
+  if(m<60)return currentLang==='ja'?`${m}分前`:`${m}m`;
+  const h=Math.floor(m/60);
+  if(h<24)return currentLang==='ja'?`${h}時間前`:`${h}h`;
+  const dy=Math.floor(h/24);
+  if(dy<7)return currentLang==='ja'?`${dy}日前`:`${dy}d`;
+  // 7日以上前: Intl.DateTimeFormat でロケール対応
+  try{return new Intl.DateTimeFormat(currentLang==='ja'?'ja-JP':'en-US',{year:'numeric',month:'short',day:'numeric'}).format(new Date(ms));}
+  catch{return new Date(ms).toISOString().slice(0,10);}
+}
+
+// 数値フォーマット (1,234 など)
+function fmtNum(n){
+  try{return new Intl.NumberFormat(currentLang==='ja'?'ja-JP':'en-US').format(n);}
+  catch{return String(n);}
+}
+
+const isoDate=(ms)=>new Date(ms).toISOString();
+
+function toast(msg,type=''){
+  const el=$('#toast');
+  el.className=`toast show ${type}`;el.textContent=msg;
+  clearTimeout(el._t);el._t=setTimeout(()=>{el.className='toast';},2400);
+}
+
+function downloadFile(name,content,mime='text/plain'){
+  const blob=new Blob([content],{type:mime});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+
+// ===== EVENT BUS ========================================================
+const Bus=(()=>{
+  const subs=new Map();
+  return{
+    publish(topic,payload){const h=subs.get(topic);if(!h)return;for(const fn of h){try{Promise.resolve(fn(payload)).catch(err=>console.error(`[Bus ${topic}]`,err));}catch(err){console.error(`[Bus ${topic}]`,err);}}},
+    subscribe(topic,handler){let s=subs.get(topic);if(!s)subs.set(topic,s=new Set());s.add(handler);return()=>s.delete(handler);},
+  };
+})();
+
+// ===== INDEXEDDB STORE ==================================================
+const Store=(()=>{
+  let db=null;
+  function open(){return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(CONFIG.dbName,CONFIG.dbVersion);
+    req.onupgradeneeded=(e)=>{const d=e.target.result;
+      if(!d.objectStoreNames.contains('events')){const os=d.createObjectStore('events',{keyPath:'id'});os.createIndex('timestamp','timestamp');os.createIndex('hash','hash',{unique:false});os.createIndex('sourceId','source.id');os.createIndex('read','state.read');os.createIndex('starred','state.starred');os.createIndex('archived','state.archived');}
+      if(!d.objectStoreNames.contains('sources'))d.createObjectStore('sources',{keyPath:'id'});
+      if(!d.objectStoreNames.contains('settings'))d.createObjectStore('settings',{keyPath:'key'});
+    };
+    req.onsuccess=()=>{db=req.result;resolve();};req.onerror=()=>reject(req.error);
+  });}
+  const tx=(s,m='readonly')=>db.transaction(s,m);
+  const r2p=(req)=>new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+  return{
+    async init(){
+      try{await open();}
+      catch(err){
+        console.error('[Store.init] open failed:',err);
+        // DB破損可能性: ユーザーに確認後、削除して再生成
+        const msg=currentLang==='ja'?'データベースの初期化に失敗しました。データを削除して再生成しますか?':'Database initialization failed. Delete and recreate? (your data will be lost)';
+        if(await confirmAsync(msg,{danger:true})){
+          await new Promise((res,rej)=>{const req=indexedDB.deleteDatabase(CONFIG.dbName);req.onsuccess=res;req.onerror=rej;req.onblocked=res;});
+          await open();
+        }else{throw err;}
+      }
+    },
+    async putEvent(ev){return r2p(tx(['events'],'readwrite').objectStore('events').put(ev));},
+    async getEvent(id){return r2p(tx(['events']).objectStore('events').get(id));},
+    async findByHash(hash){return r2p(tx(['events']).objectStore('events').index('hash').get(hash));},
+    async deleteEvent(id){return r2p(tx(['events'],'readwrite').objectStore('events').delete(id));},
+    async listEvents({filter={},limit=CONFIG.maxViewItems}={}){
+      const idx=tx(['events']).objectStore('events').index('timestamp');const results=[];
+      return new Promise((resolve,reject)=>{const req=idx.openCursor(null,'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c||results.length>=limit)return resolve(results);const ev=c.value;let m=true;if(filter.read!==undefined&&ev.state.read!==filter.read)m=false;if(filter.starred!==undefined&&ev.state.starred!==filter.starred)m=false;if(filter.archived!==undefined&&ev.state.archived!==filter.archived)m=false;if(m)results.push(ev);c.continue();};req.onerror=()=>reject(req.error);});
+    },
+    async allEvents(){return r2p(tx(['events']).objectStore('events').getAll());},
+    async recentEvents(windowMs){
+      const since=Date.now()-windowMs;const idx=tx(['events']).objectStore('events').index('timestamp');const results=[];
+      return new Promise((resolve,reject)=>{const req=idx.openCursor(IDBKeyRange.lowerBound(since),'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c)return resolve(results);results.push(c.value);c.continue();};req.onerror=()=>reject(req.error);});
+    },
+    async countAll(){return r2p(tx(['events']).objectStore('events').count());},
+    async countUnread(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>!e.state.read&&!e.state.archived).length;},
+    async countStarred(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>e.state.starred).length;},
+    async countArchived(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>e.state.archived).length;},
+    async putSource(src){return r2p(tx(['sources'],'readwrite').objectStore('sources').put(src));},
+    async getSource(id){return r2p(tx(['sources']).objectStore('sources').get(id));},
+    async listSources(){return r2p(tx(['sources']).objectStore('sources').getAll());},
+    async findSourceByUrl(url){return(await this.listSources()).find(s=>s.url===url);},
+    async deleteSource(id){return r2p(tx(['sources'],'readwrite').objectStore('sources').delete(id));},
+    async getSetting(key){const r=await r2p(tx(['settings']).objectStore('settings').get(key));return r?.value;},
+    async putSetting(key,value){return r2p(tx(['settings'],'readwrite').objectStore('settings').put({key,value}));},
+    async deleteSetting(key){return r2p(tx(['settings'],'readwrite').objectStore('settings').delete(key));},
+  };
+})();
+
+// ===== CRYPTO (WebCrypto AES-GCM) ========================================
+const Crypto=(()=>{
+  async function getOrCreateSalt(){
+    let b64=await Store.getSetting(CONFIG.saltKey);
+    if(!b64){const s=crypto.getRandomValues(new Uint8Array(16));b64=btoa(String.fromCharCode(...s));await Store.putSetting(CONFIG.saltKey,b64);}
+    return Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+  }
+  async function deriveKey(passphrase,salt){
+    const km=await crypto.subtle.importKey('raw',new TextEncoder().encode(passphrase),'PBKDF2',false,['deriveKey']);
+    return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:CONFIG.pbkdf2Iterations,hash:'SHA-256'},km,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  }
+  async function encrypt(text,passphrase){
+    const salt=await getOrCreateSalt();const key=await deriveKey(passphrase,salt);
+    const iv=crypto.getRandomValues(new Uint8Array(CONFIG.ivLen));
+    const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(text));
+    const combined=new Uint8Array(CONFIG.ivLen+ct.byteLength);combined.set(iv);combined.set(new Uint8Array(ct),CONFIG.ivLen);
+    return btoa(String.fromCharCode(...combined));
+  }
+  async function decrypt(b64,passphrase){
+    const combined=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+    const salt=await getOrCreateSalt();const key=await deriveKey(passphrase,salt);
+    const iv=combined.slice(0,CONFIG.ivLen);const ct=combined.slice(CONFIG.ivLen);
+    const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
+    return new TextDecoder().decode(pt);
+  }
+  return{encrypt,decrypt};
+})();
+
+// ===== SESSION (passphrase in-memory only) ==============================
+let sessionPassphrase=null; // クリアはページリロードのみ、意図的
+
+function setSessionPassphrase(p){sessionPassphrase=p;$('#lock-dot').classList.toggle('show',!!p);}
+
+async function getApiKey(){
+  const s=await Store.getSetting('byok');
+  if(!s?.apiKey)return null;
+  if(s.encrypted&&sessionPassphrase){
+    try{return await Crypto.decrypt(s.apiKey,sessionPassphrase);}catch{return null;}
+  }
+  return s.encrypted?null:s.apiKey;
+}
+
+// ===== VAULT WRITER =====================================================
+const VaultWriter=(()=>{
+  async function ensureWriteAccess(){
+    const h=await Store.getSetting('vault-handle');
+    if(h){
+      try{const perm=await h.queryPermission({mode:'readwrite'});if(perm==='granted')return h;const req2=await h.requestPermission({mode:'readwrite'});if(req2==='granted')return h;}catch{}
+    }
+    if(!('showDirectoryPicker'in window)){toast('File System Access API not supported','err');return null;}
+    try{
+      const nh=await window.showDirectoryPicker({mode:'readwrite',id:'neus-vault'});
+      await Store.putSetting('vault-handle',nh);
+      return nh;
+    }catch(err){if(err.name!=='AbortError')console.error(err);return null;}
+  }
+
+  async function getOrCreateFileHandle(root,pathParts,fileName){
+    let dir=root;
+    for(const part of pathParts)dir=await dir.getDirectoryHandle(part,{create:true});
+    return dir.getFileHandle(fileName,{create:true});
+  }
+
+  async function writeNote(root,ev,md){
+    const fh=await getOrCreateFileHandle(root,['neus'],`${ev.id}.md`);
+    const w=await fh.createWritable();await w.write(md);await w.close();
+  }
+
+  async function appendDaily(root,lines){
+    const date=new Date().toISOString().slice(0,10);
+    let existing='';
+    try{const fh=await root.getFileHandle(`${date}.md`);existing=await(await fh.getFile()).text();}catch{}
+    const header=existing?'':(`# ${date}\n\n## Neus\n\n`);
+    const content=existing+header+lines.join('\n')+'\n';
+    const fh=await root.getFileHandle(`${date}.md`,{create:true});
+    const w=await fh.createWritable();await w.write(content);await w.close();
+  }
+
+  async function exportEvent(ev){
+    const root=await ensureWriteAccess();if(!root)return false;
+    const md=MarkdownExporter.toMarkdown(ev);
+    await writeNote(root,ev,md);
+    const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
+    await appendDaily(root,[`- [${ev.content.title}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`]);
+    ev.state.exported=true;ev.state.exportedAt=Date.now();
+    await Store.putEvent(ev);FTSIndex.add(ev);
+    return true;
+  }
+
+  async function exportBatch(events){
+    const root=await ensureWriteAccess();if(!root)return 0;
+    const dailyLines=[];let count=0;
+    for(const ev of events){
+      const md=MarkdownExporter.toMarkdown(ev);
+      await writeNote(root,ev,md);
+      const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
+      dailyLines.push(`- [${ev.content.title}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`);
+      ev.state.exported=true;ev.state.exportedAt=Date.now();
+      await Store.putEvent(ev);FTSIndex.add(ev);count++;
+    }
+    if(dailyLines.length)await appendDaily(root,dailyLines);
+    return count;
+  }
+
+  return{exportEvent,exportBatch};
+})();
+
+// ===== FTS INDEX ========================================================
+const FTSIndex=(()=>{
+  const index=new Map();const eventGrams=new Map();
+  function ngrams(text,n=CONFIG.ftsGram){
+    const t=(text||'').toLowerCase().replace(/\s+/g,' ').trim();const grams=new Set();
+    if(t.length<n){if(t)grams.add(t);return grams;}
+    for(let i=0;i<=t.length-n;i++)grams.add(t.slice(i,i+n));return grams;
+  }
+  function eventText(ev){return[ev.content.title,ev.content.snippet,ev.content.summary,ev.user?.note,ev.user?.quote,...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])].filter(Boolean).join(' ');}
+  function add(ev){remove(ev.id);const grams=ngrams(eventText(ev));eventGrams.set(ev.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add(ev.id);}}
+  function remove(eid){const grams=eventGrams.get(eid);if(!grams)return;for(const g of grams){const s=index.get(g);if(s){s.delete(eid);if(s.size===0)index.delete(g);}}eventGrams.delete(eid);}
+  async function rebuild(){
+    index.clear();eventGrams.clear();
+    const all=await Store.allEvents();
+    // Yield to main thread every 100 events to keep INP < 200ms for large datasets
+    for(let i=0;i<all.length;i++){
+      add(all[i]);
+      if(i>0&&i%100===0)await (('scheduler' in window&&window.scheduler.yield)?window.scheduler.yield():new Promise(r=>setTimeout(r,0)));
+    }
+  }
+  function search(query,limit=100){
+    const qGrams=ngrams(query);if(qGrams.size===0)return[];
+    const N=eventGrams.size||1;
+    // BM25のIDF概念: ありふれたgram(高DF)を下げ、稀少gram(低DF)を強調する。
+    // 単純なヒット数だと "の"/"ing" のような頻出gramと "rust" が同価値になる問題を解消。
+    // (BM25のTF項はNeusがgram有無のSetベースのため、文書間のIDF重み付けで近似)
+    const counts=new Map();   // id -> 累積IDFスコア
+    const maxScore=new Map(); // id -> 取りうる最大スコア(正規化用)
+    let qTotalIdf=0;
+    for(const g of qGrams){
+      const s=index.get(g);if(!s)continue;
+      const df=s.size;
+      // IDF = log(1 + (N - df + 0.5)/(df + 0.5)) — BM25のIDF式(常に正)
+      const idf=Math.log(1+(N-df+0.5)/(df+0.5));
+      qTotalIdf+=idf;
+      for(const id of s)counts.set(id,(counts.get(id)||0)+idf);
+    }
+    if(qTotalIdf===0)return[];
+    return[...counts.entries()]
+      .map(([id,acc])=>({id,score:acc/qTotalIdf})) // 0〜1に正規化(全qGram一致で1)
+      .filter(r=>r.score>=CONFIG.ftsScoreMin)
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,limit);
+  }
+  return{add,remove,search,rebuild,stats:()=>({grams:index.size,events:eventGrams.size})};
+})();
+
+// ===== VAULT MATCHER ====================================================
+const VaultMatcher=(()=>{
+  let vaultHandle=null;let fileMap=new Map();
+  async function selectVault(){
+    if(!('showDirectoryPicker'in window)){toast('File System Access API not supported','err');return null;}
+    let h;try{h=await window.showDirectoryPicker({mode:'read',id:'neus-vault'});}catch(err){if(err.name!=='AbortError')console.error(err);return null;}
+    vaultHandle=h;try{await Store.putSetting('vault-handle',h);}catch(e){console.warn(e);}
+    await scan();return h.name;
+  }
+  async function tryRestoreVault(){
+    let h;try{h=await Store.getSetting('vault-handle');}catch{return false;}
+    if(!h)return false;
+    try{const perm=await h.queryPermission?.({mode:'read'});if(perm!=='granted')return false;vaultHandle=h;await scan();return true;}catch(err){console.warn(err);return false;}
+  }
+  async function scan(dir=vaultHandle,prefix='',firstCall=true){
+    if(!dir)return;if(firstCall)fileMap.clear();
+    for await(const entry of dir.values()){
+      const path=prefix?`${prefix}/${entry.name}`:entry.name;
+      if(entry.kind==='file'&&entry.name.endsWith('.md')){const base=entry.name.replace(/\.md$/,'');fileMap.set(base.toLowerCase(),{path,name:base,tokens:new Set(tokenize(base))});}
+      else if(entry.kind==='directory'&&!entry.name.startsWith('.'))await scan(entry,path,false);
+    }
+  }
+  function matchEvent(ev){
+    if(fileMap.size===0)return[];
+    const evT=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet||''),...(ev.meta.userTags||[]).map(t=>t.toLowerCase())]);
+    if(evT.size===0)return[];
+    const matches=[];
+    for(const[,info]of fileMap){if(info.tokens.size===0)continue;let hit=0;for(const t of info.tokens)if(evT.has(t))hit++;if(hit>=CONFIG.vaultMatchMinTokens)matches.push({name:info.name,path:info.path,score:hit/info.tokens.size});}
+    matches.sort((a,b)=>b.score-a.score);return matches.slice(0,CONFIG.vaultMatchMax);
+  }
+  async function clear(){vaultHandle=null;fileMap.clear();await Store.deleteSetting('vault-handle');}
+  return{selectVault,tryRestoreVault,scan,matchEvent,clear,isReady:()=>fileMap.size>0,stats:()=>({files:fileMap.size,name:vaultHandle?.name})};
+})();
+
+// ===== OPML =============================================================
+const OPML={
+  parse(xml){const doc=new DOMParser().parseFromString(xml,'text/xml');if(doc.querySelector('parsererror'))throw new Error('opml parse error');return[...doc.querySelectorAll('outline[xmlUrl]')].map(o=>{const url=o.getAttribute('xmlUrl');let name=o.getAttribute('title')||o.getAttribute('text');if(!name){try{name=new URL(url).hostname;}catch{name=url;}}return url?{url,name}:null;}).filter(Boolean);},
+  build(sources){const items=sources.map(s=>`    <outline type="rss" text="${escapeAttr(s.name)}" title="${escapeAttr(s.name)}" xmlUrl="${escapeAttr(s.url)}"/>`).join('\n');return`<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>Neus Sources</title>\n    <dateCreated>${new Date().toUTCString()}</dateCreated>\n  </head>\n  <body>\n${items}\n  </body>\n</opml>`;}
+};
+
+// ===== NETWORK MONITOR ==================================================
+const NetworkMonitor=(()=>{
+  let online=navigator.onLine;
+  function applyOfflineUI(){
+    const poll=$('#btn-poll');
+    poll.disabled=!online;poll.style.opacity=online?'':'0.4';
+    if(!online)toast(currentLang==='ja'?'オフライン — キャッシュ表示中':'offline — showing cached','err');
+  }
+  window.addEventListener('offline',()=>{online=false;applyOfflineUI();});
+  window.addEventListener('online',()=>{
+    online=true;applyOfflineUI();
+    RSSPoller.fetchAll().then(()=>refreshCounts()).then(()=>renderView());
+  });
+  return{isOnline:()=>online};
+})();
+
+// ===== SOURCE FAIL TRACKER ==============================================
+const SourceFailTracker=(()=>{
+  const fails=new Map();
+  Bus.subscribe('inbound.error',async({source})=>{
+    const n=(fails.get(source.id)||0)+1;fails.set(source.id,n);
+    if(n>=CONFIG.sourceMaxFails){
+      const s=await Store.findSourceByUrl(source.url);
+      if(s&&s.enabled!==false){s.enabled=false;await Store.putSource(s);}
+      toast(`${source.name}: auto-disabled (${CONFIG.sourceMaxFails} failures)`,'err');
+      fails.delete(source.id);
+    }
+  });
+  Bus.subscribe('inbound.fetched',({source})=>{fails.delete(source.id);});
+  return{};
+})();
+
+// ===== STORAGE GUARD ====================================================
+const StorageGuard=(()=>{
+  // 永続ストレージ要求: オフラインファーストの要。
+  // 許可されたオリジンはディスクの最大50%まで使え、ストレージ逼迫時の
+  // 自動退避(eviction)対象から外れる。ユーザーデータの予期せぬ消失を防ぐ。
+  async function requestPersist(){
+    if(!navigator.storage?.persist)return null;
+    try{
+      if(await navigator.storage.persisted())return true; // 既に許可済み
+      const granted=await navigator.storage.persist();
+      console.info('[Neus] persistent storage:',granted?'granted':'denied');
+      return granted;
+    }catch{return null;}
+  }
+  async function check(){
+    if(!navigator.storage?.estimate)return;
+    const{usage,quota}=await navigator.storage.estimate();
+    const ratio=usage/quota;
+    if(ratio<CONFIG.storageQuotaThreshold)return;
+    const all=await Store.allEvents();
+    const candidates=all.filter(ev=>ev.state.archived&&ev.state.exportedAt).sort((a,b)=>(a.state.archivedAt||0)-(b.state.archivedAt||0));
+    const toDelete=candidates.slice(0,Math.max(1,Math.ceil(candidates.length*0.1)));
+    for(const ev of toDelete){FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);}
+    if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err');
+  }
+  Bus.subscribe('event.stored',()=>check());
+  return{check,requestPersist};
+})();
+
+// ===== UX HELPERS (confirm async + undo) ================================
+// 統一の confirm UI(将来モーダル化可能、現在は window.confirm を wrap)
+async function confirmAsync(message,opts={}){
+  // Custom modal-based confirm — replaces window.confirm() for consistent UX
+  return new Promise((resolve)=>{
+    const modal=$('#modal-confirm');
+    $('#confirm-msg').textContent=message;
+    $('#confirm-ok').textContent=opts.okLabel||(currentLang==='ja'?'OK':'OK');
+    $('#confirm-cancel').textContent=opts.cancelLabel||(currentLang==='ja'?'キャンセル':'CANCEL');
+    if(opts.danger)$('#confirm-ok').style.background='var(--err)';else $('#confirm-ok').style.background='';
+    const close=(result)=>{modal.classList.remove('show');$('#confirm-ok').removeEventListener('click',onOk);$('#confirm-cancel').removeEventListener('click',onCancel);modal.removeEventListener('click',onBg);document.removeEventListener('keydown',onKey);resolve(result);};
+    const onOk=()=>close(true);
+    const onCancel=()=>close(false);
+    const onBg=(e)=>{if(e.target===modal)close(false);};
+    const onKey=(e)=>{if(e.key==='Escape')close(false);if(e.key==='Enter'&&document.activeElement!==$('#confirm-cancel'))close(true);};
+    $('#confirm-ok').addEventListener('click',onOk);
+    $('#confirm-cancel').addEventListener('click',onCancel);
+    modal.addEventListener('click',onBg);
+    document.addEventListener('keydown',onKey);
+    modal.classList.add('show');
+  });
+}
+
+// Undo Stack — 直近の破壊的操作を1件記録
+const UndoStack=(()=>{
+  let pending=null;let timer=null;
+  const TIMEOUT_MS=8000;
+  function offer(label,undoFn){
+    if(timer){clearTimeout(timer);if(pending)pending=null;}
+    pending={label,undoFn};
+    // Toast の代わりに永続化トースト風UI
+    const id='undo-toast';
+    let el=document.getElementById(id);
+    if(!el){
+      el=document.createElement('div');el.id=id;
+      el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg-3);border:1px solid var(--accent-line);border-radius:4px;padding:10px 14px;font-family:var(--font-mono);font-size:12px;color:var(--fg);z-index:201;display:flex;align-items:center;gap:12px;';
+      document.body.appendChild(el);
+    }
+    el.innerHTML=`<span>${escapeHtml(label)}</span><button id="undo-btn" style="padding:4px 10px;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:3px;font-family:var(--font-mono);font-size:11px;cursor:pointer;">UNDO</button>`;
+    el.style.display='flex';
+    document.getElementById('undo-btn').onclick=async()=>{
+      if(pending){try{await pending.undoFn();}catch(err){ErrorBoundary.record(err,'undo');}pending=null;}
+      el.style.display='none';clearTimeout(timer);
+    };
+    timer=setTimeout(()=>{el.style.display='none';pending=null;},TIMEOUT_MS);
+  }
+  return{offer};
+})();
+
+// ===== PLUGIN API (v0.2.0 — read-only stub) =============================
+// Stable public API for future Web Worker-isolated plugins (ADR-0005).
+// Currently exposes a frozen, read-only window.neus object.
+// v1.1 will add postMessage-based bidirectional channel.
+window.neus=Object.freeze({
+  version:'0.2.0',
+  schema:1,
+  // Read-only event access (returns clones to prevent mutation)
+  async getEvent(id){const ev=await Store.getEvent(id);return ev?structuredClone(ev):null;},
+  async listEvents(opts={}){const evs=await Store.listEvents(opts);return evs.map(e=>structuredClone(e));},
+  async countAll(){return Store.countAll();},
+  async listSources(){const ss=await Store.listSources();return ss.map(s=>structuredClone(s));},
+  // Subscribe to topics (returns unsubscribe fn)
+  subscribe(topic,handler){return Bus.subscribe(topic,(data)=>{try{handler(structuredClone(data));}catch(err){ErrorBoundary.record(err,'plugin');}});},
+  // i18n
+  t(key){return t(key);},
+  // FTS search (returns clones)
+  search(query,k=20){return FTSIndex.search(query,k);},
+  // KeywordRules read-only
+  getKeywordRules(){return KeywordRules.getRules();},
+});
+console.info('[Neus] Plugin API ready: window.neus (schema 1, v0.2.0)');
+
+// ===== ERROR BOUNDARY ===================================================
+// Catch unhandled errors and surface them to the user. Avoid silent failures.
+const ErrorBoundary=(()=>{
+  let errorCount=0;const MAX_BURST=5;let burstStart=0;
+  function record(err,source){
+    errorCount++;
+    const now=Date.now();
+    if(now-burstStart>60000){burstStart=now;errorCount=1;}
+    console.error(`[${source}]`,err);
+    // バーストエラー検知(60秒で5件超)
+    if(errorCount>=MAX_BURST){
+      try{toast(currentLang==='ja'?'エラーが多発しています。再読み込みを推奨':'Multiple errors detected. Reload recommended','err');}catch{}
+      errorCount=0;
+    }else{
+      try{toast(`[${source}] ${err?.message||err}`,'err');}catch{}
+    }
+  }
+  // 未捕捉エラー
+  window.addEventListener('error',(e)=>record(e.error||e.message,'window.error'));
+  window.addEventListener('unhandledrejection',(e)=>record(e.reason,'unhandled-promise'));
+  return{record};
+})();
+
+// ===== KEYWORD RULES (Watch / Block) ====================================
+// Generic rule engine: mode + scope + case + action 組合せで汎用化
+const KeywordRules=(()=>{
+  let rules={watch:[],block:[]};
+  async function load(){rules=(await Store.getSetting('keyword-rules'))||{watch:[],block:[]};}
+  async function save(){await Store.putSetting('keyword-rules',rules);}
+  function getEventText(ev,scope){
+    const parts=[];
+    if(scope==='title'||scope==='all')parts.push(ev.content.title||'');
+    if(scope==='snippet'||scope==='all')parts.push(ev.content.snippet||'');
+    if(scope==='summary'||scope==='all')parts.push(ev.content.summary||'');
+    if(scope==='tags'||scope==='all')parts.push((ev.meta.userTags||[]).join(' '),(ev.meta.autoTags||[]).join(' '));
+    if(scope==='source'||scope==='all')parts.push(ev.source.name||'');
+    return parts.join(' ');
+  }
+  function matchRule(text,rule){
+    if(!text||!rule.pattern)return false;
+    if(rule.mode==='regex'){try{return new RegExp(rule.pattern,rule.case?'':'i').test(text);}catch{return false;}}
+    let t=text,p=rule.pattern;if(!rule.case){t=t.toLowerCase();p=p.toLowerCase();}
+    switch(rule.mode){
+      case 'contains':return t.includes(p);
+      case 'exact':return t.trim()===p;
+      case 'prefix':return t.startsWith(p);
+      case 'suffix':return t.endsWith(p);
+      case 'word':{const re=new RegExp(`\\b${p.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\\\$&')}\\b`,rule.case?'':'i');return re.test(text);}
+      default:return false;
+    }
+  }
+  function evaluate(ev){
+    const matched={watch:[],block:[]};
+    for(const r of rules.watch)if(matchRule(getEventText(ev,r.scope||'all'),r))matched.watch.push(r);
+    for(const r of rules.block)if(matchRule(getEventText(ev,r.scope||'all'),r))matched.block.push(r);
+    return matched;
+  }
+  // ev に評価結果を適用。skip=true なら Event を保存しない(delete action)
+  function apply(ev,matched){
+    let skip=false;
+    for(const r of matched.block){
+      if(r.action==='delete'){skip=true;break;}
+      if(r.action==='archive'){ev.state.archived=true;ev.state.archivedAt=Date.now();}
+    }
+    if(skip)return true;
+    for(const r of matched.watch){
+      if(r.action==='star')ev.state.starred=true;
+      if(r.action==='highlight')ev.meta.score=Math.min(100,(ev.meta.score||50)+30);
+      if(r.action==='tag'){const tag=`watch:${r.pattern}`;if(!(ev.meta.autoTags||[]).includes(tag))ev.meta.autoTags=[...(ev.meta.autoTags||[]),tag];}
+    }
+    if(matched.watch.length>0||matched.block.length>0){
+      ev.meta.keywordMatched={watch:matched.watch.map(r=>r.pattern),block:matched.block.map(r=>r.pattern)};
+    }
+    return false;
+  }
+  // 既存全イベントへの再適用(ルール変更時)
+  async function reapplyAll(){
+    const all=await Store.allEvents();let changed=0;
+    for(let i=0;i<all.length;i++){
+      const ev=all[i];
+      const m=evaluate(ev);
+      if(m.watch.length===0&&m.block.length===0&&!ev.meta.keywordMatched)continue;
+      // 既存のkeywordMatchedをリセット
+      delete ev.meta.keywordMatched;
+      apply(ev,m);
+      await Store.putEvent(ev);FTSIndex.add(ev);changed++;
+      // INP optimization: yield every 50 events
+      if(changed>0&&changed%50===0)await (('scheduler' in window&&window.scheduler.yield)?window.scheduler.yield():new Promise(r=>setTimeout(r,0)));
+    }
+    return changed;
+  }
+  return{
+    load,save,evaluate,apply,reapplyAll,
+    getRules:()=>structuredClone(rules),
+    addRule(type,rule){if(!['watch','block'].includes(type))return;rules[type].push(rule);return save();},
+    removeRule(type,idx){if(!rules[type]?.[idx])return;rules[type].splice(idx,1);return save();},
+    replaceRules(newRules){rules={watch:newRules.watch||[],block:newRules.block||[]};return save();},
+    // シンプル入力: 1行1キーワード(contains, all scope, case insensitive)
+    parseSimple(text,defaults){return text.split('\n').map(l=>l.trim()).filter(Boolean).map(p=>({pattern:p,mode:'contains',scope:'all',case:false,...defaults}));},
+    toSimple(typeRules){return typeRules.filter(r=>r.mode==='contains'&&r.scope==='all'&&!r.case).map(r=>r.pattern).join('\n');},
+  };
+})();
+
+// ===== AUTO SYNC (Periodic Background Sync) =============================
+// Chromium-only (registered when supported). iOS Safari / Firefox fallback to manual POLL.
+const AutoSync=(()=>{
+  async function getSettings(){return(await Store.getSetting('auto-sync'))||{enabled:false,interval:'6h',notify:false};}
+  async function setSettings(s){await Store.putSetting('auto-sync',s);}
+  async function isSupported(){
+    if(!('serviceWorker'in navigator))return false;
+    // navigator.serviceWorker.ready never resolves if no SW is registered (e.g. file://).
+    // Guard with a timeout so callers (settings modal) never hang.
+    const reg=await Promise.race([
+      navigator.serviceWorker.ready.catch(()=>null),
+      new Promise(r=>setTimeout(()=>r(null),1500)),
+    ]);
+    return!!(reg&&'periodicSync'in reg);
+  }
+  async function isRegistered(){
+    if(!await isSupported())return false;
+    const reg=await navigator.serviceWorker.ready;
+    const tags=await reg.periodicSync.getTags();
+    return tags.includes('neus-poll');
+  }
+  async function register(intervalSec){
+    if(!await isSupported())return{ok:false,reason:'unsupported'};
+    // permission チェック
+    const perm=await navigator.permissions.query({name:'periodic-background-sync'}).catch(()=>({state:'denied'}));
+    if(perm.state!=='granted')return{ok:false,reason:'permission-denied'};
+    const reg=await navigator.serviceWorker.ready;
+    try{
+      await reg.periodicSync.register('neus-poll',{minInterval:intervalSec*1000});
+      return{ok:true};
+    }catch(err){return{ok:false,reason:err.message};}
+  }
+  async function unregister(){
+    if(!await isSupported())return;
+    const reg=await navigator.serviceWorker.ready;
+    try{await reg.periodicSync.unregister('neus-poll');}catch{}
+  }
+  async function requestNotificationPerm(){
+    if(!('Notification'in window))return false;
+    if(Notification.permission==='granted')return true;
+    if(Notification.permission==='denied')return false;
+    return(await Notification.requestPermission())==='granted';
+  }
+  return{getSettings,setSettings,isSupported,isRegistered,register,unregister,requestNotificationPerm};
+})();
+
+// Service Worker からのメッセージ受信(periodicsync完了通知)
+if('serviceWorker'in navigator){
+  navigator.serviceWorker.addEventListener('message',async(e)=>{
+    if(e.data?.type==='periodic-poll-done'){
+      // SWは取得をトリガしただけなので、メインスレッドでPOLL実行
+      const before=await Store.countAll();
+      await RSSPoller.fetchAll();
+      const after=await Store.countAll();
+      const fetched=after-before;
+      const s=await AutoSync.getSettings();
+      if(s.notify&&fetched>0&&Notification.permission==='granted'){
+        new Notification(currentLang==='ja'?'Neus 新着':'Neus new items',{
+          body:currentLang==='ja'?`${fetched}件の新着があります`:`${fetched} new event(s)`,
+          icon:'/icon-192.png',tag:'neus-new',
+        });
+      }
+      await refreshCounts();await renderView();
+    }
+  });
+}
+
+// ===== SHARE TARGET =====================================================
+const ShareTarget={
+  async handle(){
+    const params=new URLSearchParams(location.search);
+    const url=params.get('share_url');const rawTitle=params.get('share_title')||params.get('share_text')||'';
+    if(!url)return;
+    history.replaceState({},'','/');
+    await this.ingest(url,rawTitle);
+  },
+  async ingest(url,title){
+    let nu;try{nu=normalizeUrl(url);}catch{nu=url;}
+    const displayTitle=title||nu;
+    const hash=await sha256(nu+'|'+displayTitle);
+    const existing=await Store.findByHash(hash);
+    if(existing){toast(currentLang==='ja'?'既に保存済み':'already saved');return;}
+    const ev={id:uuid(),timestamp:Date.now(),publishedAt:undefined,source:{id:'share',type:'share',name:currentLang==='ja'?'共有':'Shared',url:undefined},content:{title:displayTitle,snippet:'',summary:undefined,body:undefined},meta:{autoTags:[],userTags:[],score:70,lang:undefined,author:undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:nu,hash};
+    await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
+    toast(t('share.added'),'ok');
+  },
+};
+
+// ===== BOOKMARKLET ======================================================
+const Bookmarklet={
+  generate(){const origin=location.origin;const code=`(function(){var u=encodeURIComponent(location.href),ti=encodeURIComponent(document.title);window.open('${origin}?share_url='+u+'&share_title='+ti,'_blank')})()`;return`javascript:${code}`;},
+  showUI(){
+    const area=$('#bookmarklet-area');
+    if(area.style.display!=='none'){area.style.display='none';return;}
+    area.style.display='block';
+    const burl=this.generate();
+    const label=currentLang==='ja'?'<p>このリンクをブックマークバーにドラッグしてください。</p>':'<p>Drag this link to your bookmarks bar.</p>';
+    area.innerHTML=`<div class="bookmarklet-box">${label}<a class="bookmarklet-link" href="${escapeAttr(burl)}">Neus — Save to Hub</a><div style="margin-top:8px;"><button id="bm-copy" type="button" style="font-family:var(--font-mono);font-size:11px;color:var(--accent);border:1px solid var(--accent-line);border-radius:4px;padding:4px 10px;">${currentLang==='ja'?'URLをコピー':'Copy URL'}</button></div></div>`;
+    $('#bm-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(burl);toast('copied','ok');}catch{toast('clipboard denied','err');}});
+  },
+};
+
+// ===== RSS POLLER =======================================================
+const RSSPoller=(()=>{
+  // HTMLエンティティをデコード(タイトル等の &amp; &#39; 等)
+  function decodeEntities(s){
+    if(!s||s.indexOf('&')<0)return s;
+    const ta=document.createElement('textarea');ta.innerHTML=s;return ta.value;
+  }
+  function parseFeed(xml,source){
+    const doc=new DOMParser().parseFromString(xml,'text/xml');
+    // bozoパターン(feedparser): XMLエラーでも可能な限りデータを救出する。
+    const hadError=!!doc.querySelector('parsererror');
+    let nodes=[...doc.querySelectorAll('item, entry')];
+    if(nodes.length===0){
+      if(hadError)throw new Error('XML parse error');
+      return[];
+    }
+    const items=[];
+    for(const item of nodes){
+      try{
+        const get=(sel)=>{try{return item.querySelector(sel)?.textContent?.trim()||'';}catch{return'';}};
+        const link=item.querySelector('link[href]')?.getAttribute('href')||get('link')||'';
+        const title=decodeEntities(get('title'))||'(untitled)';
+        const summaryRaw=get('description')||get('summary')||get('content');
+        const summary=decodeEntities(summaryRaw).replace(/<[^>]+>/g,'').trim().slice(0,500);
+        const pubDate=get('pubDate')||get('published')||get('updated')||get('dc\\:date');
+        let media;
+        const enc=item.querySelector('enclosure[url]');
+        const mc=item.querySelector('content[url], thumbnail[url]');
+        if(enc)media={url:enc.getAttribute('url'),type:enc.getAttribute('type')||''};
+        else if(mc)media={url:mc.getAttribute('url'),type:mc.getAttribute('type')||''};
+        items.push({raw:{
+          title,link:normalizeUrl(link),summary,
+          publishedAt:pubDate?Date.parse(pubDate)||undefined:undefined,
+          author:decodeEntities(get('author > name')||get('author')||get('dc\\:creator')||''),
+          media,
+        },source});
+      }catch{/* skip malformed item, keep the rest */}
+    }
+    return items;
+  }
+  async function fetchOne(source){
+    if(source.enabled===false)return 0;
+    const proxyUrl=`${CONFIG.proxy}/rss?url=${encodeURIComponent(source.url)}`;
+    // Conditional GET: 前回の検証子を送り、変更が無ければ304で帯域を節約する
+    const condHeaders={};
+    if(source.etag)condHeaders['If-None-Match']=source.etag;
+    if(source.lastModified)condHeaders['If-Modified-Since']=source.lastModified;
+    const opts={headers:condHeaders};
+    // 一時的ネットワーク障害には指数バックオフで最大3回リトライ
+    let res,lastErr;
+    for(let attempt=0;attempt<3;attempt++){
+      if(attempt>0)await new Promise(r=>setTimeout(r,Math.min(2000,250*Math.pow(2,attempt))));
+      try{res=await fetch(proxyUrl,opts);lastErr=null;break;}
+      catch(e){lastErr=e;}
+    }
+    if(lastErr){Bus.publish('inbound.error',{source,error:'network'});return 0;}
+    // 304 Not Modified: 変更なし。取得スキップ(最大の節約)
+    if(res.status===304){return 0;}
+    // 5xx はサーバー一時障害の可能性 → リトライ済みでなければ1回だけ追加リトライ
+    if(res.status>=500&&res.status<600){
+      await new Promise(r=>setTimeout(r,500));
+      try{res=await fetch(proxyUrl,opts);}catch{Bus.publish('inbound.error',{source,error:'network'});return 0;}
+      if(res.status===304)return 0;
+    }
+    if(!res.ok){Bus.publish('inbound.error',{source,error:`http_${res.status}`});return 0;}
+    // 検証子を保存(次回のConditional GET用)
+    const etag=res.headers.get('etag');const lastMod=res.headers.get('last-modified');
+    if(etag||lastMod){
+      const s=await Store.getSource(source.id)||source;
+      if(etag)s.etag=etag;if(lastMod)s.lastModified=lastMod;
+      await Store.putSource(s);
+    }
+    const text=await res.text();let items;
+    try{items=parseFeed(text,source);}catch{Bus.publish('inbound.error',{source,error:'parse'});return 0;}
+    for(const raw of items)Bus.publish('inbound.fetched',raw);
+    return items.length;
+  }
+  async function fetchAll(){
+    if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return;}
+    const sources=await Store.listSources();
+    if(sources.length===0){toast(currentLang==='ja'?'ソースが未設定':'no sources configured','err');return;}
+    toast(currentLang==='ja'?`${sources.length}件取得中...`:`polling ${sources.length} source(s)...`);
+    let total=0;for(const s of sources)total+=await fetchOne(s);
+    toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
+  }
+  return{fetchOne,fetchAll,parseFeed};
+})();
+
+// ===== PROCESSORS =======================================================
+Bus.subscribe('inbound.fetched',async({raw,source})=>{
+  const hash=await sha256(raw.link+'|'+raw.title);
+  const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags:[],userTags:[],score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:raw.link,hash};
+  Bus.publish('event.normalized',ev);
+});
+
+Bus.subscribe('event.normalized',async(ev)=>{
+  const existing=await Store.findByHash(ev.hash);
+  if(existing){Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;}
+  const recent=await Store.recentEvents(CONFIG.dedupWindowMs);
+  const newTok=new Set(tokenize(ev.content.title));
+  if(newTok.size>0){
+    for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!r.links.includes(ev.url)){r.links=[...r.links,ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
+  }
+  // キーワードルール適用
+  const matched=KeywordRules.evaluate(ev);
+  const skip=KeywordRules.apply(ev,matched);
+  if(skip){Bus.publish('event.blocked',{ev,reason:'keyword-rule',patterns:matched.block.map(r=>r.pattern)});return;}
+  await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
+});
+
+Bus.subscribe('inbound.error',({source,error})=>{console.warn(`[RSS] ${source.name}: ${error}`);});
+
+// ===== TAG LEARNER ======================================================
+const TagLearner=(()=>{
+  let model=null;let dirty=true;
+  // エンティティ抽出: IP2 Entity-Guided Interest Probing (RecSys'25) の知見。
+  // ニュースは固有名詞(人名/組織/製品)が興味の核。学習タグが無い初期段階の補完として、
+  // タイトルから大文字始まり連続語(英語)とカタカナ語(日本語)を抽出。ゼロ依存・軽量。
+  const STOP=new Set(['The','A','An','This','That','These','Those','I','We','You','It','He','She','They','But','And','Or','For','In','On','At','To','Of','With','How','Why','What','When','Where','Who','New','Why','Is','Are','Was','Were','Will','Can']);
+  function extractEntities(title){
+    if(!title)return[];
+    const out=new Set();
+    // 英語: 大文字始まりの語(連続する場合は結合, 例 "OpenAI GPT" → "OpenAI GPT")
+    const enMatches=title.match(/\b[A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+){0,2}\b/g)||[];
+    for(let m of enMatches){
+      m=m.trim();
+      let words=m.split(/\s+/);
+      // 先頭・末尾のストップワードを除去(例 "Why Rust"→"Rust", "The New Way"→"New Way")
+      while(words.length>1&&STOP.has(words[0]))words.shift();
+      while(words.length>1&&STOP.has(words[words.length-1]))words.pop();
+      if(words.length===0)continue;
+      if(words.every(w=>STOP.has(w)))continue;
+      if(words.length===1&&STOP.has(words[0]))continue;
+      const phrase=words.join(' ');
+      if(phrase.length>=2&&phrase.length<=40)out.add(phrase);
+    }
+    // 日本語: カタカナ語(3文字以上の固有名詞候補)
+    const kataMatches=title.match(/[ァ-ヴー]{3,}/g)||[];
+    for(const m of kataMatches)out.add(m);
+    return[...out].slice(0,3);
+  }
+  async function rebuild(){
+    const all=await Store.allEvents();const tagWords=new Map();const tagFreq=new Map();
+    for(const ev of all){const tokens=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet)]);for(const tag of(ev.meta.userTags||[])){tagFreq.set(tag,(tagFreq.get(tag)||0)+1);let wmap=tagWords.get(tag);if(!wmap)tagWords.set(tag,wmap=new Map());for(const t of tokens)wmap.set(t,(wmap.get(t)||0)+1);}}
+    model=new Map();for(const[tag,freq]of tagFreq){if(freq<CONFIG.tagLearnMinFreq)continue;const wmap=tagWords.get(tag);model.set(tag,new Set([...wmap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0])));}
+    dirty=false;
+  }
+  async function suggest(ev){
+    if(dirty||!model)await rebuild();
+    const tokens=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet)]);
+    const scores=[];
+    if(model.size>0){for(const[tag,keywords]of model){let hit=0;for(const k of keywords)if(tokens.has(k))hit++;if(hit>0)scores.push([tag,hit]);}}
+    scores.sort((a,b)=>b[1]-a[1]);
+    const learned=scores.slice(0,CONFIG.tagSuggestMax).map(s=>s[0]);
+    // 学習タグが不足する場合はエンティティ抽出で補完(コールドスタート対策)
+    if(learned.length<CONFIG.tagSuggestMax){
+      const ents=extractEntities(ev.content.title);
+      for(const e of ents){if(learned.length>=CONFIG.tagSuggestMax)break;if(!learned.includes(e))learned.push(e);}
+    }
+    return learned;
+  }
+  Bus.subscribe('event.user-annotated',()=>{dirty=true;});
+  return{suggest,rebuild,extractEntities,markDirty:()=>{dirty=true;}};
+})();
+
+// ===== INTEREST PROFILE (implicit interest learning from behavior) =======
+// 明示ルール(KeywordRules)を補完する暗黙の興味学習。
+// star した記事の特徴語 → 欲しい情報のシグナル(positive)
+// archive した記事の特徴語 → いらない情報のシグナル(negative)
+// Rocchio/ナイーブベイズ的な語の重み付けで、新着のスコアを±補正する。
+// 完全ローカル・ゼロ依存。サーバー送信なし(ADR-0011のプライバシー優位を維持)。
+const InterestProfile=(()=>{
+  // word -> {pos, neg} 累積カウント
+  let vocab=new Map();
+  let loaded=false;
+  function evWords(ev){
+    return new Set([
+      ...tokenize(ev.content.title),
+      ...tokenize(ev.content.snippet),
+      ...(ev.meta.userTags||[]),
+      ...(ev.meta.autoTags||[]),
+    ]);
+  }
+  async function load(){
+    const saved=await Store.getSetting('interest-profile');
+    vocab=new Map(saved?.vocab||[]);loaded=true;
+  }
+  async function save(){
+    // 語彙が上限を超えたら、スコア絶対値の低い語から削る(忘却)
+    if(vocab.size>CONFIG.interestMaxVocab){
+      const ranked=[...vocab.entries()].sort((a,b)=>
+        (Math.abs(b[1].pos-b[1].neg))-(Math.abs(a[1].pos-a[1].neg)));
+      vocab=new Map(ranked.slice(0,CONFIG.interestMaxVocab));
+    }
+    await Store.putSetting('interest-profile',{vocab:[...vocab.entries()],updatedAt:Date.now()});
+  }
+  // 行動を学習。kind: 'pos'(star) | 'neg'(archive)。undo時はsign=-1で打ち消し。
+  async function learn(ev,kind,sign=1){
+    if(!loaded)await load();
+    for(const w of evWords(ev)){
+      const e=vocab.get(w)||{pos:0,neg:0};
+      if(kind==='pos')e.pos=Math.max(0,e.pos+sign);
+      else e.neg=Math.max(0,e.neg+sign);
+      if(e.pos===0&&e.neg===0)vocab.delete(w);else vocab.set(w,e);
+    }
+    await save();
+  }
+  // 新着イベントの興味スコア補正値(-max〜+max)を返す。
+  function scoreBoost(ev){
+    if(!loaded||vocab.size===0)return 0;
+    let signal=0,matched=0;
+    for(const w of evWords(ev)){
+      const e=vocab.get(w);if(!e)continue;
+      const total=e.pos+e.neg;
+      if(total<CONFIG.interestMinDf)continue; // 学習サンプル不足の語は無視
+      // 語の極性 = (pos - neg)/(pos + neg) ∈ [-1,1]
+      signal+=(e.pos-e.neg)/total;matched++;
+    }
+    if(matched===0)return 0;
+    // 平均極性 × 上限。matched語数で平均し、語彙過多でも安定。
+    const avg=signal/matched;
+    return Math.round(avg*CONFIG.interestBoostMax);
+  }
+  function stats(){
+    let pos=0,neg=0;for(const[,e]of vocab){pos+=e.pos;neg+=e.neg;}
+    return{vocab:vocab.size,posSignals:pos,negSignals:neg};
+  }
+  function topWords(kind,n=10){
+    return[...vocab.entries()]
+      .map(([w,e])=>[w,(e.pos-e.neg)/(e.pos+e.neg||1),e.pos+e.neg])
+      .filter(x=>x[2]>=CONFIG.interestMinDf&&(kind==='pos'?x[1]>0:x[1]<0))
+      .sort((a,b)=>kind==='pos'?b[1]-a[1]:a[1]-b[1])
+      .slice(0,n).map(x=>x[0]);
+  }
+  async function reset(){vocab=new Map();await save();}
+  return{load,learn,scoreBoost,stats,topWords,reset,evWords};
+})();
+
+Bus.subscribe('event.stored',async(ev)=>{
+  let changed=false;
+  if(ev.meta.autoTags.length===0){const tags=await TagLearner.suggest(ev);if(tags.length>0){ev.meta.autoTags=tags;changed=true;}}
+  // 暗黙の興味学習によるスコア補正(star/archiveの行動履歴から)
+  const boost=InterestProfile.scoreBoost(ev);
+  if(boost!==0){ev.meta.score=Math.max(0,Math.min(100,(ev.meta.score||50)+boost));ev.meta.interestBoost=boost;changed=true;}
+  if(VaultMatcher.isReady()){const matches=VaultMatcher.matchEvent(ev);if(matches.length>0){ev.links=[...new Set([...ev.links,...matches.map(m=>`vault:${m.path}`)])];changed=true;}}
+  if(changed){await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.tagged',ev);}
+});
+
+// ===== SUMMARIZER =======================================================
+const Summarizer=(()=>{
+  let dailyCount=0;let dailyKey=new Date().toISOString().slice(0,10);
+  function resetIfNewDay(){const today=new Date().toISOString().slice(0,10);if(today!==dailyKey){dailyKey=today;dailyCount=0;}}
+  async function callAnthropic(prompt,s){const res=await fetch(CONFIG.byokDefaults.anthropic.endpoint,{method:'POST',headers:{'content-type':'application/json','x-api-key':s,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.anthropic.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`anthropic_${res.status}`);return((await res.json()).content?.[0]?.text||'');}
+  async function callOpenAI(prompt,s){const res=await fetch(CONFIG.byokDefaults.openai.endpoint,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.openai.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`openai_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
+  async function callGemini(prompt,s){const model=(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.gemini.model;const url=CONFIG.byokDefaults.gemini.endpoint.replace('{model}',model)+`?key=${encodeURIComponent(s)}`;const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:400}})});if(!res.ok)throw new Error(`gemini_${res.status}`);return((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'');}
+  async function summarize(ev){
+    resetIfNewDay();const s=await Store.getSetting('byok');
+    if(!s?.enabled)return null;
+    const apiKey=await getApiKey();if(!apiKey)return null;
+    if(s.budget&&dailyCount>=s.budget){Bus.publish('summarizer.budget-exceeded',{});return null;}
+    const prompt=CONFIG.summaryPrompt.replace('{title}',ev.content.title).replace('{content}',(ev.content.body||ev.content.snippet||'').slice(0,4000));
+    let text;
+    try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){Bus.publish('summarizer.error',{ev,error:err.message});return null;}
+    dailyCount++;return text.trim();
+  }
+  return{summarize,getDailyCount:()=>dailyCount};
+})();
+
+Bus.subscribe('event.tagged',async(ev)=>{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;ev.content.summary=sum;await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.summarized',ev);});
+Bus.subscribe('summarizer.error',({ev,error})=>{console.warn('[Summarizer]',error);if(error?.includes('401')||error?.includes('403'))toast('BYOK key invalid','err');});
+Bus.subscribe('summarizer.budget-exceeded',()=>toast('daily summary budget reached','err'));
+
+// ===== MARKDOWN EXPORTER ================================================
+const MarkdownExporter={
+  toMarkdown(ev){
+    const tags=[...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])];
+    const vaultLinks=(ev.links||[]).filter(l=>l.startsWith('vault:')).map(l=>l.slice(6));
+    const fm=['---',`neus_id: ${ev.id}`,`source: ${ev.source.name}`,`source_url: ${ev.source.url||''}`,ev.publishedAt?`published_at: ${isoDate(ev.publishedAt)}`:null,`ingested_at: ${isoDate(ev.timestamp)}`,`tags: [${tags.join(', ')}]`,`score: ${ev.meta.score}`,`hash: ${ev.hash}`,'---'].filter(Boolean).join('\n');
+    const parts=[fm,'',`# ${ev.content.title}`,''];
+    if(ev.user?.quote)parts.push(`> ${ev.user.quote.split('\n').join('\n> ')}`,'');
+    if(ev.user?.note)parts.push(`**メモ**: ${ev.user.note}`,'');
+    if(ev.content.summary)parts.push('## 要約','',ev.content.summary,'');
+    if(ev.content.snippet)parts.push('## 抜粋','',ev.content.snippet,'');
+    if(vaultLinks.length){parts.push('## 関連ノート','');vaultLinks.forEach(p=>parts.push(`- [[${p.split('/').pop().replace(/\.md$/,'')}]]`));parts.push('');}
+    if(ev.url)parts.push(`[原文を開く](${ev.url})`);
+    return parts.join('\n');
+  },
+  async copy(ev){try{await navigator.clipboard.writeText(this.toMarkdown(ev));toast('markdown copied','ok');}catch{toast('clipboard denied','err');}}
+};
+
+// ===== VIEWS ============================================================
+let currentView='inbox';let searchQuery='';let searchResults=[];
+const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starred:{starred:true},archived:{archived:true},later:{later:true,archived:false}};
+
+async function refreshCounts(){
+  $('#cnt-inbox').textContent=await Store.countUnread();
+  $('#cnt-all').textContent=await Store.countAll();
+  $('#cnt-starred').textContent=await Store.countStarred();
+  $('#cnt-archived').textContent=await Store.countArchived();
+  // LATER count: listEvents scan (no dedicated index, OK for <500 items)
+  const laterEvents=await Store.listEvents({filter:{later:true,archived:false},limit:1000});
+  $('#cnt-later').textContent=laterEvents.length;
+  $('#cnt-search').textContent=searchResults.length;
+}
+
+function renderTags(ev){
+  const u=(ev.meta.userTags||[]).map(t=>`<span class="tag user">#${escapeHtml(t)}</span>`).join('');
+  const a=(ev.meta.autoTags||[]).filter(t=>!(ev.meta.userTags||[]).includes(t)).map(t=>`<span class="tag auto">~${escapeHtml(t)}</span>`).join('');
+  return u+a;
+}
+function renderVaultLinks(ev){
+  const vl=(ev.links||[]).filter(l=>l.startsWith('vault:'));
+  if(vl.length===0)return'';
+  return`<div class="links">${vl.slice(0,3).map(l=>`<span class="link-chip">[[${escapeHtml(l.slice(6).split('/').pop().replace(/\.md$/,''))}]]</span>`).join('')}</div>`;
+}
+
+function cardHtml(ev,scoreHit){
+  const isShare=ev.source.type==='share';
+  const hasWatch=ev.meta.keywordMatched?.watch?.length>0;
+  const hasBlock=ev.meta.keywordMatched?.block?.length>0;
+  const cls=['card',!ev.state.read?'unread':'',isShare?'share-type':'',ev.state.exported?'exported':'',hasWatch?'watch-hit':'',hasBlock?'block-hit':''].filter(Boolean).join(' ');
+  const tags=renderTags(ev);const vault=renderVaultLinks(ev);
+  const summary=ev.content.summary?`<div class="summary">${escapeHtml(ev.content.summary)}</div>`:'';
+  const scoreTag=scoreHit!==undefined?`<span class="score-hit">match ${Math.round(scoreHit*100)}%</span>`:'';
+  const exportedBadge=ev.state.exported?`<span class="exported-badge">[${t('exported')}]</span>`:'';
+  const kwm=ev.meta.keywordMatched;
+  const watchBadge=(kwm?.watch?.length>0)?`<span class="watch-badge" title="${escapeAttr(kwm.watch.join(', '))}">[${t('kw.watched.badge')}]</span>`:'';
+  const blockBadge=(kwm?.block?.length>0)?`<span class="block-badge" title="${escapeAttr(kwm.block.join(', '))}">[${t('kw.blocked.badge')}]</span>`:'';
+  return`<article class="${cls}" data-id="${ev.id}" role="article" aria-labelledby="title-${ev.id}">
+    <div class="meta"><span class="source${isShare?' share':''}" data-filter-source="${escapeAttr(ev.source.id)}">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span>${ev.meta.author?`<span>${escapeHtml(ev.meta.author)}</span>`:''} ${scoreTag}${exportedBadge}${watchBadge}${blockBadge}</div>
+    <h2 id="title-${ev.id}"><a href="${escapeHtml(ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
+    ${ev.content.snippet?`<p class="snippet">${escapeHtml(ev.content.snippet)}</p>`:''}${summary}${tags?`<div class="tags">${tags}</div>`:''}${vault}
+    <div class="actions">
+      <button data-act="read" aria-label="Toggle read state">${ev.state.read?'UNREAD':'READ'}</button>
+      <button data-act="star" class="star${ev.state.starred?' on':''}" aria-label="Toggle star" aria-pressed="${ev.state.starred}">${ev.state.starred?'UNSTAR':'STAR'}</button>
+      <button data-act="archive" aria-label="Toggle archive">${ev.state.archived?'UNARCH':'ARCHIVE'}</button>
+      <button data-act="later" aria-label="Toggle read later">${ev.state.later?'UNLATER':'LATER'}</button>
+      <button data-act="vault" class="vault-btn${ev.state.exported?' done':''}">VAULT</button>
+      <button data-act="detail">EDIT</button>
+      <button data-act="copy">COPY MD</button>
+    </div>
+  </article>`;
+}
+
+// ===== DIGEST VIEW (Smart Today Summary) ================================
+async function renderDigest(){
+  const since=Date.now()-24*60*60*1000;
+  const all=await Store.allEvents();
+  const today=all.filter(e=>e.timestamp>=since);
+  if(today.length===0)return`<div class="empty"><div class="icon">[ ]</div><div>${t('digest.empty')}</div></div>`;
+
+  const summarized=today.filter(e=>e.content.summary).length;
+  const starredToday=today.filter(e=>e.state.starred).length;
+
+  // タグ集計
+  const tagFreq=new Map();
+  for(const ev of today){
+    for(const tg of[...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])]){
+      tagFreq.set(tg,(tagFreq.get(tg)||0)+1);
+    }
+  }
+  const topTags=[...tagFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // ソース集計
+  const srcFreq=new Map();
+  for(const ev of today)srcFreq.set(ev.source.name,(srcFreq.get(ev.source.name)||0)+1);
+  const topSources=[...srcFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Top 3 (score高い + 要約あり + 未読 + 鮮度 を優先)
+  // 鮮度減衰: Lifetime-aware Interest Matching (CIKM'25) — ニュースには寿命があり
+  // 興味は時間とともに減衰する。半減期6時間の指数減衰で「今読むべき」を優先。
+  const HALF_LIFE_MS=6*60*60*1000;
+  const now=Date.now();
+  const recencyBoost=(ev)=>{
+    const age=Math.max(0,now-(ev.publishedAt||ev.timestamp));
+    return 25*Math.pow(0.5,age/HALF_LIFE_MS); // 0〜25点、6h毎に半減
+  };
+  const top3=today
+    .filter(e=>!e.state.archived)
+    .sort((a,b)=>{
+      const sa=(a.meta.score||0)+(a.content.summary?20:0)+(!a.state.read?10:0)+recencyBoost(a);
+      const sb=(b.meta.score||0)+(b.content.summary?20:0)+(!b.state.read?10:0)+recencyBoost(b);
+      return sb-sa;
+    })
+    .slice(0,3);
+
+  // 週次トレンド(7日, 日別件数)
+  const week=Array(7).fill(0);
+  for(const ev of all){
+    const days=Math.floor((Date.now()-ev.timestamp)/(24*60*60*1000));
+    if(days>=0&&days<7)week[6-days]++;
+  }
+  const maxWeek=Math.max(1,...week);
+
+  const top3Html=top3.map(ev=>`<article class="card unread" data-id="${ev.id}" style="margin-bottom:8px;">
+    <div class="meta"><span class="source">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span></div>
+    <h2><a href="${escapeHtml(ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
+    ${ev.content.summary?`<div class="summary">${escapeHtml(ev.content.summary)}</div>`:''}
+  </article>`).join('');
+
+  const tagsHtml=topTags.map(([tg,n])=>`<span class="tag user" style="cursor:pointer;" data-digest-tag="${escapeAttr(tg)}">#${escapeHtml(tg)} ${n}</span>`).join(' ');
+  const srcHtml=topSources.map(([s,n])=>`<div class="stats-row"><span class="label" style="cursor:pointer;" data-digest-src="${escapeAttr(s)}">${escapeHtml(s)}</span><span class="val">${n}</span></div>`).join('');
+
+  // 週次バー(SVG ゼロ依存)
+  const barW=40,gapW=8,h=50;
+  const trendBars=week.map((v,i)=>{
+    const bh=Math.max(2,(v/maxWeek)*h);
+    const x=i*(barW+gapW);
+    const date=new Date(Date.now()-(6-i)*24*60*60*1000);
+    const label=date.toLocaleDateString(currentLang==='ja'?'ja-JP':'en-US',{month:'numeric',day:'numeric'});
+    return`<g><rect x="${x}" y="${h-bh+18}" width="${barW}" height="${bh}" fill="var(--accent)" opacity="${0.4+0.6*(v/maxWeek)}"/><text x="${x+barW/2}" y="${h+30}" text-anchor="middle" font-size="9" fill="var(--fg-3)" font-family="var(--font-mono)">${escapeHtml(label)}</text><text x="${x+barW/2}" y="${h-bh+14}" text-anchor="middle" font-size="10" fill="var(--accent)" font-family="var(--font-mono)">${v}</text></g>`;
+  }).join('');
+  const svgW=7*(barW+gapW);
+
+  return`<div style="background:var(--bg-2);border:1px solid var(--line);border-radius:4px;padding:20px;margin-bottom:16px;">
+    <h2 style="font-family:var(--font-mono);font-size:14px;letter-spacing:.15em;color:var(--accent);margin-bottom:6px;">${t('digest.title')}</h2>
+    <p style="font-size:12px;color:var(--fg-3);margin-bottom:16px;">${t('digest.subtitle')}</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+      <div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><span class="label">${t('digest.fetched')}</span><span class="val" style="font-size:20px;">${today.length}</span></div>
+      <div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><span class="label">${t('digest.summarized')}</span><span class="val" style="font-size:20px;">${summarized}</span></div>
+      <div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><span class="label">${t('digest.starred.today')}</span><span class="val" style="font-size:20px;">${starredToday}</span></div>
+    </div>
+  </div>
+  ${top3.length>0?`<h3 style="font-family:var(--font-mono);font-size:11px;letter-spacing:.15em;color:var(--accent);margin:24px 0 12px;">${t('digest.top3')}</h3>${top3Html}`:''}
+  ${topTags.length>0?`<h3 style="font-family:var(--font-mono);font-size:11px;letter-spacing:.15em;color:var(--accent);margin:24px 0 12px;">${t('digest.tags')}</h3><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;">${tagsHtml}</div>`:''}
+  ${topSources.length>0?`<h3 style="font-family:var(--font-mono);font-size:11px;letter-spacing:.15em;color:var(--accent);margin:24px 0 12px;">${t('digest.sources')}</h3>${srcHtml}`:''}
+  <h3 style="font-family:var(--font-mono);font-size:11px;letter-spacing:.15em;color:var(--accent);margin:24px 0 12px;">${t('digest.week.trend')}</h3>
+  <svg width="${svgW}" height="${h+45}" viewBox="0 0 ${svgW} ${h+45}" style="max-width:100%;" role="img" aria-label="${t('digest.week.trend')}: 7-day event count">${trendBars}</svg>`;
+}
+
+async function renderView(){
+  const view=$('#view');view.setAttribute('aria-busy','true');
+  if(currentView==='digest'){
+    view.innerHTML=await renderDigest();
+    return;
+  }
+  if(currentView==='search'){
+    if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;return;}
+    const events=[];for(const r of searchResults){const ev=await Store.getEvent(r.id);if(ev&&matchesFilter(ev))events.push({ev,score:r.score});}
+    if(events.length===0){view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;return;}
+    view.innerHTML=events.map(({ev,score})=>cardHtml(ev,score)).join('');return;
+  }
+  const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
+  // applyFilter()で設定されたソース/タグフィルタ適用
+  if(activeFilter)events=events.filter(matchesFilter);
+  events=events.slice(0,CONFIG.maxViewItems);
+  if(events.length===0){
+    view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${t('empty.inbox')}</div><div class="hint">${t('empty.hint')}</div><button id="empty-sources" type="button">${t('btn.sources')}</button></div>`;
+    $('#empty-sources')?.addEventListener('click',openSourcesModal);view.setAttribute('aria-busy','false');return;
+  }
+  view.innerHTML=events.map(ev=>cardHtml(ev)).join('');
+  view.setAttribute('aria-busy','false');
+}
+
+$('#view').addEventListener('click',async(e)=>{
+  if(e.target.closest('a'))return;
+  // ソース名クリックでフィルタ適用
+  const srcEl=e.target.closest('[data-filter-source]');
+  if(srcEl){e.stopPropagation();const card=e.target.closest('.card');if(card){const ev=await Store.getEvent(card.dataset.id);if(ev)applyFilter('source',ev.source.id,ev.source.name);}return;}
+  // タグクリックでフィルタ適用
+  const tagEl=e.target.closest('.tag');
+  if(tagEl){e.stopPropagation();const txt=tagEl.textContent.replace(/^[#~]/,'').trim();applyFilter('tag',txt,txt);return;}
+  const btn=e.target.closest('button[data-act]');const card=e.target.closest('.card');if(!card)return;
+  const id=card.dataset.id;const ev=await Store.getEvent(id);if(!ev)return;
+  if(!btn){openDetailModal(ev);return;}e.stopPropagation();
+  const act=btn.dataset.act;const now=Date.now();
+  if(act==='read'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
+  if(act==='star'){ev.state.starred=!ev.state.starred;InterestProfile.learn(ev,'pos',ev.state.starred?1:-1);}
+  if(act==='archive'){
+    const wasArchived=ev.state.archived;
+    ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;
+    InterestProfile.learn(ev,'neg',ev.state.archived?1:-1);
+    if(!wasArchived){UndoStack.offer(currentLang==='ja'?'アーカイブしました':'Archived',async()=>{const e=await Store.getEvent(ev.id);if(!e)return;e.state.archived=false;e.state.archivedAt=undefined;await InterestProfile.learn(e,'neg',-1);await Store.putEvent(e);FTSIndex.add(e);await renderView();await refreshCounts();});}
+  }
+  if(act==='later'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
+  if(act==='vault'){
+    toast(currentLang==='ja'?'書出中...':'exporting...');
+    const ok=await VaultWriter.exportEvent(ev);
+    if(ok)toast(currentLang==='ja'?'Vaultに書出完了':'exported to vault','ok');else toast('vault export failed','err');
+    await renderView();await refreshCounts();return;
+  }
+  if(act==='detail'){openDetailModal(ev);return;}
+  if(act==='copy'){MarkdownExporter.copy(ev);return;}
+  await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+});
+
+// ===== CONTEXT ACTION SHEET (long-press / right-click → keyword rule) ====
+// モバイル: タグ/ソースを長押し、PC: 右クリック で その語をWATCH/BLOCK登録
+let kwSheetTerm=null;
+function openKwSheet(term){
+  if(!term)return;
+  kwSheetTerm=term;
+  $('#kw-sheet-term').textContent=term;
+  $('#kw-sheet').classList.add('show');
+}
+function closeKwSheet(){$('#kw-sheet').classList.remove('show');kwSheetTerm=null;}
+// 対象要素(タグ or カードのソース名)からキーワード語を取り出す
+function termFromTarget(target){
+  const tagEl=target.closest('.tag');
+  if(tagEl)return tagEl.textContent.replace(/^[#~]/,'').replace(/\s+\d+$/,'').trim();
+  const srcEl=target.closest('[data-filter-source]');
+  if(srcEl)return srcEl.textContent.trim();
+  return null;
+}
+// 右クリック(PC)
+$('#view').addEventListener('contextmenu',(e)=>{
+  const term=termFromTarget(e.target);
+  if(term){e.preventDefault();openKwSheet(term);}
+});
+// 長押し(タッチ)— 500ms + 水平スワイプ操作(右=star, 左=archive)
+let lpTimer=null,lpTarget=null;
+let swipeCard=null,swipeStartX=0,swipeStartY=0,swipeDX=0,swiping=false;
+const SWIPE_THRESHOLD=80; // px。これ以上の水平移動でアクション確定
+$('#view').addEventListener('touchstart',(e)=>{
+  // スワイプ対象カードを記録
+  const card=e.target.closest('.card');
+  if(card&&!e.target.closest('button')&&!e.target.closest('a')){
+    swipeCard=card;swipeStartX=e.touches[0].clientX;swipeStartY=e.touches[0].clientY;swipeDX=0;swiping=false;
+  }
+  // 長押し(タグ/ソース→キーワードシート)
+  const term=termFromTarget(e.target);
+  if(!term)return;
+  lpTarget=e.target;
+  lpTimer=setTimeout(()=>{if(navigator.vibrate)navigator.vibrate(15);openKwSheet(term);},500);
+},{passive:true});
+$('#view').addEventListener('touchmove',(e)=>{
+  if(lpTimer){clearTimeout(lpTimer);lpTimer=null;} // 移動したら長押しキャンセル
+  if(!swipeCard)return;
+  const dx=e.touches[0].clientX-swipeStartX;
+  const dy=e.touches[0].clientY-swipeStartY;
+  // 縦スクロール優位なら無視、横移動が優位ならスワイプ開始
+  if(!swiping&&Math.abs(dx)>10&&Math.abs(dx)>Math.abs(dy)*1.5)swiping=true;
+  if(swiping){
+    swipeDX=dx;
+    const clamped=Math.max(-120,Math.min(120,dx));
+    swipeCard.style.transform=`translateX(${clamped}px)`;
+    swipeCard.style.transition='none';
+    // 方向で背景色ヒント(右=star警告色, 左=archiveエラー色)
+    swipeCard.style.background=dx>SWIPE_THRESHOLD?'rgba(210,153,34,.15)':dx<-SWIPE_THRESHOLD?'rgba(248,81,73,.15)':'';
+  }
+},{passive:true});
+const endSwipe=async()=>{
+  if(!swipeCard){return;}
+  const card=swipeCard;const dx=swipeDX;swipeCard=null;swiping=false;
+  card.style.transition='transform .2s, background .2s';
+  card.style.transform='';card.style.background='';
+  if(Math.abs(dx)<SWIPE_THRESHOLD)return;
+  const id=card.dataset.id;const ev=await Store.getEvent(id);if(!ev)return;
+  if(navigator.vibrate)navigator.vibrate(10);
+  if(dx>0){ // 右スワイプ → star
+    ev.state.starred=!ev.state.starred;
+    InterestProfile.learn(ev,'pos',ev.state.starred?1:-1);
+    await Store.putEvent(ev);FTSIndex.add(ev);
+    toast(ev.state.starred?(currentLang==='ja'?'スター':'starred'):(currentLang==='ja'?'スター解除':'unstarred'),'ok');
+  }else{ // 左スワイプ → archive
+    const wasArchived=ev.state.archived;
+    ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?Date.now():undefined;
+    InterestProfile.learn(ev,'neg',ev.state.archived?1:-1);
+    await Store.putEvent(ev);FTSIndex.add(ev);
+    if(!wasArchived)UndoStack.offer(currentLang==='ja'?'アーカイブしました':'Archived',async()=>{const e=await Store.getEvent(id);if(!e)return;e.state.archived=false;e.state.archivedAt=undefined;await InterestProfile.learn(e,'neg',-1);await Store.putEvent(e);FTSIndex.add(e);await renderView();await refreshCounts();});
+  }
+  await renderView();await refreshCounts();
+};
+const cancelLP=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};
+$('#view').addEventListener('touchend',()=>{cancelLP();endSwipe();},{passive:true});
+$('#view').addEventListener('touchcancel',()=>{cancelLP();if(swipeCard){swipeCard.style.transform='';swipeCard.style.background='';swipeCard=null;swiping=false;}},{passive:true});
+// シートのアクション
+async function addQuickRule(kind,action){
+  if(!kwSheetTerm)return;
+  const rule={pattern:kwSheetTerm,mode:'contains',scope:'all',case:false,action};
+  await KeywordRules.addRule(kind,rule);
+  const n=await KeywordRules.reapplyAll();
+  closeKwSheet();
+  toast(currentLang==='ja'?`「${rule.pattern}」を${kind==='watch'?'WATCH':'BLOCK'}に追加(${n}件適用)`:`Added "${rule.pattern}" to ${kind} (${n} applied)`,'ok');
+  await refreshCounts();await renderView();
+}
+$('#kw-sheet-watch-hl').addEventListener('click',()=>addQuickRule('watch','highlight'));
+$('#kw-sheet-watch-star').addEventListener('click',()=>addQuickRule('watch','star'));
+$('#kw-sheet-block-arch').addEventListener('click',()=>addQuickRule('block','archive'));
+$('#kw-sheet-block-del').addEventListener('click',()=>addQuickRule('block','delete'));
+$('#kw-sheet-cancel').addEventListener('click',closeKwSheet);
+$('#kw-sheet').addEventListener('click',(e)=>{if(e.target.id==='kw-sheet')closeKwSheet();});
+
+$$('.nav button').forEach(b=>{
+  b.addEventListener('click',async()=>{$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});b.classList.add('active');b.setAttribute('aria-selected','true');currentView=b.dataset.view;kbCursor=-1;await renderView();});
+});
+
+// ===== SEARCH ===========================================================
+const doSearch=debounce(async(q)=>{
+  searchQuery=q.trim();
+  if(!searchQuery){searchResults=[];$('#nav-search').style.display='none';if(currentView==='search'){$$('.nav button').forEach(x=>x.classList.remove('active'));$('.nav button[data-view="inbox"]').classList.add('active');currentView='inbox';}await refreshCounts();await renderView();return;}
+  searchResults=FTSIndex.search(searchQuery);$('#nav-search').style.display='';$$('.nav button').forEach(x=>x.classList.remove('active'));$('#nav-search').classList.add('active');currentView='search';await refreshCounts();await renderView();
+},200);
+$('#search-input').addEventListener('input',(e)=>doSearch(e.target.value));
+
+// ===== DETAIL MODAL =====================================================
+let currentDetailId=null;
+const renderTagChips=(tags)=>tags.map((t,i)=>`<span class="tag-chip">${escapeHtml(t)}<button type="button" data-tag-rm="${i}">×</button></span>`).join('');
+
+async function openDetailModal(ev){
+  currentDetailId=ev.id;const tags=[...(ev.meta.userTags||[])];
+  const autoTags=(ev.meta.autoTags||[]).filter(t=>!tags.includes(t));
+  const vaultLinks=(ev.links||[]).filter(l=>l.startsWith('vault:'));
+  const summary=ev.content.summary?`<div class="detail-summary">${escapeHtml(ev.content.summary)}</div>`:'';
+  const snippet=ev.content.snippet?`<div class="detail-body">${escapeHtml(ev.content.snippet)}</div>`:'';
+  const vaultHtml=vaultLinks.length?`<h4>RELATED VAULT NOTES</h4><div class="detail-vault-list">${vaultLinks.map(l=>{const p=l.slice(6);const n=p.split('/').pop().replace(/\.md$/,'');return`<a href="#" data-vault-path="${escapeAttr(p)}">[[${escapeHtml(n)}]]<span class="vault-score">${escapeHtml(p)}</span></a>`;}).join('')}</div>`:'';
+  $('#detail-card').innerHTML=`
+    <h3 id="hd-detail">EVENT DETAIL</h3>
+    <div class="detail-meta"><span class="accent">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span>${ev.meta.author?`<span>${escapeHtml(ev.meta.author)}</span>`:''}</div>
+    <h2 class="detail-title"><a href="${escapeHtml(ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
+    ${summary}${snippet}${vaultHtml}
+    <h4>USER TAGS</h4>
+    <div class="tag-input-row" id="user-tags-row">${renderTagChips(tags)}<input type="text" id="tag-input" placeholder="add tag + Enter"></div>
+    ${autoTags.length?`<h4>AUTO TAGS</h4><div class="tag-input-row" id="auto-tags-row">${autoTags.map((t,i)=>`<span class="tag-chip" data-auto-promote="${i}" data-auto-tag="${escapeAttr(t)}" style="cursor:pointer;">${escapeHtml(t)}</span>`).join('')}</div>`:''}
+    <h4>USER QUOTE</h4><textarea id="user-quote" placeholder="抜粋・引用">${escapeHtml(ev.user?.quote||'')}</textarea>
+    <h4>USER NOTE</h4><textarea id="user-note" placeholder="自分のメモ">${escapeHtml(ev.user?.note||'')}</textarea>
+    <div class="row">
+      <button id="detail-close" type="button">CLOSE</button>
+      <button id="detail-vault" type="button">EXPORT TO VAULT</button>
+      <button id="detail-resummarize" type="button">RE-SUMMARIZE</button>
+      <button id="detail-copy" type="button">COPY MD</button>
+      <button id="detail-save" class="primary" type="button">SAVE</button>
+    </div>`;
+  $('#modal-detail').classList.add('show');
+  const refreshTagsRow=()=>{$('#user-tags-row').innerHTML=renderTagChips(tags)+'<input type="text" id="tag-input" placeholder="add tag + Enter">';bindTagInput();};
+  function bindTagInput(){$('#tag-input').addEventListener('keydown',(e)=>{if(e.key!=='Enter'||!e.target.value.trim())return;e.preventDefault();const nt=e.target.value.trim().toLowerCase();if(!tags.includes(nt))tags.push(nt);e.target.value='';refreshTagsRow();});}
+  bindTagInput();
+  $('#detail-card').addEventListener('click',(e)=>{
+    const rm=e.target.closest('[data-tag-rm]');if(rm){tags.splice(+rm.dataset.tagRm,1);refreshTagsRow();}
+    const promote=e.target.closest('[data-auto-promote]');if(promote){const t2=promote.dataset.autoTag;if(!tags.includes(t2))tags.push(t2);refreshTagsRow();promote.style.display='none';}
+  });
+  $('#detail-close').addEventListener('click',()=>$('#modal-detail').classList.remove('show'));
+  $('#detail-save').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=tags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast('saved','ok');$('#modal-detail').classList.remove('show');await renderView();});
+  $('#detail-copy').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(cur)MarkdownExporter.copy(cur);});
+  $('#detail-vault').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(cur);if(ok){toast(currentLang==='ja'?'書出完了':'exported','ok');$('#modal-detail').classList.remove('show');await renderView();}else toast('vault export failed','err');});
+  $('#detail-resummarize').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast('summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast('summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast('summary updated','ok');openDetailModal(cur);});
+}
+$('#modal-detail').addEventListener('click',(e)=>{if(e.target.id==='modal-detail')$('#modal-detail').classList.remove('show');});
+
+// ===== SOURCES MODAL ====================================================
+async function openSourcesModal(){
+  const list=await Store.listSources();
+  const html=list.map(s=>`<div class="source-item${s.enabled===false?' disabled':''}"><div><div class="name">${escapeHtml(s.name)}</div><div class="url">${escapeHtml(s.url)}</div></div><button data-src-del="${s.id}" type="button">DEL</button></div>`).join('')||`<div style="color:var(--fg-3);text-align:center;padding:12px;font-family:var(--font-mono);font-size:11px;">${currentLang==='ja'?'ソースなし':'no sources'}</div>`;
+  $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
+}
+$('#btn-sources').addEventListener('click',openSourcesModal);
+$('#btn-poll').addEventListener('click',()=>RSSPoller.fetchAll().then(()=>refreshCounts()).then(()=>renderView()));
+
+// オーバーフローメニュー(ヘッダーのモバイル集約)
+(function(){
+  const menu=$('#overflow-menu'),btn=$('#btn-menu');
+  const open=()=>{menu.classList.add('show');btn.setAttribute('aria-expanded','true');};
+  const close=()=>{menu.classList.remove('show');btn.setAttribute('aria-expanded','false');};
+  const toggle=()=>menu.classList.contains('show')?close():open();
+  btn.addEventListener('click',(e)=>{e.stopPropagation();toggle();});
+  // メニュー項目クリックで閉じる(各ボタンの本来のハンドラは別途発火)
+  menu.addEventListener('click',()=>close());
+  // 外側クリックで閉じる
+  document.addEventListener('click',(e)=>{if(!e.target.closest('.menu-wrap'))close();});
+  // Escで閉じる(モーダルが開いていない時)
+  document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&menu.classList.contains('show')&&!document.querySelector('.modal.show')){close();btn.focus();}});
+})();
+$('#src-cancel').addEventListener('click',()=>{$('#modal-sources').classList.remove('show');$('#bookmarklet-area').style.display='none';});
+$('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.trim();if(!url)return;try{new URL(url);}catch{toast('invalid url','err');return;}if(await Store.findSourceByUrl(url)){toast(currentLang==='ja'?'登録済み':'already added','err');return;}await Store.putSource({id:uuid(),url,name:new URL(url).hostname,enabled:true,addedAt:Date.now()});$('#src-url').value='';toast(currentLang==='ja'?'追加しました':'source added','ok');openSourcesModal();});
+$('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;await Store.deleteSource(del.dataset.srcDel);openSourcesModal();});
+$('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
+$('#opml-import').addEventListener('click',()=>$('#opml-file').click());
+$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();});
+$('#opml-export').addEventListener('click',async()=>{const list=await Store.listSources();if(list.length===0){toast('no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(`exported ${list.length}`,'ok');});
+$('#bookmarklet-btn').addEventListener('click',()=>Bookmarklet.showUI());
+
+// ===== VAULT MODAL ======================================================
+function updateVaultStatus(){const s=VaultMatcher.stats();$('#vault-status').innerHTML=s.name?`vault: <span class="accent">${escapeHtml(s.name)}</span> · ${s.files} markdown files`:(currentLang==='ja'?'vault: 未選択':'vault: not selected');$('#btn-vault').classList.toggle('on',!!s.name);}
+$('#btn-vault').addEventListener('click',()=>{updateVaultStatus();$('#modal-vault').classList.add('show');});
+$('#vault-cancel').addEventListener('click',()=>$('#modal-vault').classList.remove('show'));
+$('#vault-select').addEventListener('click',async()=>{const name=await VaultMatcher.selectVault();if(name)toast(`vault: ${name}`,'ok');updateVaultStatus();});
+$('#vault-rescan').addEventListener('click',async()=>{if(!VaultMatcher.isReady()){toast(currentLang==='ja'?'先にVaultを選択':'select vault first','err');return;}toast(currentLang==='ja'?'スキャン中...':'scanning...');await VaultMatcher.scan();updateVaultStatus();toast(`scanned ${VaultMatcher.stats().files} files`,'ok');});
+$('#vault-export-all').addEventListener('click',async()=>{
+  toast(currentLang==='ja'?'スター済みを書出中...':'exporting starred...');
+  const events=await Store.listEvents({filter:{starred:true},limit:1000});
+  if(events.length===0){toast(currentLang==='ja'?'スター済みなし':'no starred events');return;}
+  const count=await VaultWriter.exportBatch(events);
+  if(count>0)toast(currentLang==='ja'?`${count}件を書出完了`:`exported ${count} events`,'ok');else toast('vault export failed','err');
+  await renderView();await refreshCounts();
+});
+$('#vault-clear').addEventListener('click',async()=>{await VaultMatcher.clear();updateVaultStatus();toast('vault disconnected','ok');});
+$('#modal-vault').addEventListener('click',(e)=>{if(e.target.id==='modal-vault')$('#modal-vault').classList.remove('show');});
+
+// ===== KEYWORDS MODAL ===================================================
+// WCAG 3.3.1: アクセシブルなフォームエラー表示
+function setKwErr(msg){
+  const el=$('#kw-adv-err');el.textContent=msg;
+  const input=$('#kw-adv-input');
+  if(msg){input.setAttribute('aria-invalid','true');input.focus();}
+  else{input.setAttribute('aria-invalid','false');}
+}
+// モバイル対応: キーワードchip入力管理
+function kwChipsContainer(kind){return $(`#kw-${kind}-chips`);}
+function kwGetChips(kind){return [...kwChipsContainer(kind).querySelectorAll('.kw-chip')].map(c=>c.dataset.value);}
+function kwRenderChip(kind,value){
+  const cont=kwChipsContainer(kind);
+  const input=cont.querySelector('.chip-input');
+  // 重複防止
+  if(kwGetChips(kind).includes(value))return;
+  const chip=document.createElement('span');
+  chip.className='kw-chip';chip.dataset.kind=kind;chip.dataset.value=value;
+  const label=document.createElement('span');label.className='label';label.textContent=value;
+  const rm=document.createElement('button');rm.className='rm';rm.type='button';rm.textContent='×';
+  rm.setAttribute('aria-label',`${value} を削除`);
+  rm.addEventListener('click',()=>chip.remove());
+  chip.append(label,rm);
+  cont.insertBefore(chip,input);
+}
+function kwSetChips(kind,values){
+  const cont=kwChipsContainer(kind);
+  [...cont.querySelectorAll('.kw-chip')].forEach(c=>c.remove());
+  for(const v of values)kwRenderChip(kind,v);
+}
+function kwClearInput(kind){kwChipsContainer(kind).querySelector('.chip-input').value='';}
+// chip入力のイベント(Enter/カンマ/区切りで確定、空Backspaceで直前削除)
+['watch','block'].forEach(kind=>{
+  const input=$(`#kw-${kind}-chipinput`);
+  const commit=()=>{
+    const raw=input.value.trim().replace(/,$/,'').trim();
+    if(raw){kwRenderChip(kind,raw);input.value='';}
+  };
+  input.addEventListener('keydown',(e)=>{
+    if(e.key==='Enter'||e.key===','){e.preventDefault();commit();}
+    else if(e.key==='Backspace'&&input.value===''){
+      const chips=kwChipsContainer(kind).querySelectorAll('.kw-chip');
+      if(chips.length>0)chips[chips.length-1].remove();
+    }
+  });
+  // フォーカスを失った時も確定(モバイルでEnter押さず閉じるケース)
+  input.addEventListener('blur',commit);
+  // ペースト時は改行/カンマで分割
+  input.addEventListener('paste',(e)=>{
+    const text=(e.clipboardData||window.clipboardData).getData('text');
+    if(/[\n,]/.test(text)){
+      e.preventDefault();
+      text.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean).forEach(v=>kwRenderChip(kind,v));
+      input.value='';
+    }
+  });
+});
+
+async function openKeywordsModal(){
+  const r=KeywordRules.getRules();
+  // 単純ルール(contains/all/case insensitive)とその他の詳細ルールを分離
+  const isSimple=(rl)=>rl.mode==='contains'&&rl.scope==='all'&&!rl.case;
+  const simpleWatch=r.watch.filter(isSimple);
+  const advWatch=r.watch.filter(rl=>!isSimple(rl));
+  const simpleBlock=r.block.filter(isSimple);
+  const advBlock=r.block.filter(rl=>!isSimple(rl));
+  // 単純ルールのaction共通値を取得(なければデフォルト)
+  $('#kw-watch-action').value=simpleWatch[0]?.action||'highlight';
+  $('#kw-block-action').value=simpleBlock[0]?.action||'archive';
+  kwSetChips('watch',simpleWatch.map(rl=>rl.pattern));
+  kwSetChips('block',simpleBlock.map(rl=>rl.pattern));
+  kwClearInput('watch');kwClearInput('block');
+  $('#kw-adv-input').value=advWatch.length+advBlock.length>0?JSON.stringify({watch:advWatch,block:advBlock},null,2):'';
+  setKwErr('');
+  $('#kw-status').innerHTML=`watch: <span class="accent">${r.watch.length}</span> rules · block: <span class="err">${r.block.length}</span> rules`;
+  $('#modal-keywords').classList.add('show');
+}
+$('#btn-keywords').addEventListener('click',openKeywordsModal);
+$('#kw-cancel').addEventListener('click',()=>$('#modal-keywords').classList.remove('show'));
+$('#modal-keywords').addEventListener('click',(e)=>{if(e.target.id==='modal-keywords')$('#modal-keywords').classList.remove('show');});
+
+$('#kw-save').addEventListener('click',async()=>{
+  const watchAction=$('#kw-watch-action').value;
+  const blockAction=$('#kw-block-action').value;
+  const watchSimple=kwGetChips('watch').map(p=>({pattern:p,mode:'contains',scope:'all',case:false,action:watchAction}));
+  const blockSimple=kwGetChips('block').map(p=>({pattern:p,mode:'contains',scope:'all',case:false,action:blockAction}));
+  let advWatch=[],advBlock=[];
+  const advText=$('#kw-adv-input').value.trim();
+  if(advText){
+    try{const parsed=JSON.parse(advText);advWatch=Array.isArray(parsed.watch)?parsed.watch:[];advBlock=Array.isArray(parsed.block)?parsed.block:[];}
+    catch(err){setKwErr('Invalid JSON: '+err.message);return;}
+    // バリデーション
+    const VALID_MODES=['contains','exact','prefix','suffix','word','regex'];
+    const VALID_SCOPES=['title','snippet','summary','tags','source','all'];
+    const VALID_W_ACTIONS=['highlight','star','tag'];
+    const VALID_B_ACTIONS=['archive','delete'];
+    for(const r of advWatch){
+      if(!r.pattern||typeof r.pattern!=='string'){setKwErr('watch rule: pattern required');return;}
+      if(r.mode&&!VALID_MODES.includes(r.mode)){setKwErr(`invalid mode: ${r.mode}`);return;}
+      if(r.scope&&!VALID_SCOPES.includes(r.scope)){setKwErr(`invalid scope: ${r.scope}`);return;}
+      if(r.action&&!VALID_W_ACTIONS.includes(r.action)){setKwErr(`invalid watch action: ${r.action}`);return;}
+      if(r.mode==='regex'){try{new RegExp(r.pattern);}catch{setKwErr(`invalid regex: ${r.pattern}`);return;}}
+    }
+    for(const r of advBlock){
+      if(!r.pattern||typeof r.pattern!=='string'){setKwErr('block rule: pattern required');return;}
+      if(r.mode&&!VALID_MODES.includes(r.mode)){setKwErr(`invalid mode: ${r.mode}`);return;}
+      if(r.scope&&!VALID_SCOPES.includes(r.scope)){setKwErr(`invalid scope: ${r.scope}`);return;}
+      if(r.action&&!VALID_B_ACTIONS.includes(r.action)){setKwErr(`invalid block action: ${r.action}`);return;}
+      if(r.mode==='regex'){try{new RegExp(r.pattern);}catch{setKwErr(`invalid regex: ${r.pattern}`);return;}}
+    }
+  }
+  await KeywordRules.replaceRules({watch:[...watchSimple,...advWatch],block:[...blockSimple,...advBlock]});
+  toast(currentLang==='ja'?'ルール保存':'rules saved','ok');
+  $('#modal-keywords').classList.remove('show');
+});
+
+$('#kw-reapply').addEventListener('click',async()=>{
+  // 先に保存
+  $('#kw-save').click();
+  await new Promise(r=>setTimeout(r,200));
+  toast(currentLang==='ja'?'再適用中...':'reapplying to all events...');
+  const n=await KeywordRules.reapplyAll();
+  toast(currentLang==='ja'?`${n}件に適用`:`reapplied to ${n} events`,'ok');
+  await refreshCounts();await renderView();
+});
+
+// (legacy STATS/BACKUP/FILTER block removed; see STATS MODAL below)
+
+// (legacy HELP+KEYBOARD block removed; see KEYBOARD SHORTCUTS below)
+
+// ===== STATS MODAL ======================================================
+async function openStatsModal(){
+  const counts={total:await Store.countAll(),unread:await Store.countUnread(),starred:await Store.countStarred(),archived:await Store.countArchived()};
+  const all=await Store.allEvents();
+  const exported=all.filter(e=>e.state.exported).length;
+  const sources=await Store.listSources();
+  const enabledSrc=sources.filter(s=>s.enabled!==false).length;
+  const fts=FTSIndex.stats();
+  const vault=VaultMatcher.stats();
+  const kw=KeywordRules.getRules();
+  const ip=InterestProfile.stats();
+  const ipPos=InterestProfile.topWords('pos',6);
+  const ipNeg=InterestProfile.topWords('neg',6);
+  let usage='-',quota='-';
+  if(navigator.storage?.estimate){const e=await navigator.storage.estimate();usage=(e.usage/1024/1024).toFixed(1)+'MB';quota=(e.quota/1024/1024/1024).toFixed(1)+'GB';}
+  $('#stats-body').innerHTML=`
+    <div class="stats-row"><span class="label">${t('stats.events.total')}</span><span class="val">${fmtNum(counts.total)}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.events.unread')}</span><span class="val">${fmtNum(counts.unread)}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.events.starred')}</span><span class="val">${fmtNum(counts.starred)}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.events.exported')}</span><span class="val">${fmtNum(exported)}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.sources')}</span><span class="val">${enabledSrc} / ${sources.length}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.fts')}</span><span class="val">${fts.events} events / ${fts.grams} grams</span></div>
+    <div class="stats-row"><span class="label">${t('stats.summary')}</span><span class="val">${Summarizer.getDailyCount()}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.vault')}</span><span class="val">${vault.name?escapeHtml(vault.name)+' ('+vault.files+' files)':'-'}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.keywords')}</span><span class="val">watch ${kw.watch.length} / block ${kw.block.length}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.interest')}</span><span class="val">${ip.vocab} ${t('stats.interest.words')}</span></div>
+    ${ipPos.length>0?`<div class="stats-row"><span class="label">${t('stats.interest.like')}</span><span class="val" style="color:var(--warn);font-size:11px;text-align:right;">${ipPos.map(escapeHtml).join(', ')}</span></div>`:''}
+    ${ipNeg.length>0?`<div class="stats-row"><span class="label">${t('stats.interest.dislike')}</span><span class="val" style="color:var(--err);font-size:11px;text-align:right;">${ipNeg.map(escapeHtml).join(', ')}</span></div>`:''}
+    <div class="stats-row"><span class="label">${t('stats.storage')}</span><span class="val">${usage} / ${quota}</span></div>`;
+  $('#modal-stats').classList.add('show');
+}
+$('#btn-stats').addEventListener('click',openStatsModal);
+$('#stats-cancel').addEventListener('click',()=>$('#modal-stats').classList.remove('show'));
+$('#modal-stats').addEventListener('click',(e)=>{if(e.target.id==='modal-stats')$('#modal-stats').classList.remove('show');});
+
+// ===== BACKUP / RESTORE =================================================
+$('#stats-backup').addEventListener('click',async()=>{
+  const events=await Store.allEvents();
+  const sources=await Store.listSources();
+  const settings={};
+  for(const key of ['byok','lang','keyword-rules','onboarding-done']){
+    const v=await Store.getSetting(key);if(v!==undefined)settings[key]=v;
+  }
+  const dump={version:'1.0',exportedAt:new Date().toISOString(),app:'neus',counts:{events:events.length,sources:sources.length},events,sources,settings};
+  // セキュリティ警告: APIキーは暗号化されている場合のみ含めるべき
+  if(settings.byok&&!settings.byok.encrypted){
+    if(!await confirmAsync(currentLang==='ja'?'APIキーが暗号化されていません。バックアップに含めますか?':'API key is not encrypted. Include in backup?',{danger:true})){
+      delete dump.settings.byok;
+    }
+  }
+  downloadFile(`neus-backup-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(dump,null,2),'application/json');
+  toast(currentLang==='ja'?`${events.length}件エクスポート`:`exported ${events.length} events`,'ok');
+});
+
+$('#stats-restore').addEventListener('click',()=>$('#restore-file').click());
+$('#restore-file').addEventListener('change',async(e)=>{
+  const file=e.target.files?.[0];if(!file)return;
+  e.target.value='';
+  let dump;
+  try{dump=JSON.parse(await file.text());}catch{toast('invalid JSON','err');return;}
+  if(dump.app!=='neus'||!Array.isArray(dump.events)){toast('not a Neus backup','err');return;}
+  if(!await confirmAsync(t('backup.confirm')))return;
+  // 既存データ削除
+  const existing=await Store.allEvents();
+  for(const ev of existing){FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);}
+  for(const s of await Store.listSources())await Store.deleteSource(s.id);
+  // 復元
+  for(const ev of dump.events){await Store.putEvent(ev);FTSIndex.add(ev);}
+  for(const s of (dump.sources||[]))await Store.putSource(s);
+  for(const[k,v]of Object.entries(dump.settings||{}))await Store.putSetting(k,v);
+  await KeywordRules.load();
+  await TagLearner.rebuild();
+  await refreshCounts();await renderView();
+  toast(`${t('backup.imported')}: ${dump.events.length}`,'ok');
+  $('#modal-stats').classList.remove('show');
+});
+
+// ===== TAG / SOURCE FILTER ==============================================
+let activeFilter=null; // {type:'tag'|'source', value:'rust'}
+function applyFilter(type,value){activeFilter={type,value};updateFilterBar();renderView();}
+function clearFilter(){activeFilter=null;updateFilterBar();renderView();}
+function updateFilterBar(){
+  const bar=$('#filter-bar');
+  if(!activeFilter){bar.classList.remove('show');bar.innerHTML='';return;}
+  bar.classList.add('show');
+  bar.innerHTML=`<span>${t('filter.'+activeFilter.type)}:</span><span style="color:var(--fg);">${escapeHtml(activeFilter.value)}</span><span class="clear" id="filter-clear">${t('filter.clear')}</span>`;
+  $('#filter-clear').addEventListener('click',clearFilter);
+}
+function matchesFilter(ev){
+  if(!activeFilter)return true;
+  if(activeFilter.type==='tag')return[...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])].includes(activeFilter.value);
+  if(activeFilter.type==='source')return ev.source.id===activeFilter.value||ev.source.name===activeFilter.value;
+  return true;
+}
+
+// ===== FOCUS TRAP (a11y) ================================================
+// Trap focus inside the active modal for keyboard users
+let lastFocusedBeforeModal=null;
+function trapFocus(modal){
+  const focusables=modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])');
+  if(focusables.length===0)return;
+  const first=focusables[0],last=focusables[focusables.length-1];
+  modal.addEventListener('keydown',function trap(e){
+    if(e.key!=='Tab')return;
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  });
+  // 最初のfocusableに自動フォーカス
+  setTimeout(()=>first.focus(),50);
+}
+// MutationObserver でモーダル開閉を監視
+new MutationObserver((muts)=>{
+  for(const m of muts){
+    if(m.attributeName!=='class')continue;
+    const el=m.target;
+    if(el.classList.contains('show')&&(el.classList.contains('modal')||el.classList.contains('onboarding')||el.classList.contains('lock-screen'))){
+      lastFocusedBeforeModal=document.activeElement;
+      trapFocus(el);
+    }else if(!el.classList.contains('show')&&lastFocusedBeforeModal&&(el.classList.contains('modal')||el.classList.contains('onboarding')||el.classList.contains('lock-screen'))){
+      try{lastFocusedBeforeModal.focus();}catch{}
+      lastFocusedBeforeModal=null;
+    }
+  }
+}).observe(document.body,{attributes:true,attributeFilter:['class'],subtree:true});
+
+// ===== KEYBOARD SHORTCUTS ===============================================
+const SHORTCUTS=[
+  {keys:['j','ArrowDown'],label:'Next card',desc:{ja:'次のカード',en:'Next card'}},
+  {keys:['k','ArrowUp'],label:'Previous card',desc:{ja:'前のカード',en:'Previous card'}},
+  {keys:['Enter','o'],label:'Open detail',desc:{ja:'詳細を開く',en:'Open detail'}},
+  {keys:['Escape'],label:'Close modal',desc:{ja:'モーダル閉/フィルタ解除',en:'Close modal / clear filter'}},
+  {keys:['s'],label:'Star current',desc:{ja:'カレントをスター',en:'Toggle star'}},
+  {keys:['e'],label:'Archive current',desc:{ja:'カレントをアーカイブ',en:'Toggle archive'}},
+  {keys:['r'],label:'Read/unread',desc:{ja:'既読/未読',en:'Toggle read'}},
+  {keys:['v'],label:'Vault export',desc:{ja:'Vault書出',en:'Vault export'}},
+  {keys:['l'],label:'Toggle LATER',desc:{ja:'あとで読むトグル',en:'Toggle Read Later'}},
+  {keys:['/','f'],label:'Focus search',desc:{ja:'検索フォーカス',en:'Focus search'}},
+  {keys:['p'],label:'POLL sources',desc:{ja:'ソース取得',en:'Poll sources'}},
+  {keys:['g i'],label:'Go INBOX',desc:{ja:'INBOXへ',en:'Go to INBOX'}},
+  {keys:['g a'],label:'Go ALL',desc:{ja:'ALLへ',en:'Go to ALL'}},
+  {keys:['g s'],label:'Go STARRED',desc:{ja:'STARREDへ',en:'Go to STARRED'}},
+  {keys:['?'],label:'Show shortcuts',desc:{ja:'ショートカット表示',en:'Show this dialog'}},
+];
+
+let kbCursor=-1;
+let kbGoPrefix=false;
+
+function getVisibleCards(){return[...$$('.card')];}
+function highlightCard(idx){
+  $$('.card').forEach((c,i)=>{c.style.outline=i===idx?'2px solid var(--accent)':'';c.style.outlineOffset=i===idx?'-2px':'';});
+  const cards=getVisibleCards();
+  if(cards[idx])cards[idx].scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+
+function currentCardEvent(){
+  const cards=getVisibleCards();
+  if(kbCursor<0||kbCursor>=cards.length)return null;
+  return Store.getEvent(cards[kbCursor].dataset.id);
+}
+
+document.addEventListener('keydown',async(e)=>{
+  // モーダル表示中はEsc以外無視
+  const anyModal=document.querySelector('.modal.show, .onboarding.show, .lock-screen.show, .sheet-backdrop.show');
+  if(anyModal&&e.key!=='Escape')return;
+  // 入力中は処理しない(検索バー以外)。ただしモーダル内のEscはモーダルを閉じる
+  const tag=e.target.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'){
+    if(e.key==='Escape'){
+      if(e.target.id==='search-input'){e.target.value='';e.target.dispatchEvent(new Event('input'));e.target.blur();return;}
+      // モーダル内フォーム要素からのEscはモーダルを閉じる
+      if(anyModal){anyModal.classList.remove('show');return;}
+    }
+    return;
+  }
+  const k=e.key;
+  // Esc処理
+  if(k==='Escape'){
+    if(anyModal){anyModal.classList.remove('show');return;}
+    if(activeFilter){clearFilter();return;}
+  }
+  // g prefix(g i / g a / g s)
+  if(kbGoPrefix){
+    kbGoPrefix=false;
+    const goMap={i:'inbox',a:'all',s:'starred'};
+    if(goMap[k]){const btn=$(`.nav button[data-view="${goMap[k]}"]`);btn?.click();}
+    return;
+  }
+  if(k==='g'){kbGoPrefix=true;setTimeout(()=>{kbGoPrefix=false;},800);return;}
+  // ?
+  if(k==='?'){e.preventDefault();openShortcutsModal();return;}
+  // / or f
+  if(k==='/'||k==='f'){e.preventDefault();$('#search-input').focus();return;}
+  // p = POLL
+  if(k==='p'){e.preventDefault();$('#btn-poll').click();return;}
+  // j/down k/up
+  if(k==='j'||k==='ArrowDown'){
+    e.preventDefault();const cards=getVisibleCards();if(cards.length===0)return;
+    kbCursor=Math.min(cards.length-1,kbCursor+1);highlightCard(kbCursor);return;
+  }
+  if(k==='k'||k==='ArrowUp'){
+    e.preventDefault();const cards=getVisibleCards();if(cards.length===0)return;
+    kbCursor=Math.max(0,kbCursor-1);highlightCard(kbCursor);return;
+  }
+  // Enter/o = open detail
+  if(k==='Enter'||k==='o'){
+    const ev=await currentCardEvent();if(ev){e.preventDefault();openDetailModal(ev);}return;
+  }
+  // s/e/r/v = card actions
+  if(['s','e','r','v','l'].includes(k)){
+    const ev=await currentCardEvent();if(!ev)return;
+    e.preventDefault();
+    const now=Date.now();
+    if(k==='s'){ev.state.starred=!ev.state.starred;}
+    if(k==='e'){ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;}
+    if(k==='r'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
+    if(k==='l'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
+    if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();return;}
+    await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+  }
+});
+
+function openShortcutsModal(){
+  const rows=SHORTCUTS.map(s=>{
+    const keys=s.keys.map(k=>`<kbd>${k}</kbd>`).join(' / ');
+    const desc=s.desc[currentLang]||s.desc.en;
+    return`<tr class="shortcut-row"><td>${keys}</td><td>${escapeHtml(desc)}</td></tr>`;
+  }).join('');
+  $('#shortcuts-tbody').innerHTML=rows;
+  $('#modal-shortcuts').classList.add('show');
+}
+$('#stats-shortcuts').addEventListener('click',()=>{$('#modal-stats').classList.remove('show');openShortcutsModal();});
+$('#shortcuts-cancel').addEventListener('click',()=>$('#modal-shortcuts').classList.remove('show'));
+$('#modal-shortcuts').addEventListener('click',(e)=>{if(e.target.id==='modal-shortcuts')$('#modal-shortcuts').classList.remove('show');});
+
+// ===== SETTINGS MODAL ===================================================
+async function openSettingsModal(){
+  const s=(await Store.getSetting('byok'))||{enabled:false,provider:'anthropic',budget:100};
+  const lang=(await Store.getSetting('lang'))||'ja';
+  const hasPass=await Store.getSetting('pass-set');
+  $('#set-lang').value=lang;
+  $('#pass-status').innerHTML=hasPass?`<span class="pass">${currentLang==='ja'?'設定済み(AES-GCM)':'set (AES-GCM)'}</span>`:`<span class="err">${currentLang==='ja'?'未設定(平文)':'not set (plaintext)'}</span>`;
+  $('#set-pass-new').value='';
+  $('#set-byok-enabled').value=String(!!s.enabled);
+  $('#set-byok-provider').value=s.provider||'anthropic';
+  $('#set-byok-model').value=s.model||CONFIG.byokDefaults[s.provider||'anthropic'].model;
+  // APIキーはマスク表示
+  const currentApiKey=await getApiKey();
+  $('#set-byok-key').value=currentApiKey?'(set — enter new to change)':'';
+  $('#set-byok-key').placeholder=currentApiKey?'new key or leave blank to keep':'sk-... / sk-ant-... / AI...';
+  $('#set-byok-budget').value=s.budget||100;
+  const fts=FTSIndex.stats();
+  $('#byok-status').innerHTML=`Today: ${Summarizer.getDailyCount()} requests | FTS: ${fts.events} events, ${fts.grams} grams`;
+  // AutoSync settings
+  const sync=await AutoSync.getSettings();
+  $('#set-sync-enabled').value=String(!!sync.enabled);
+  $('#set-sync-interval').value=sync.interval||'6h';
+  $('#set-sync-notify').value=String(!!sync.notify);
+  const supported=await AutoSync.isSupported();
+  const registered=supported?await AutoSync.isRegistered():false;
+  $('#sync-status').textContent=supported?(registered?(currentLang==='ja'?'登録済み':'registered'):(currentLang==='ja'?'未登録':'not registered')):(currentLang==='ja'?'このブラウザは未対応(手動POLLのみ)':'unsupported in this browser');
+  $('#modal-settings').classList.add('show');
+}
+$('#set-byok-provider').addEventListener('change',(e)=>{const def=CONFIG.byokDefaults[e.target.value];if(def)$('#set-byok-model').value=def.model;});
+$('#btn-settings').addEventListener('click',openSettingsModal);
+$('#set-cancel').addEventListener('click',()=>$('#modal-settings').classList.remove('show'));
+$('#set-save').addEventListener('click',async()=>{
+  const lang=$('#set-lang').value;
+  const newPass=$('#set-pass-new').value.trim();
+  const rawKey=$('#set-byok-key').value.trim();
+  const s={enabled:$('#set-byok-enabled').value==='true',provider:$('#set-byok-provider').value,model:$('#set-byok-model').value.trim()||undefined,budget:Number($('#set-byok-budget').value)||0,encrypted:false,apiKey:undefined};
+  if(s.enabled&&!rawKey&&!sessionPassphrase){toast('api key required','err');return;}
+  // APIキー処理
+  const existingSettings=await Store.getSetting('byok');
+  let finalKey=rawKey||(rawKey===''?await getApiKey():null);
+  if(finalKey==='(set — enter new to change)'||!rawKey)finalKey=await getApiKey();
+  if(newPass){
+    // パスフレーズ変更: キーを再暗号化
+    if(finalKey){s.apiKey=await Crypto.encrypt(finalKey,newPass);s.encrypted=true;}
+    setSessionPassphrase(newPass);await Store.putSetting('pass-set',true);
+  }else if(sessionPassphrase&&finalKey){
+    s.apiKey=await Crypto.encrypt(finalKey,sessionPassphrase);s.encrypted=true;
+  }else if(!newPass&&finalKey){
+    // パスフレーズなし→平文
+    s.apiKey=finalKey;s.encrypted=false;
+    setSessionPassphrase(null);await Store.deleteSetting('pass-set');
+  }
+  if(!s.apiKey&&existingSettings?.apiKey)s.apiKey=existingSettings.apiKey;
+  if(s.apiKey!==undefined)await Store.putSetting('byok',s);
+  if(lang!==currentLang){currentLang=lang;await Store.putSetting('lang',lang);applyI18N();}
+  // AutoSync 保存
+  const syncSettings={enabled:$('#set-sync-enabled').value==='true',interval:$('#set-sync-interval').value,notify:$('#set-sync-notify').value==='true'};
+  await AutoSync.setSettings(syncSettings);
+  if(syncSettings.enabled){
+    if(syncSettings.notify)await AutoSync.requestNotificationPerm();
+    const intervalSec=CONFIG.syncIntervals[syncSettings.interval]||21600;
+    const r=await AutoSync.register(intervalSec);
+    if(!r.ok)toast(currentLang==='ja'?`自動取得登録失敗: ${r.reason}`:`auto-sync register failed: ${r.reason}`,'err');
+  }else{await AutoSync.unregister();}
+  toast('settings saved','ok');$('#modal-settings').classList.remove('show');
+});
+$('#modal-settings').addEventListener('click',(e)=>{if(e.target.id==='modal-settings')$('#modal-settings').classList.remove('show');});
+
+// ===== LOCK SCREEN ======================================================
+async function showLockScreen(){
+  return new Promise((resolve)=>{
+    $('#lock-screen').classList.add('show');
+    $('#lock-input').value='';$('#lock-err').textContent='';
+    setTimeout(()=>$('#lock-input').focus(),100);
+    const doUnlock=async()=>{
+      const pass=$('#lock-input').value;if(!pass)return;
+      // パスフレーズ検証: saltが存在すれば暗号化データをdecryptして確認
+      const s=await Store.getSetting('byok');
+      if(s?.encrypted&&s?.apiKey){
+        try{await Crypto.decrypt(s.apiKey,pass);}catch{$('#lock-err').textContent=currentLang==='ja'?'パスフレーズが違います':'wrong passphrase';$('#lock-input').value='';return;}
+      }
+      setSessionPassphrase(pass);$('#lock-screen').classList.remove('show');resolve(true);
+    };
+    const doSkip=()=>{setSessionPassphrase(null);$('#lock-screen').classList.remove('show');resolve(false);};
+    $('#lock-unlock').addEventListener('click',doUnlock);
+    $('#lock-input').addEventListener('keydown',(e)=>{if(e.key==='Enter')doUnlock();});
+    $('#lock-skip').addEventListener('click',doSkip);
+  });
+}
+
+// ===== ONBOARDING =======================================================
+const Onboarding=(()=>{
+  const TOTAL=5;let step=1;let selected={lang:'ja',byok:null,presets:[],vaultDone:false};
+  function dots(){return Array.from({length:TOTAL},(_,i)=>`<div class="onboard-step-dot${i+1<step?' done':i+1===step?' current':''}"></div>`).join('');}
+  async function render(){
+    $('#onboard-dots').innerHTML=dots();
+    const keys=['lang','pass','byok','preset','vault'];const key=keys[step-1];
+    $('#onboard-step-label').textContent=t(`onboard.${key}.title`);
+    $('#onboard-desc').textContent=t(`onboard.${key}.desc`);
+    const body=$('#onboard-body');const footer=$('#onboard-footer');
+    const skip=`<button id="ob-skip" type="button">${t('onboard.btn.skip')}</button>`;
+    const next=`<button id="ob-next" class="primary" type="button">${step<TOTAL?t('onboard.btn.next'):t('onboard.btn.done')}</button>`;
+    if(step===1){
+      body.innerHTML=`<div class="lang-grid"><div class="lang-opt${selected.lang==='ja'?' selected':''}" data-lang="ja"><span class="flag">JA</span><span class="name">日本語</span></div><div class="lang-opt${selected.lang==='en'?' selected':''}" data-lang="en"><span class="flag">EN</span><span class="name">English</span></div></div>`;
+      body.querySelectorAll('.lang-opt').forEach(el=>el.addEventListener('click',()=>{selected.lang=el.dataset.lang;currentLang=selected.lang;applyI18N();body.querySelectorAll('.lang-opt').forEach(x=>x.classList.toggle('selected',x.dataset.lang===selected.lang));$('#onboard-step-label').textContent=t('onboard.lang.title');$('#onboard-desc').textContent=t('onboard.lang.desc');$('#ob-skip').textContent=t('onboard.btn.skip');$('#ob-next').textContent=t('onboard.btn.next');}));
+      footer.innerHTML=next;
+    }else if(step===2){
+      body.innerHTML=`<label style="display:block;margin-bottom:6px;font-size:12px;color:var(--fg-2);font-family:var(--font-mono);">${currentLang==='ja'?'パスフレーズ(任意)':'Passphrase (optional)'}</label><input type="password" id="ob-pass" placeholder="${currentLang==='ja'?'空欄でスキップ':'leave blank to skip'}">`;
+      footer.innerHTML=`${skip}${next}`;
+    }else if(step===3){
+      body.innerHTML=`<label>Provider</label><select id="ob-provider"><option value="anthropic">Anthropic (Claude)</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option></select><label>API Key</label><input type="password" id="ob-apikey" placeholder="sk-... / sk-ant-... / AI...">`;
+      footer.innerHTML=`${skip}${next}`;
+    }else if(step===4){
+      const checks=CONFIG.presetSources.map((s,i)=>`<label class="preset-opt"><input type="checkbox" value="${i}"${selected.presets.includes(i)?' checked':''}><div><div class="preset-name">${escapeHtml(s.name)}</div><div class="preset-url">${escapeHtml(s.url)}</div></div></label>`).join('');
+      body.innerHTML=`<div class="preset-grid">${checks}</div>`;
+      body.querySelectorAll('input[type="checkbox"]').forEach(cb=>cb.addEventListener('change',()=>{const idx=+cb.value;if(cb.checked){if(!selected.presets.includes(idx))selected.presets.push(idx);}else selected.presets=selected.presets.filter(i=>i!==idx);}));
+      footer.innerHTML=`${skip}${next}`;
+    }else{
+      body.innerHTML=`<div id="ob-vault-status" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-2);margin-bottom:12px;">${VaultMatcher.isReady()?`vault: <span style="color:var(--accent);">${escapeHtml(VaultMatcher.stats().name||'')}</span>`:currentLang==='ja'?'未選択':'not selected'}</div><button id="ob-vault-sel" type="button" style="padding:8px 16px;font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;border:1px solid var(--accent-line);border-radius:4px;color:var(--accent);">${t('onboard.btn.select-vault')}</button>`;
+      body.querySelector('#ob-vault-sel').addEventListener('click',async()=>{const name=await VaultMatcher.selectVault();if(name)body.querySelector('#ob-vault-status').innerHTML=`vault: <span style="color:var(--accent);">${escapeHtml(name)}</span>`;});
+      footer.innerHTML=`${skip}${next}`;
+    }
+    footer.querySelector('#ob-skip')?.addEventListener('click',()=>advance());
+    footer.querySelector('#ob-next')?.addEventListener('click',async()=>{
+      if(step===2){const p=$('#ob-pass')?.value?.trim();if(p){selected.byok=selected.byok||{};selected.byok.passphrase=p;setSessionPassphrase(p);await Store.putSetting('pass-set',true);}}
+      if(step===3){const key=$('#ob-apikey')?.value?.trim();const provider=$('#ob-provider')?.value;if(key)selected.byok={...(selected.byok||{}),enabled:true,provider,apiKey:key,model:CONFIG.byokDefaults[provider].model,budget:100};}
+      await advance();
+    });
+  }
+  async function advance(){if(step>=TOTAL){await finish();return;}step++;await render();}
+  async function finish(){
+    await Store.putSetting('lang',selected.lang);currentLang=selected.lang;
+    if(selected.byok){
+      let byok={...selected.byok};
+      if(byok.passphrase&&byok.apiKey){byok.apiKey=await Crypto.encrypt(byok.apiKey,byok.passphrase);byok.encrypted=true;delete byok.passphrase;}
+      await Store.putSetting('byok',byok);
+    }
+    for(const idx of selected.presets){const p=CONFIG.presetSources[idx];if(!await Store.findSourceByUrl(p.url))await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});}
+    await Store.putSetting('onboarding-done',true);
+    $('#onboarding').classList.remove('show');applyI18N();
+    await refreshCounts();await renderView();Perf.mark('render');updateVaultStatus();
+    if(selected.presets.length>0)toast(currentLang==='ja'?'ソース追加済 — POLLで取得':'sources added — press POLL to fetch','ok');
+  }
+  async function show(){step=1;selected={lang:currentLang,byok:null,presets:[],vaultDone:false};$('#onboarding').classList.add('show');await render();}
+  return{show};
+})();
+
+// ===== AUTO REFRESH =====================================================
+Bus.subscribe('event.stored',()=>{refreshCounts();renderView();});
+Bus.subscribe('event.summarized',()=>renderView());
+Bus.subscribe('event.tagged',()=>renderView());
+
+// ===== SERVICE WORKER ===================================================
+if('serviceWorker'in navigator){
+  // Defer SW registration to idle time (improves Lighthouse Performance)
+  window.addEventListener('load',()=>{
+  navigator.serviceWorker.register('/sw.js').then(reg=>{
+    // 新バージョン検出時の更新通知
+    reg.addEventListener('updatefound',()=>{
+      const nw=reg.installing;if(!nw)return;
+      nw.addEventListener('statechange',async()=>{
+        if(nw.state==='installed'&&navigator.serviceWorker.controller){
+          const msg=currentLang==='ja'?'新しいバージョンがあります。再読み込みしますか?':'A new version is available. Reload?';
+          if(await confirmAsync(msg))location.reload();
+        }
+      });
+    });
+  }).catch(err=>console.warn('SW fail',err));
+  });
+}
+
+// ===== PWA INSTALL PROMOTION =============================================
+// beforeinstallprompt を捕捉し、押し付けがましくないタイミングでバナー提示。
+// 初回起動では出さず、ある程度使った(イベント保存実績あり)後に1度だけ。
+// 却下されたら一定期間(14日)再提示しない。インストール済みなら何もしない。
+const InstallPromo=(()=>{
+  let deferred=null;
+  const SNOOZE_KEY='install-snooze-until';
+  const SNOOZE_MS=14*24*60*60*1000;
+  function isStandalone(){
+    return window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true;
+  }
+  async function snoozed(){
+    const until=await Store.getSetting(SNOOZE_KEY);
+    return until&&Date.now()<until;
+  }
+  async function snooze(){await Store.putSetting(SNOOZE_KEY,Date.now()+SNOOZE_MS);}
+  function show(){
+    const banner=$('#install-banner');if(!banner)return;
+    // i18n
+    $('#install-title').textContent=currentLang==='ja'?'Neusをインストール':'Install Neus';
+    $('#install-desc').textContent=currentLang==='ja'?'ホーム画面に追加してアプリのように使えます':'Add to home screen to use it like an app';
+    $('#install-later').textContent=currentLang==='ja'?'後で':'Later';
+    $('#install-now').textContent=currentLang==='ja'?'インストール':'Install';
+    banner.classList.add('show');
+  }
+  function hide(){$('#install-banner')?.classList.remove('show');}
+  async function maybeShow(){
+    if(isStandalone()||!deferred)return;
+    if(await snoozed())return;
+    // 利用実績(保存イベント5件以上)がある人にだけ出す
+    const total=await Store.countAll();
+    if(total<5)return;
+    show();
+  }
+  window.addEventListener('beforeinstallprompt',(e)=>{
+    e.preventDefault();deferred=e;
+    // 起動直後の慌ただしさを避け、少し待ってから判定
+    setTimeout(()=>maybeShow(),4000);
+  });
+  window.addEventListener('appinstalled',()=>{hide();deferred=null;toast(currentLang==='ja'?'インストール完了':'installed','ok');});
+  // バナーのボタン(DOMは既に構築済みなので即バインド)
+  $('#install-now')?.addEventListener('click',async()=>{
+    hide();if(!deferred)return;
+    deferred.prompt();
+    try{await deferred.userChoice;}catch{}
+    deferred=null;
+  });
+  $('#install-later')?.addEventListener('click',async()=>{hide();await snooze();});
+  return{maybeShow};
+})();
+
+// ===== BOOTSTRAP ========================================================
+// ===== PERF MONITOR ========================================================
+const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(a,b)=>((e[b]-e[a])||0).toFixed(2),all:()=>e};})();
+
+(async function main(){
+  try{
+    Perf.mark('init');
+    await Store.init();
+    Perf.mark('store');
+    const savedLang=await Store.getSetting('lang');
+    currentLang=savedLang||(navigator.language?.startsWith('ja')?'ja':'en');
+    applyI18N();
+
+    // Share Target処理
+    await ShareTarget.handle();
+
+    // パスフレーズ確認
+    const passSet=await Store.getSetting('pass-set');
+    const byok=await Store.getSetting('byok');
+    if(passSet&&byok?.encrypted)await showLockScreen();
+
+    // 各モジュール初期化
+    await KeywordRules.load();
+    await InterestProfile.load();
+    await FTSIndex.rebuild();
+    Perf.mark('fts');
+    await TagLearner.rebuild();
+    const restored=await VaultMatcher.tryRestoreVault();
+    if(restored)toast(`vault restored: ${VaultMatcher.stats().files} files`,'ok');
+
+    // ストレージクォータ確認
+    await StorageGuard.check();
+    StorageGuard.requestPersist();
+
+    // 初期表示
+    await refreshCounts();await renderView();updateVaultStatus();
+
+    // オフラインUI初期適用
+    if(!navigator.onLine){$('#btn-poll').disabled=true;$('#btn-poll').style.opacity='0.4';}
+
+    // 初回起動
+    const done=await Store.getSetting('onboarding-done');
+    if(!done)await Onboarding.show();
+
+    Perf.mark('done');
+    console.info('[Neus] ready',{lang:currentLang,fts:FTSIndex.stats(),vault:VaultMatcher.stats(),encrypted:!!(passSet&&byok?.encrypted),perf:{store:Perf.measure('init','store')+'ms',fts:Perf.measure('store','fts')+'ms',render:Perf.measure('fts','render')+'ms',total:Perf.measure('init','done')+'ms'}});
+
+    // Test hook: expose internals only when ?test=1 (no effect on production)
+    if(new URLSearchParams(location.search).has('test')){
+      window.__neus={Store,FTSIndex,Crypto,KeywordRules,Bus,TagLearner,InterestProfile,RSSPoller,InstallPromo,Dedup:{sha256,jaccard,tokenize},normalizeUrl,escapeHtml};
+      window.dispatchEvent(new Event('neus:test-ready'));
+    }
+  }catch(err){console.error('[Neus] init fail',err);toast('init failed: '+err.message,'err');}
+})();
+</script>
+</body>
+</html>

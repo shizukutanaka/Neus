@@ -1,0 +1,5 @@
+# Lensy — Cloudflare Pages Redirects
+# SPA fallback: all paths serve index.html (200 = rewrite, not redirect)
+# Share Target uses GET params, handled by index.html JS.
+
+/* /index.html 200

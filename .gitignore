@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build/coverage artifacts
+coverage/
+*.log
+.DS_Store
+
+# Temp
+.temp/
+/tmp/
+
+# Environment
+.env
+.env.local
+.dev.vars
+
+# Wrangler
+.wrangler/
+
+# Note: sbom.json IS committed as a release artifact (EU CRA / OMB M-26-05 compliance)
+# Note: package-lock.json IS committed for reproducible builds (supply chain integrity)
+
+# Playwright
+test-results/
+playwright-report/

@@ -1,0 +1,41 @@
+# Neus — Cloudflare Pages HTTP Headers
+# Applied to every response served from Cloudflare Pages CDN.
+# Reference: https://developers.cloudflare.com/pages/configuration/headers/
+
+/*
+  # Prevent clickjacking
+  X-Frame-Options: DENY
+
+  # Prevent MIME type sniffing
+  X-Content-Type-Options: nosniff
+
+  # Strict HTTPS (1 year, include subdomains)
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+  # Minimal referrer for privacy
+  Referrer-Policy: strict-origin-when-cross-origin
+
+  # Restrict browser features
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), interest-cohort=()
+
+  # XSS protection (legacy browsers)
+  X-XSS-Protection: 1; mode=block
+
+  # Content Security Policy
+  # script-src 'unsafe-inline': required for inline ES module in index.html.
+  # Future improvement: extract JS to external file → remove 'unsafe-inline'.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-REorm8mfzZpBCGP0AY2e/GQt+4K4E7IYqR9B0m8F4P4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob:; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests
+
+  # Cross-origin isolation (enables SharedArrayBuffer if needed later)
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
+
+/sw.js
+  # Service Worker must not be cached aggressively
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.json
+  Cache-Control: public, max-age=86400
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
