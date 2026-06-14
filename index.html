@@ -89,6 +89,8 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-prov{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;}
 .word-prov-tier{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:10px;padding:1px 8px;}
 .word-prov-tier.tier-research{color:var(--accent);border-color:var(--accent-line);}
+.word-gap{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 10px;}
+.word-gap::before{content:"\2014  ";color:var(--fg-3);}
 .word-meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);}
 .word-wiki{margin:8px 0;font-size:13px;color:var(--fg-2);line-height:1.6;}
 .word-wiki p{margin:0 0 6px;}
@@ -1980,6 +1982,18 @@ function tierBreakdown(events){
   for(const ev of events){const k=sourceTier(ev.source?.name);counts.set(k,(counts.get(k)||0)+1);}
   return TIER_DEFS.filter(d=>counts.get(d.key)).map(d=>({tier:d.key,ja:d.ja,en:d.en,count:counts.get(d.key)}));
 }
+// アポリア(無知の知): 有効なのに0件だったソース = 探究の空白。沈黙も情報。
+const feedLabelOf=(name)=>((name||'').split('·').pop()||'').trim();
+function signalGaps(word,events){
+  const present=new Set(events.map(e=>feedLabelOf(e.source?.name)));
+  const active=[],silent=[];
+  if(word.sources?.wikipedia)(word.wiki?.extract?active:silent).push('Wikipedia');
+  for(const key of Object.keys(WORD_FEEDS)){
+    if(!word.sources?.[key])continue;
+    (present.has(WORD_FEEDS[key].label)?active:silent).push(WORD_FEEDS[key].label);
+  }
+  return {active,silent};
+}
 const WordExporter={
   // 単語に紐づく収集イベント(アーカイブ除く)を新しい順で取得
   async gather(word){
@@ -2002,7 +2016,9 @@ const WordExporter={
   toDossier(word,events){
     const srcList=['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join(', ')||'-';
     const fresh=newSinceReview(events,word.reviewedAt);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,'---'].filter(Boolean).join('\n');
+    const gaps=signalGaps(word,events);
+    const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     if(word.wiki?.extract){
@@ -2016,6 +2032,8 @@ const WordExporter={
       for(const tb of tiers)parts.push(`- ${tb.ja} (${tb.en}): ${tb.count}`);
       parts.push('');
     }
+    // 空白(無知の知): 有効なのに0件だったソース。探究の境界。
+    if(showGaps)parts.push('## 空白','',`有効だが0件: ${gaps.silent.join(', ')}`,'');
     if(fresh.length){
       parts.push(`## 新着 (${fresh.length})`,'');
       for(const ev of fresh){
@@ -2274,11 +2292,14 @@ async function renderWords(){
     const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
     const tiers=tierBreakdown(items);
     const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
+    const gaps=signalGaps(w,items);
+    const gapLine=(w.lastCollectedAt&&gaps.silent.length)?`<div class="word-gap" title="${currentLang==='ja'?'有効だが今回0件':'enabled but returned nothing'}">${currentLang==='ja'?'空白':'no signal'}: ${gaps.silent.map(escapeHtml).join(', ')}</div>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
       ${provLine}
+      ${gapLine}
       ${wiki}
       <div class="word-actions">
         <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>

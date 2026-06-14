@@ -5,9 +5,22 @@ import { describe, it, expect } from 'vitest';
 
 const isoDate = (ms) => new Date(ms).toISOString();
 const wordSlug = (s) => (s || 'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'word';
-const WORD_FEEDS = { news: {}, reddit: {}, hn: {}, arxiv: {} };
+const WORD_FEEDS = { news: { label: 'Google News' }, reddit: { label: 'Reddit' }, hn: { label: 'Hacker News' }, arxiv: { label: 'arXiv' } };
 // Mirrored from newSinceReview in index.html
 const newSinceReview = (events, reviewedAt) => events.filter(e => (e.timestamp || 0) > (reviewedAt || 0));
+
+// Mirrored from feedLabelOf / signalGaps in index.html
+const feedLabelOf = (name) => ((name || '').split('·').pop() || '').trim();
+function signalGaps(word, events) {
+  const present = new Set(events.map(e => feedLabelOf(e.source?.name)));
+  const active = [], silent = [];
+  if (word.sources?.wikipedia) (word.wiki?.extract ? active : silent).push('Wikipedia');
+  for (const key of Object.keys(WORD_FEEDS)) {
+    if (!word.sources?.[key]) continue;
+    (present.has(WORD_FEEDS[key].label) ? active : silent).push(WORD_FEEDS[key].label);
+  }
+  return { active, silent };
+}
 
 // Mirrored from sourceTier / tierBreakdown in index.html
 const TIER_DEFS = [
@@ -45,7 +58,9 @@ function aggregateTags(events) {
 function toDossier(word, events) {
   const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
   const fresh = newSinceReview(events, word.reviewedAt);
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const gaps = signalGaps(word, events);
+  const showGaps = !!word.lastCollectedAt && gaps.silent.length > 0;
+  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
@@ -58,6 +73,7 @@ function toDossier(word, events) {
     for (const tb of tiers) parts.push(`- ${tb.ja} (${tb.en}): ${tb.count}`);
     parts.push('');
   }
+  if (showGaps) parts.push('## 空白', '', `有効だが0件: ${gaps.silent.join(', ')}`, '');
   if (fresh.length) {
     parts.push(`## 新着 (${fresh.length})`, '');
     for (const ev of fresh) {
@@ -257,5 +273,31 @@ describe('tierBreakdown', () => {
     expect(md).toContain('- 一次(研究) (research): 1');
     expect(md).toContain('- 報道 (press): 2');
     expect(md).toContain('- 議論 (discussion): 2');
+  });
+});
+
+// Knowing what you don't know (aporia): enabled sources that returned nothing.
+describe('WordExporter.toDossier — signal gaps', () => {
+  const events = [mkEvent({ src: 'WebGPU · Google News', title: 'press' })];
+
+  it('records silent sources in frontmatter and a 空白 section after collection', () => {
+    const word = { term: 'WebGPU', lang: 'en', normalized: 'webgpu', reviewedAt: 0, lastCollectedAt: 1000, sources: { news: true, arxiv: true, reddit: true } };
+    const md = toDossier(word, events);
+    expect(md).toContain('silent: Reddit, arXiv');
+    expect(md).toContain('## 空白');
+    expect(md).toContain('有効だが0件: Reddit, arXiv');
+  });
+
+  it('stays silent about gaps before the first collection (no lastCollectedAt)', () => {
+    const word = { term: 'WebGPU', lang: 'en', normalized: 'webgpu', reviewedAt: 0, sources: { news: true, arxiv: true } };
+    const md = toDossier(word, events);
+    expect(md).not.toContain('## 空白');
+    expect(md).not.toContain('silent:');
+  });
+
+  it('omits the 空白 section when every enabled source produced items', () => {
+    const word = { term: 'WebGPU', lang: 'en', normalized: 'webgpu', reviewedAt: 0, lastCollectedAt: 1000, sources: { news: true } };
+    const md = toDossier(word, events);
+    expect(md).not.toContain('## 空白');
   });
 });
