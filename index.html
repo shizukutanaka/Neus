@@ -92,7 +92,14 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-empty{color:var(--fg-3);font-family:var(--font-mono);font-size:12px;padding:8px 0;}
 .word-src-toggles{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px;font-size:13px;}
 .word-src-toggles label{display:flex;align-items:center;gap:6px;}
-.word-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+.word-view-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.word-view-header h2{margin:0;font-size:14px;font-family:var(--font-mono);color:var(--fg-2);}
+.word-stale{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-left:8px;cursor:pointer;text-decoration:underline;}
+.word-stale:hover{color:var(--accent);}
+.word-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);}
+.word-row-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.word-row-srcs{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--fg-3);font-family:var(--font-mono);}
+.word-row-srcs label{display:flex;align-items:center;gap:4px;cursor:pointer;}
 .word-row-actions{display:flex;gap:6px;}
 .word-row-actions button{font-size:11px;padding:5px 9px;}
 .header .actions button.on{color:var(--accent);border-color:var(--accent-line);}
@@ -2116,18 +2123,23 @@ async function renderDigest(){
 }
 
 // WORDSビュー: 登録単語ごとに Wikipedia定義 + 直近の収集アイテム + 出力ボタンを表示
+const WIKI_STALE_MS=7*24*60*60*1000;
 async function renderWords(){
   const words=await Store.listWords();
   if(words.length===0){
     return `<div class="empty"><div class="icon">+</div><div>${currentLang==='ja'?'登録された単語がありません':'no words registered'}</div><div class="hint">${currentLang==='ja'?'単語を登録すると関連情報を自動収集します':'register a word to auto-collect its information'}</div><button id="empty-words" type="button">${t('word.manage')}</button></div>`;
   }
   const all=await Store.allEvents();
+  const sorted=words.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const header=`<div class="word-view-header"><h2>${sorted.length} ${currentLang==='ja'?'単語':'words'}</h2><button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
   const sections=[];
-  for(const w of words.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))){
+  for(const w of sorted){
     const tag='word:'+w.normalized;
     const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).sort((a,b)=>(b.publishedAt||b.timestamp)-(a.publishedAt||a.timestamp));
     const recent=items.slice(0,5);
-    const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p>${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''}</div>`:'';
+    const wikiStale=w.wiki?.fetchedAt&&(Date.now()-w.wiki.fetchedAt>WIKI_STALE_MS);
+    const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
+    const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
@@ -2142,7 +2154,7 @@ async function renderWords(){
       ${recent.length?recent.map(ev=>cardHtml(ev)).join(''):`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
     </section>`);
   }
-  return sections.join('');
+  return header+sections.join('');
 }
 
 // WORDSビューの単語アクション(収集/フィルタ/出力)
@@ -2150,9 +2162,16 @@ $('#view').addEventListener('click',async(e)=>{
   const btn=e.target.closest('button[data-wact]');
   if(!btn)return;
   e.stopPropagation();
-  const word=await Store.getWord(btn.dataset.id);if(!word)return;
   const act=btn.dataset.wact;
+  if(act==='collectall'){btn.disabled=true;await WordCollector.collectAll();await refreshCounts();await renderView();return;}
+  const word=await Store.getWord(btn.dataset.id);if(!word)return;
   if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await refreshCounts();await renderView();return;}
+  if(act==='refreshwiki'){
+    btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
+    const wiki=await WordCollector.fetchWiki(word);
+    if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
+    await Store.putWord(word);await renderView();return;
+  }
   if(act==='filter'){
     currentView='all';
     $$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
@@ -2511,15 +2530,20 @@ $('#modal-keywords').addEventListener('click',(e)=>{if(e.target.id==='modal-keyw
 async function renderWordList(){
   const words=(await Store.listWords()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   if(words.length===0){$('#word-list').innerHTML=`<div style="color:var(--fg-3);">${currentLang==='ja'?'なし':'none'}</div>`;return;}
+  const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'}];
   $('#word-list').innerHTML=words.map(w=>{
-    const srcs=[];if(w.sources?.wikipedia)srcs.push('Wikipedia');for(const k of Object.keys(WORD_FEEDS))if(w.sources?.[k])srcs.push(WORD_FEEDS[k].label);
+    const srcToggles=srcDefs.map(s=>`<label><input type="checkbox" data-wmsrc="${s.key}" data-id="${w.id}"${w.sources?.[s.key]?' checked':''}> ${s.label}</label>`).join('');
     return `<div class="word-row" data-id="${w.id}">
-      <div><strong>${escapeHtml(w.term)}</strong> <span style="color:var(--fg-3);">${srcs.join(', ')||'(no source)'}</span> <span style="color:var(--fg-3);">· ${w.lastCount||0} ${currentLang==='ja'?'件/前回':'last'}</span></div>
-      <div class="word-row-actions">
-        <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
-        <button data-wmact="collect" data-id="${w.id}">COLLECT</button>
-        <button data-wmact="delete" data-id="${w.id}">DEL</button>
+      <div class="word-row-top">
+        <strong>${escapeHtml(w.term)}</strong>
+        <span style="color:var(--fg-3);">· ${w.lastCount||0} ${currentLang==='ja'?'件':'items'}</span>
+        <div class="word-row-actions">
+          <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
+          <button data-wmact="collect" data-id="${w.id}">COLLECT</button>
+          <button data-wmact="delete" data-id="${w.id}">DEL</button>
+        </div>
       </div>
+      <div class="word-row-srcs">${srcToggles}</div>
     </div>`;
   }).join('');
 }
@@ -2553,6 +2577,13 @@ $('#word-list').addEventListener('click',async(e)=>{
   if(act==='toggle'){word.enabled=word.enabled===false;await Store.putWord(word);await renderWordList();await refreshCounts();}
   if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await renderWordList();await refreshCounts();await renderView();}
   if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();}}
+});
+$('#word-list').addEventListener('change',async(e)=>{
+  const cb=e.target.closest('input[data-wmsrc]');if(!cb)return;
+  const word=await Store.getWord(cb.dataset.id);if(!word)return;
+  if(!word.sources)word.sources={};
+  word.sources[cb.dataset.wmsrc]=cb.checked;
+  await Store.putWord(word);
 });
 
 $('#kw-save').addEventListener('click',async()=>{
