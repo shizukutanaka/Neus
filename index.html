@@ -95,6 +95,10 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-empty{color:var(--fg-3);font-family:var(--font-mono);font-size:12px;padding:8px 0;}
 .word-src-toggles{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px;font-size:13px;}
 .word-src-toggles label{display:flex;align-items:center;gap:6px;}
+.word-suggest-strip{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);}
+.word-suggest-label{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--fg-3);}
+.word-suggest{font-family:var(--font-mono);font-size:11px;padding:4px 10px;border:1px dashed var(--line);border-radius:14px;color:var(--fg-2);}
+.word-suggest:hover{border-color:var(--accent-line);color:var(--accent);}
 .word-view-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
 .word-view-header h2{margin:0;font-size:14px;font-family:var(--font-mono);color:var(--fg-2);}
 .word-stale{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-left:8px;cursor:pointer;text-decoration:underline;}
@@ -2179,12 +2183,52 @@ async function renderDigest(){
 
 // WORDSビュー: 登録単語ごとに Wikipedia定義 + 直近の収集アイテム + 出力ボタンを表示
 const WIKI_STALE_MS=7*24*60*60*1000;
+
+// 産婆術: ユーザー自身の行動(WATCHキーワード / STAR記事の頻出タグ)に潜む
+// 「まだ名付けていない問い」を watchword 候補として引き出す。純粋なランク付け。
+function rankWordSuggestions({watchPatterns=[],tagCounts={},existing=new Set(),limit=6}={}){
+  const cand=new Map(); // normalized -> {term,score,reason}
+  const add=(term,score,reason)=>{
+    const norm=(term||'').trim().toLowerCase();
+    if(norm.length<2||existing.has(norm))return;
+    const cur=cand.get(norm);
+    if(cur){cur.score+=score;if(reason==='keyword')cur.reason='keyword';}
+    else cand.set(norm,{term:(term||'').trim(),score,reason});
+  };
+  for(const p of watchPatterns)add(p,100,'keyword');     // 明示的な関心は最優先
+  for(const[tag,n]of Object.entries(tagCounts))add(tag,n,'tag');
+  return [...cand.values()].sort((a,b)=>b.score-a.score).slice(0,limit);
+}
+// 候補を集めてチップ列のHTMLを生成(登録済みは除外)。候補ゼロなら空文字。
+function renderWordSuggestions(words,all){
+  const existing=new Set(words.map(w=>w.normalized));
+  const rules=KeywordRules.getRules();
+  const watchPatterns=(rules.watch||[]).filter(r=>r.pattern&&r.mode!=='regex').map(r=>r.pattern);
+  const tagCounts={};
+  for(const ev of all){
+    if(!ev.state?.starred)continue;
+    for(const tg of [...(ev.meta?.autoTags||[]),...(ev.meta?.userTags||[])]){
+      if(!tg||tg.startsWith('word:'))continue;
+      const term=tg.includes(':')?tg.split(':').pop():tg;  // watch:ai -> ai
+      tagCounts[term]=(tagCounts[term]||0)+1;
+    }
+  }
+  const sugg=rankWordSuggestions({watchPatterns,tagCounts,existing});
+  if(sugg.length===0)return '';
+  const chips=sugg.map(s=>{
+    const why=s.reason==='keyword'?(currentLang==='ja'?'WATCHキーワードから':'from your WATCH keywords'):(currentLang==='ja'?'スター記事の頻出タグ':'frequent tag in starred items');
+    return `<button class="word-suggest" data-wact="suggest" data-term="${escapeAttr(s.term)}" title="${escapeAttr(why)}">+ ${escapeHtml(s.term)}</button>`;
+  }).join('');
+  return `<div class="word-suggest-strip"><span class="word-suggest-label">${currentLang==='ja'?'提案':'Suggested'}</span>${chips}</div>`;
+}
+
 async function renderWords(){
   const words=await Store.listWords();
-  if(words.length===0){
-    return `<div class="empty"><div class="icon">+</div><div>${currentLang==='ja'?'登録された単語がありません':'no words registered'}</div><div class="hint">${currentLang==='ja'?'単語を登録すると関連情報を自動収集します':'register a word to auto-collect its information'}</div><button id="empty-words" type="button">${t('word.manage')}</button></div>`;
-  }
   const all=await Store.allEvents();
+  const suggestHtml=renderWordSuggestions(words,all);
+  if(words.length===0){
+    return `${suggestHtml}<div class="empty"><div class="icon">+</div><div>${currentLang==='ja'?'登録された単語がありません':'no words registered'}</div><div class="hint">${currentLang==='ja'?'単語を登録すると関連情報を自動収集します':'register a word to auto-collect its information'}</div><button id="empty-words" type="button">${t('word.manage')}</button></div>`;
+  }
   const sorted=words.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const header=`<div class="word-view-header"><h2>${sorted.length} ${currentLang==='ja'?'単語':'words'}</h2><button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
   const sections=[];
@@ -2214,7 +2258,7 @@ async function renderWords(){
       ${recent.length?recent.map(ev=>cardHtml(ev)).join(''):`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
     </section>`);
   }
-  return header+sections.join('');
+  return suggestHtml+header+sections.join('');
 }
 
 // WORDSビューの単語アクション(収集/フィルタ/出力)
@@ -2224,6 +2268,17 @@ $('#view').addEventListener('click',async(e)=>{
   e.stopPropagation();
   const act=btn.dataset.wact;
   if(act==='collectall'){btn.disabled=true;await WordCollector.collectAll();await refreshCounts();await renderView();return;}
+  if(act==='suggest'){
+    const term=(btn.dataset.term||'').trim();if(!term)return;
+    const normalized=term.toLowerCase();
+    if(await Store.findWordByTerm(normalized)){await renderView();return;}
+    btn.disabled=true;
+    const now=Date.now();
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null};
+    await Store.putWord(word);
+    toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
+    await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
+  }
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
   if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await refreshCounts();await renderView();return;}
   if(act==='reviewed'){word.reviewedAt=Date.now();await Store.putWord(word);await renderView();return;}

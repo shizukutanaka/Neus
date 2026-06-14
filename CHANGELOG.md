@@ -52,6 +52,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - 単語ドシエに frontmatter `unreviewed` と **`## 新着`** セクション(前回レビュー以降のアイテム)を追加
 - 共有判定 `newSinceReview()` をビュー/出力で共用
 
+#### 視点の転換 — 「問いを待つのではなく引き出す」(ソクラテス式の産婆術)
+watchword はユーザーがタイプして生まれるだけ、という前提を覆す。最も価値ある問いはユーザー自身の行動に潜む:
+- **watchword 提案** — WATCHキーワード(明示的な関心)と STAR 記事の頻出タグから候補を抽出し、WORDS ビュー上部にチップ列で提示
+- チップをワンタップで登録 → 既定ソースで即収集(`data-wact="suggest"`)。登録済みは除外
+- 純粋なランク付け `rankWordSuggestions()`(キーワード最優先、同一語はスコア合算、2文字未満ノイズ除去、件数順)
+
 #### Tests
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
