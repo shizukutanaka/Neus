@@ -10,6 +10,7 @@
 - **BYOK要約** — OpenAI / Anthropic / Gemini、キーは端末内暗号化(AES-GCM)
 - **全文検索** — N-gram反転索引 + IDF重み付け、稀少語を優先
 - **興味の自動学習** — STAR/ARCHIVEの行動から「欲しい/いらない」を学習しスコア補正
+- **単語ウォッチ(Watchword)** — 単語を登録するとGoogle News/Reddit/HN/arXivから関連情報を自動収集、Wikipedia定義カード付き。単語ドシエをMarkdown/JSON/Vaultへ出力
 - **キーワードルール** — WATCH/BLOCK で気になる/不要を自動振り分け。カード長押しで素早く追加
 - **スワイプ操作** — 右でスター、左でアーカイブ(モバイル)
 - **Obsidian Vault連携** — File System Access APIで直接書き出し
@@ -91,13 +92,22 @@ npm run deploy
 - BYOK設定済みの場合は自動要約
 - カード **EDIT** → ユーザーメモ・引用・タグを追記
 
-### 4. Vault書き出し
+### 4. 単語ウォッチ(Watchword)
+
+- **WORDS**(メニュー)→ 単語を入力し、収集ソース(Wikipedia / Google News / Reddit / Hacker News / arXiv)を選んで **ADD**
+- 登録時とPOLL時に自動収集。各ソースの検索フィードを取得し、`word:{単語}` タグ付きで保存
+- **WORDS** ビュー → 単語ごとにWikipedia定義 + 直近アイテム + 出力ボタン(DOSSIER MD / JSON / VAULT)
+- 出力先(Vault): `{Vault}/neus/words/{単語}.md`
+
+> 収集ソースのうちWikipedia(JSON)はワーカーの `GET /json?url=`(Wikipedia/Wikimedia限定の許可リスト)経由。その他はRSS検索フィードのため既存 `/rss` プロキシをそのまま使用。
+
+### 5. Vault書き出し
 
 - カード **VAULT** → 個別ノートをVaultに書き出し
 - **VAULT → EXPORT ALL STARRED** → スター済みを一括書き出し
 - 書き出し先: `{Vault}/neus/{uuid}.md` + `{Vault}/{date}.md` のDaily Note
 
-### 5. 検索
+### 6. 検索
 
 - ヘッダー検索バー → N-gram全文検索(リアルタイム)
 

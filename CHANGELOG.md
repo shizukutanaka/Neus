@@ -6,6 +6,37 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [v0.12.0] - 2026-06-14
+
+### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)
+
+特定の単語/トピックを登録すると、その情報を横断的に自動収集し、まとめて出力できる能動的な調査機能。
+
+#### 入力(収集)
+- 単語ごとに検索フィードを生成し、既存の `/rss` プロキシ経由で取得:
+  - Google News 検索RSS / Reddit 検索RSS / Hacker News(hnrss)/ arXiv(Atom)
+- 単語の定義/概要は Wikipedia REST summary(JSON)から取得
+  - ワーカーに `GET /json?url=` を追加(ホスト許可リスト=Wikipedia/Wikimediaのみ、SSRFガード共有)
+- 収集結果は既存パイプライン(正規化→重複排除→保存→FTS)へ流入。`source.type='word'` と
+  自動タグ `word:{term}` を付与し、フィルタ/検索/出力で束ねる
+- 手動POLLおよびPeriodic Background Sync(AutoSync)に相乗りして自動収集
+
+#### 出力(アウトプット)
+- 単語ドシエ Markdown(定義 + ソース別アイテム一覧)ダウンロード
+- 構造化JSONエクスポート
+- Obsidian Vault へ `neus/words/{slug}.md` 直書き
+- 個別カードの COPY MD は従来どおり
+
+#### UI / ストレージ
+- 新ビュー `WORDS`(単語ごとの定義カード + 直近アイテム + 出力ボタン)
+- `WORDS` モーダル(登録 / 収集ソース選択 / 有効化 / 収集 / 削除)
+- IndexedDB に `words` ストアを追加(dbVersion 1→2、非破壊アップグレード)。バックアップ/復元にも対応
+- JA/EN 文言、アクセント色 `#00C4CC` 準拠、絵文字なし
+
+#### Tests
+- `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード)
+- `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
+
 ## [v0.11.0] - 2026-05-30
 
 ### Maskable Icon Fix — Install Experience (Category 5)
