@@ -83,6 +83,9 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}
 .word-head h2{font-size:18px;margin:0;}
 .word-off{color:var(--fg-3);font-size:12px;font-family:var(--font-mono);}
+.word-new{font-family:var(--font-mono);font-size:11px;color:var(--accent);border:1px solid var(--accent-line);border-radius:10px;padding:1px 8px;vertical-align:middle;}
+.word-note{margin:2px 0 8px;font-size:13px;color:var(--fg-2);font-style:italic;}
+.word-note::before{content:"? ";color:var(--fg-3);font-style:normal;}
 .word-meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);}
 .word-wiki{margin:8px 0;font-size:13px;color:var(--fg-2);line-height:1.6;}
 .word-wiki p{margin:0 0 6px;}
@@ -541,6 +544,9 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
     <label for="word-input" id="lbl-word-input">単語(入力してADD)</label>
     <input type="text" id="word-input" placeholder="WebGPU" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" inputmode="text" aria-label="登録する単語">
 
+    <label for="word-note" id="lbl-word-note">問い(任意)</label>
+    <input type="text" id="word-note" placeholder="本番投入できる段階か?" autocomplete="off" aria-label="この単語を追う問い">
+
     <h4 id="hd-word-src">収集ソース</h4>
     <div id="word-src-toggles" class="word-src-toggles">
       <label><input type="checkbox" id="wsrc-wikipedia" checked> Wikipedia</label>
@@ -699,6 +705,9 @@ const DICT={
     'word.add':'追加',
     'word.collectall':'すべて収集',
     'word.exportall':'一括出力',
+    'word.note':'問い(任意)',
+    'word.note.ph':'本番投入できる段階か?',
+    'word.reviewed':'確認済み',
     'hd.keywords':'キーワード管理',
     'hd.kw.watch':'WATCH(気になる)',
     'hd.kw.block':'BLOCK(ブロック)',
@@ -787,6 +796,9 @@ const DICT={
     'word.add':'ADD',
     'word.collectall':'COLLECT ALL',
     'word.exportall':'EXPORT ALL',
+    'word.note':'Question (optional)',
+    'word.note.ph':'Is it production-ready?',
+    'word.reviewed':'REVIEWED',
     'hd.keywords':'KEYWORD RULES',
     'hd.kw.watch':'WATCH (Highlight)',
     'hd.kw.block':'BLOCK (Hide)',
@@ -859,6 +871,8 @@ function applyI18N(){
   $('#word-add').textContent=t('word.add');
   $('#word-collect-all').textContent=t('word.collectall');
   $('#word-export-all').textContent=t('word.exportall');
+  $('#lbl-word-note').textContent=t('word.note');
+  $('#word-note').placeholder=t('word.note.ph');
   $('#word-cancel').textContent=t('btn.close');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-vault').textContent=t('btn.vault');
@@ -1937,6 +1951,8 @@ const MarkdownExporter={
 // ===== WORD EXPORTER ====================================================
 // 1単語の収集結果(Wikipedia定義 + 収集アイテム)を1つの「単語ドシエ」にまとめて出力する。
 const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||'word';
+// 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
+const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
 const WordExporter={
   // 単語に紐づく収集イベント(アーカイブ除く)を新しい順で取得
   async gather(word){
@@ -1958,11 +1974,21 @@ const WordExporter={
   },
   toDossier(word,events){
     const srcList=['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join(', ')||'-';
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`sources: ${srcList}`,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,'---'].filter(Boolean).join('\n');
+    const fresh=newSinceReview(events,word.reviewedAt);
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
+    if(word.note)parts.push(`> ${word.note}`,'');
     if(word.wiki?.extract){
       parts.push('## 定義','',word.wiki.extract,'');
       if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
+    }
+    if(fresh.length){
+      parts.push(`## 新着 (${fresh.length})`,'');
+      for(const ev of fresh){
+        const d=ev.publishedAt?isoDate(ev.publishedAt).slice(0,10):'';
+        parts.push(`- [${ev.content.title}](${ev.url||''})${d?` — ${d}`:''}`);
+      }
+      parts.push('');
     }
     parts.push(`## 収集アイテム (${events.length})`,'');
     // ソース別にグルーピング
@@ -2166,15 +2192,20 @@ async function renderWords(){
     const tag='word:'+w.normalized;
     const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).sort((a,b)=>(b.publishedAt||b.timestamp)-(a.publishedAt||a.timestamp));
     const recent=items.slice(0,5);
+    const newCount=newSinceReview(items,w.reviewedAt).length;
     const wikiStale=w.wiki?.fetchedAt&&(Date.now()-w.wiki.fetchedAt>WIKI_STALE_MS);
     const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
     const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
+    const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
+    const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
-      <div class="word-head"><h2>${escapeHtml(w.term)}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
+      <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
+      ${noteLine}
       ${wiki}
       <div class="word-actions">
         <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
+        ${newCount>0?`<button data-wact="reviewed" data-id="${w.id}">${t('word.reviewed')}</button>`:''}
         <button data-wact="filter" data-id="${w.id}">${t('word.filter')}</button>
         <button data-wact="md" data-id="${w.id}">DOSSIER MD</button>
         <button data-wact="json" data-id="${w.id}">JSON</button>
@@ -2195,6 +2226,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='collectall'){btn.disabled=true;await WordCollector.collectAll();await refreshCounts();await renderView();return;}
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
   if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await refreshCounts();await renderView();return;}
+  if(act==='reviewed'){word.reviewedAt=Date.now();await Store.putWord(word);await renderView();return;}
   if(act==='refreshwiki'){
     btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
     const wiki=await WordCollector.fetchWiki(word);
@@ -2589,9 +2621,11 @@ async function addWord(){
   if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
   const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked};
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
-  const word={id:uuid(),term,normalized,lang:currentLang,sources,enabled:true,createdAt:Date.now(),lastCollectedAt:null,lastCount:0,wiki:null};
+  const note=$('#word-note').value.trim();
+  const now=Date.now();
+  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null};
   await Store.putWord(word);
-  $('#word-input').value='';
+  $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
   toast(currentLang==='ja'?'登録しました — 収集中...':'registered — collecting...','ok');
   await WordCollector.collectOne(word);

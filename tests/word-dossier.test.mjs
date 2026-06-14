@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 const isoDate = (ms) => new Date(ms).toISOString();
 const wordSlug = (s) => (s || 'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'word';
 const WORD_FEEDS = { news: {}, reddit: {}, hn: {}, arxiv: {} };
+// Mirrored from newSinceReview in index.html
+const newSinceReview = (events, reviewedAt) => events.filter(e => (e.timestamp || 0) > (reviewedAt || 0));
 
 // Mirrored from WordExporter.aggregateTags
 function aggregateTags(events) {
@@ -22,11 +24,21 @@ function aggregateTags(events) {
 // Mirrored from WordExporter.toDossier
 function toDossier(word, events) {
   const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `sources: ${srcList}`, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const fresh = newSinceReview(events, word.reviewedAt);
+  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
+  if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
     parts.push('## 定義', '', word.wiki.extract, '');
     if (word.wiki.url) parts.push(`[Wikipedia](${word.wiki.url})`, '');
+  }
+  if (fresh.length) {
+    parts.push(`## 新着 (${fresh.length})`, '');
+    for (const ev of fresh) {
+      const d = ev.publishedAt ? isoDate(ev.publishedAt).slice(0, 10) : '';
+      parts.push(`- [${ev.content.title}](${ev.url || ''})${d ? ` — ${d}` : ''}`);
+    }
+    parts.push('');
   }
   parts.push(`## 収集アイテム (${events.length})`, '');
   const groups = new Map();
@@ -47,7 +59,7 @@ function toDossier(word, events) {
   return parts.join('\n');
 }
 
-const mkEvent = (o) => ({ source: { name: o.src }, content: { title: o.title, snippet: o.snippet || '' }, url: o.url, publishedAt: o.publishedAt, meta: { autoTags: o.autoTags || [], userTags: o.userTags || [] } });
+const mkEvent = (o) => ({ source: { name: o.src }, content: { title: o.title, snippet: o.snippet || '' }, url: o.url, publishedAt: o.publishedAt, timestamp: o.timestamp, meta: { autoTags: o.autoTags || [], userTags: o.userTags || [] } });
 
 describe('wordSlug', () => {
   it('slugifies ASCII terms', () => expect(wordSlug('Web GPU!!')).toBe('web-gpu'));
@@ -123,5 +135,55 @@ describe('WordExporter.aggregateTags', () => {
   it('omits the タグ section when no non-word tags exist', () => {
     const md = toDossier({ term: 'X', lang: 'en', normalized: 'x' }, [mkEvent({ src: 'A', title: 't', autoTags: ['word:x'] })]);
     expect(md).not.toContain('## タグ');
+  });
+});
+
+// A word is a question, and the value is the delta since last review (Socratic reframe).
+describe('newSinceReview', () => {
+  const events = [
+    mkEvent({ src: 'A', title: 'old', timestamp: 100 }),
+    mkEvent({ src: 'A', title: 'new', timestamp: 300 }),
+  ];
+  it('returns only items collected after the review timestamp', () => {
+    expect(newSinceReview(events, 200).map(e => e.content.title)).toEqual(['new']);
+  });
+  it('treats a missing reviewedAt as "everything is new"', () => {
+    expect(newSinceReview(events, undefined)).toHaveLength(2);
+  });
+});
+
+describe('WordExporter.toDossier — intent + delta', () => {
+  const word = { term: 'WebGPU', lang: 'en', normalized: 'webgpu', note: 'production-ready?', reviewedAt: 200 };
+  const events = [
+    mkEvent({ src: 'News', title: 'old item', url: 'https://ex.com/o', publishedAt: Date.parse('2026-01-01'), timestamp: 100 }),
+    mkEvent({ src: 'News', title: 'fresh item', url: 'https://ex.com/n', publishedAt: Date.parse('2026-01-03'), timestamp: 300 }),
+  ];
+
+  it('records the intent (question) in frontmatter and as a blockquote', () => {
+    const md = toDossier(word, events);
+    expect(md).toContain('intent: production-ready?');
+    expect(md).toContain('> production-ready?');
+  });
+
+  it('counts and lists only unreviewed items in the 新着 section', () => {
+    const md = toDossier(word, events);
+    expect(md).toContain('unreviewed: 1');
+    expect(md).toContain('## 新着 (1)');
+    expect(md).toContain('- [fresh item](https://ex.com/n) — 2026-01-03');
+    // The reviewed (old) item is absent from 新着 but still present in 収集アイテム
+    expect(md.split('## 収集アイテム')[0]).not.toContain('old item');
+    expect(md).toContain('- [old item](https://ex.com/o)');
+  });
+
+  it('omits the 新着 section and reports zero when all items are reviewed', () => {
+    const md = toDossier({ ...word, reviewedAt: 9999 }, events);
+    expect(md).toContain('unreviewed: 0');
+    expect(md).not.toContain('## 新着');
+  });
+
+  it('omits intent lines when the word has no note', () => {
+    const md = toDossier({ term: 'X', lang: 'en', normalized: 'x', reviewedAt: 0 }, []);
+    expect(md).not.toContain('intent:');
+    expect(md).not.toMatch(/^> /m);
   });
 });

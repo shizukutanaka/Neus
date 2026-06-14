@@ -45,6 +45,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - WORDSモーダルに EXPORT ALL を追加。全watchwordを1つのMarkdownへ一括出力
 - 収集ソース未選択での単語登録をバリデーションで防止
 
+#### 視点の転換 — 「語 = 問い、価値 = 差分」(ソクラテス式の再フレーム)
+語を検索クエリではなく *問い* として扱い、出力の価値を「全アイテム」ではなく「前回レビュー以降の新着 = 答えの変化」と捉え直す:
+- 各単語に任意の **note(問い/意図)** を付与(WORDSモーダルで入力、WORDSビューと ドシエ frontmatter `intent` + 引用に反映)
+- **reviewedAt** を追跡。WORDSビューに **新着件数バッジ** と **REVIEWED(確認済み)** ボタンを表示し、レビュー時点を更新
+- 単語ドシエに frontmatter `unreviewed` と **`## 新着`** セクション(前回レビュー以降のアイテム)を追加
+- 共有判定 `newSinceReview()` をビュー/出力で共用
+
 #### Tests
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
