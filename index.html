@@ -115,6 +115,9 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-suggest:hover{border-color:var(--accent-line);color:var(--accent);}
 .word-view-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
 .word-view-header h2{margin:0;font-size:14px;font-family:var(--font-mono);color:var(--fg-2);}
+.word-overview{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px;}
+.word-ov-chip{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:10px;padding:1px 8px;}
+.word-ov-chip.ov-alert{color:var(--accent);border-color:var(--accent-line);}
 .word-stale{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-left:8px;cursor:pointer;text-decoration:underline;}
 .word-stale:hover{color:var(--accent);}
 .word-verdict{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid;cursor:pointer;margin-left:6px;vertical-align:middle;transition:opacity .15s;}
@@ -2158,6 +2161,22 @@ function socraticPrompts(word,events){
   if(unreviewed>=10)out.push({key:'unreviewed',ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
   return out.slice(0,3);
 }
+// WORDSビュー俯瞰: 全探究の状態を一望する集計。裁決分布・要再検討・未確認・未収集・問答保留。純粋関数。
+function wordsOverview(words,all){
+  const o={total:words.length,answered:0,open:0,reexamine:0,unreviewed:0,prompts:0,uncollected:0};
+  for(const w of words){
+    const v=verdictOf(w);
+    if(v==='answered')o.answered++;
+    if(v==='open')o.open++;
+    const tag='word:'+w.normalized;
+    const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived);
+    if(verdictStale(w,items)>0)o.reexamine++;
+    o.unreviewed+=newSinceReview(items,w.reviewedAt).length;
+    if(socraticPrompts(w,items).length>0)o.prompts++;
+    if(!w.lastCollectedAt)o.uncollected++;
+  }
+  return o;
+}
 // 弁証法(dialektikē): 語は孤島ではない。ある単語の収集テキストに別の登録語が
 // 現れたら、それは問いどうしの連環。相互参照を関連として引き出す。
 function relatedWords(items,others){
@@ -2567,6 +2586,14 @@ async function renderWords(){
   }
   const sorted=words.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const header=`<div class="word-view-header"><h2>${sorted.length} ${currentLang==='ja'?'単語':'words'}</h2><button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
+  // 俯瞰サマリ: 蓄積した探究状態を一望(解決数・要再検討・問答保留・未確認・未収集)
+  const ov=wordsOverview(sorted,all);
+  const ovChips=[`<span class="word-ov-chip">${currentLang==='ja'?'解決':'answered'} ${ov.answered}/${ov.total}</span>`];
+  if(ov.reexamine>0)ovChips.push(`<span class="word-ov-chip ov-alert">${currentLang==='ja'?'要再検討':'re-examine'} ${ov.reexamine}</span>`);
+  if(ov.prompts>0)ovChips.push(`<span class="word-ov-chip">${currentLang==='ja'?'問答':'prompts'} ${ov.prompts}</span>`);
+  if(ov.unreviewed>0)ovChips.push(`<span class="word-ov-chip">${currentLang==='ja'?'未確認':'unreviewed'} ${ov.unreviewed}</span>`);
+  if(ov.uncollected>0)ovChips.push(`<span class="word-ov-chip">${currentLang==='ja'?'未収集':'uncollected'} ${ov.uncollected}</span>`);
+  const overview=`<div class="word-overview" aria-label="${escapeAttr(currentLang==='ja'?'探究の俯瞰':'inquiry overview')}">${ovChips.join('')}</div>`;
   const sections=[];
   for(const w of sorted){
     const tag='word:'+w.normalized;
@@ -2637,7 +2664,7 @@ async function renderWords(){
       ${recent.length?recent.map(ev=>cardHtml(ev)).join(''):`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
     </section>`);
   }
-  return suggestHtml+header+sections.join('');
+  return suggestHtml+header+overview+sections.join('');
 }
 
 // WORDSビューの単語アクション(収集/フィルタ/出力)
