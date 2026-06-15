@@ -104,6 +104,50 @@ describe('wordsOverview', () => {
   });
 });
 
+// ===== Mirrored from wordMatchesOv in index.html =====
+function wordMatchesOv(w, all, filter) {
+  if (!filter) return true;
+  const v = verdictOf(w);
+  if (filter === 'answered') return v === 'answered';
+  if (filter === 'open') return v === 'open';
+  if (filter === 'uncollected') return !w.lastCollectedAt;
+  const tag = 'word:' + w.normalized;
+  const items = all.filter(e => (e.meta.autoTags || []).includes(tag) && !e.state.archived);
+  if (filter === 'reexamine') return verdictStale(w, items) > 0;
+  if (filter === 'unreviewed') return newSinceReview(items, w.reviewedAt).length > 0;
+  if (filter === 'prompts') return socraticPrompts(w, items).length > 0;
+  return true;
+}
+
+describe('wordMatchesOv', () => {
+  it('matches everything when no filter is set', () => {
+    expect(wordMatchesOv({ normalized: 'a' }, [], null)).toBe(true);
+  });
+  it('filters by verdict status', () => {
+    expect(wordMatchesOv({ normalized: 'a', verdict: { status: 'answered' } }, [], 'answered')).toBe(true);
+    expect(wordMatchesOv({ normalized: 'a', verdict: { status: 'open' } }, [], 'answered')).toBe(false);
+    expect(wordMatchesOv({ normalized: 'a' }, [], 'open')).toBe(true); // default open
+  });
+  it('filters never-collected words', () => {
+    expect(wordMatchesOv({ normalized: 'a', lastCollectedAt: null }, [], 'uncollected')).toBe(true);
+    expect(wordMatchesOv({ normalized: 'a', lastCollectedAt: 9 }, [], 'uncollected')).toBe(false);
+  });
+  it('filters words needing re-examination', () => {
+    const w = { normalized: 'a', verdict: { status: 'answered' }, verdictAt: 100 };
+    expect(wordMatchesOv(w, [item('a', 200)], 'reexamine')).toBe(true);
+    expect(wordMatchesOv(w, [item('a', 50)], 'reexamine')).toBe(false);
+  });
+  it('filters words with unreviewed items', () => {
+    const w = { normalized: 'a', reviewedAt: 0 };
+    expect(wordMatchesOv(w, [item('a', 10)], 'unreviewed')).toBe(true);
+    expect(wordMatchesOv(w, [], 'unreviewed')).toBe(false);
+  });
+  it('filters words with pending prompts', () => {
+    expect(wordMatchesOv({ normalized: 'a', questions: [] }, [item('a', 1)], 'prompts')).toBe(true);
+    expect(wordMatchesOv({ normalized: 'a', questions: [{}] }, [item('a', 1)], 'prompts')).toBe(false);
+  });
+});
+
 describe('overview wiring (index.html)', () => {
   it('declares wordsOverview', () => {
     expect(html).toContain('function wordsOverview');
@@ -114,6 +158,17 @@ describe('overview wiring (index.html)', () => {
     expect(html).toContain('return suggestHtml+header+overview+sections.join');
   });
   it('highlights re-examination as an alert chip', () => {
-    expect(html).toContain('word-ov-chip ov-alert');
+    expect(html).toContain('.word-ov-chip.ov-alert'); // CSS rule
+    expect(html).toContain("' ov-alert'");             // applied conditionally
+  });
+  it('makes the chips clickable filters with an active state', () => {
+    expect(html).toContain('function wordMatchesOv');
+    expect(html).toContain('data-wact="ovfilter"');
+    expect(html).toContain('ov-active');
+    expect(html).toContain("act==='ovfilter'");
+  });
+  it('filters the rendered list and offers a clear control', () => {
+    expect(html).toContain('sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter))');
+    expect(html).toContain('no words match this filter');
   });
 });
