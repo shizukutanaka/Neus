@@ -118,6 +118,11 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-verdict.v-suspended{color:var(--fg-3);border-color:var(--line);opacity:0.55;}
 .word-reexamine{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid var(--accent-line);color:var(--accent);background:none;cursor:pointer;margin-left:6px;vertical-align:middle;}
 .word-reexamine:hover{background:var(--accent);color:var(--bg-1);}
+.word-shift{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 8px;}
+.word-shift-prior{color:var(--fg-3);}
+.word-shift-arrow{color:var(--fg-3);}
+.word-shift-verdict{color:var(--accent);}
+#word-prior{font-family:var(--font-mono);font-size:13px;margin-bottom:8px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);width:100%;}
 .word-q-list{margin:0 0 10px;padding:0;list-style:none;font-size:12px;color:var(--fg-2);}
 .word-q-list li{display:flex;align-items:center;gap:6px;padding:2px 0;font-family:var(--font-mono);}
 .word-q-list li::before{content:"?";color:var(--fg-3);flex-shrink:0;}
@@ -573,6 +578,14 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
     <label for="word-note" id="lbl-word-note">問い(任意)</label>
     <input type="text" id="word-note" placeholder="本番投入できる段階か?" autocomplete="off" aria-label="この単語を追う問い">
 
+    <label for="word-prior" id="lbl-word-prior">出発点の認識</label>
+    <select id="word-prior" aria-label="登録時の先入観">
+      <option value="curious">好奇 / curious</option>
+      <option value="certain">確信 / certain</option>
+      <option value="skeptical">懐疑 / skeptical</option>
+      <option value="agnostic">無知 / agnostic</option>
+    </select>
+
     <h4 id="hd-word-src">収集ソース</h4>
     <div id="word-src-toggles" class="word-src-toggles">
       <label><input type="checkbox" id="wsrc-wikipedia" checked> Wikipedia</label>
@@ -734,6 +747,8 @@ const DICT={
     'word.note':'問い(任意)',
     'word.note.ph':'本番投入できる段階か?',
     'word.reviewed':'確認済み',
+    'word.prior':'出発点の認識',
+    'word.shift':'認識の変容',
     'word.verdict':'裁決',
     'word.verdict.cycle':'裁決を変更',
     'word.q.add':'問いを追加',
@@ -829,6 +844,8 @@ const DICT={
     'word.note':'Question (optional)',
     'word.note.ph':'Is it production-ready?',
     'word.reviewed':'REVIEWED',
+    'word.prior':'Starting belief',
+    'word.shift':'Cognitive shift',
     'word.verdict':'Verdict',
     'word.verdict.cycle':'Cycle verdict',
     'word.q.add':'Add question',
@@ -907,6 +924,7 @@ function applyI18N(){
   $('#word-export-all').textContent=t('word.exportall');
   $('#lbl-word-note').textContent=t('word.note');
   $('#word-note').placeholder=t('word.note.ph');
+  $('#lbl-word-prior').textContent=t('word.prior');
   $('#word-cancel').textContent=t('btn.close');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-vault').textContent=t('btn.vault');
@@ -2014,6 +2032,20 @@ const VERDICT_DEFS=[
 ];
 function verdictOf(word){return word.verdict?.status||'open';}
 function nextVerdict(status){const keys=VERDICT_DEFS.map(d=>d.key);const i=keys.indexOf(status);return keys[(i+1)%keys.length];}
+// 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決を対比し、探究が自己認識を変えたかを記録。
+const PRIOR_BELIEF_DEFS=[
+  {key:'curious',  ja:'好奇',  en:'curious'},
+  {key:'certain',  ja:'確信',  en:'certain'},
+  {key:'skeptical',ja:'懐疑',  en:'skeptical'},
+  {key:'agnostic', ja:'無知',  en:'agnostic'},
+];
+function priorBeliefOf(word){return word.priorBelief||'curious';}
+function cognitiveShift(word){
+  const prior=priorBeliefOf(word),verdict=verdictOf(word);
+  const pd=PRIOR_BELIEF_DEFS.find(d=>d.key===prior)||PRIOR_BELIEF_DEFS[0];
+  const vd=VERDICT_DEFS.find(d=>d.key===verdict)||VERDICT_DEFS[0];
+  return{prior,verdict,pd,vd,changed:prior!==verdict&&verdict!=='open'};
+}
 // 再検討(知に終わりなし): 裁決後に到来した新証拠の数。決着した結論ほど反証に晒すべき、というエレンコスの自己適用。
 const SETTLED_VERDICTS=new Set(['answered','suspended']);
 function verdictStale(word,events){
@@ -2101,7 +2133,8 @@ const WordExporter={
     const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
     const related=relatedWords(events,others);
     const stale=verdictStale(word,events);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const shift=cognitiveShift(word);
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     if(word.wiki?.extract){
@@ -2119,6 +2152,17 @@ const WordExporter={
     if(showGaps)parts.push('## 空白','',`有効だが0件: ${gaps.silent.join(', ')}`,'');
     // 関連(弁証法): 収集テキストに現れた他の登録語。問いの連環。
     if(related.length)parts.push('## 関連','',related.map(r=>`- ${r.term} (${r.count})`).join('\n'),'');
+    // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決の対比。探究が自己認識を変えたかを記録。
+    {
+      const pd=PRIOR_BELIEF_DEFS.find(d=>d.key===priorBeliefOf(word))||PRIOR_BELIEF_DEFS[0];
+      parts.push('## 認識の変容','');
+      if(shift.changed){
+        const vd=VERDICT_DEFS.find(d=>d.key===shift.verdict)||VERDICT_DEFS[0];
+        parts.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en})`,'');
+      }else{
+        parts.push(`${pd.ja} (${pd.en}) → 探究継続中 (ongoing)`,'');
+      }
+    }
     if(fresh.length){
       parts.push(`## 新着 (${fresh.length})`,'');
       for(const ev of fresh){
@@ -2413,6 +2457,11 @@ async function renderWords(){
     const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`).join('')}</ul>`:'';
     const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
     const qAdd=`<div class="word-q-add"><input type="text" placeholder="${qPh}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} への未解決の問い`:`open question for ${w.term}`)}" enterkeyhint="done" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'問いを追加':'add question')}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
+
+    // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決を対比。変容があれば示す。
+    const shift=cognitiveShift(w);
+    const shiftLine=shift.changed?`<div class="word-shift" title="${escapeAttr(currentLang==='ja'?t('word.shift'):t('word.shift'))}"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span><span class="word-shift-arrow"> → </span><span class="word-shift-verdict">${currentLang==='ja'?shift.vd.ja:shift.vd.en}</span></div>`:
+      `<div class="word-shift"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span></div>`;
     const tiers=tierBreakdown(items);
     const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
     const gaps=signalGaps(w,items);
@@ -2424,6 +2473,7 @@ async function renderWords(){
     sections.push(`<section class="word-section" data-word="${w.id}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${reexamineBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
+      ${shiftLine}
       ${verdictNote}
       ${provLine}
       ${gapLine}
@@ -2457,7 +2507,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
     await Store.putWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
@@ -2913,8 +2963,9 @@ async function addWord(){
   const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked};
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   const note=$('#word-note').value.trim();
+  const priorBelief=$('#word-prior').value||'curious';
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
   await Store.putWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();

@@ -84,6 +84,14 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - **Round 6 — 裁決 (Verdict)**: 各watchwordに verdict ライフサイクルフィールドを追加(open/converging/answered/suspended)。WORDSビューにステータスピルボタンを表示しワンタップでサイクル。ドシエに `verdict_status` / `verdict_note` frontmatterと `## 裁決` セクションを追加(open+メモなしは非表示)
 - **Round 7 — 問い群 (Questions)**: 各watchwordに未解決の問い配列を追加。WORDSビューで追加/削除UI。ドシエに `## 問い群` セクションを追加(ソクラテス的「無知の知」の記録)
 
+#### 視点の転換 — 「探究者は中立ではない」(γνῶθι σεαυτόν: 先入観の明示と認識の変容)
+観察者が中立であるという前提を覆す。情報収集の前に、あなたはすでに何かを信じている。その先入観を明示することで、探究が自己認識をどう変えたかが見えるようになる:
+- **Round 9 — 認識の変容 (Cognitive Shift)**: 単語登録時に **出発点の認識(priorBelief)** を選択(好奇 / 確信 / 懐疑 / 無知)。WORDSビューに先入観→現在の裁決の変容を常時表示(裁決が変化したとき`→`で対比)
+- 単語ドシエに frontmatter `prior_belief` と **`## 認識の変容`** セクションを追加。変容があれば「確信 (certain) → 保留 (suspended)」のようにソクラテス的論駁を記録
+- `PRIOR_BELIEF_DEFS` / `priorBeliefOf()` / `cognitiveShift()` をビュー/出力で共用
+- 探究がself-knowledgeの道具になる: 「信じていたことが崩れた」こと自体が知識の進歩
+
+
 #### 視点の転換 — 「裁決は一度下せば不変ではない」(エレンコスの自己適用: 再検討)
 下した結論はそのまま正しいという前提を覆す。真の知は反復的な再検討に耐えねばならない。エレンコスを他者でなく *自らの結論* に向ける:
 - **Round 8 — 再検討 (Re-examination)**: 裁決を下した時刻 `verdictAt` を記録。決着済み(answered / suspended)の語に、その後到来した新証拠(`timestamp > verdictAt`)があれば WORDS ビューに **再検討バッジ(件数つき)** を表示
