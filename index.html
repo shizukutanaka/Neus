@@ -123,6 +123,11 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-shift-arrow{color:var(--fg-3);}
 .word-shift-verdict{color:var(--accent);}
 #word-prior{font-family:var(--font-mono);font-size:13px;margin-bottom:8px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);width:100%;}
+.word-elenchus{margin:0 0 12px;padding:8px 12px;border-left:2px solid var(--accent-line);background:var(--bg-2);border-radius:0 var(--radius) var(--radius) 0;}
+.word-elenchus-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--fg-3);display:block;margin-bottom:4px;}
+.word-elenchus ul{margin:0;padding:0;list-style:none;}
+.word-elenchus li{font-size:12px;color:var(--fg-2);padding:2px 0;line-height:1.5;}
+.word-elenchus li::before{content:"\2014  ";color:var(--accent);}
 .word-q-list{margin:0 0 10px;padding:0;list-style:none;font-size:12px;color:var(--fg-2);}
 .word-q-list li{display:flex;align-items:center;gap:6px;padding:2px 0;font-family:var(--font-mono);}
 .word-q-list li::before{content:"?";color:var(--fg-3);flex-shrink:0;}
@@ -749,6 +754,7 @@ const DICT={
     'word.reviewed':'確認済み',
     'word.prior':'出発点の認識',
     'word.shift':'認識の変容',
+    'word.elenchus':'問答(システムからの問い)',
     'word.verdict':'裁決',
     'word.verdict.cycle':'裁決を変更',
     'word.q.add':'問いを追加',
@@ -846,6 +852,7 @@ const DICT={
     'word.reviewed':'REVIEWED',
     'word.prior':'Starting belief',
     'word.shift':'Cognitive shift',
+    'word.elenchus':'Elenchus (questions for you)',
     'word.verdict':'Verdict',
     'word.verdict.cycle':'Cycle verdict',
     'word.q.add':'Add question',
@@ -2086,6 +2093,30 @@ function signalGaps(word,events){
   }
   return {active,silent};
 }
+// 問答(elenchus): 探究の構造そのものから、システムが探究者へ問いを投げ返す。
+// ソクラテスの助産術 — 答えを与えず、矛盾と空白を問いとして突きつける。純粋関数。
+function socraticPrompts(word,events){
+  const out=[];
+  const n=events.length;
+  const tiers=tierBreakdown(events);
+  const hasResearch=tiers.some(t=>t.tier==='research');
+  const onlyTalk=tiers.length>0&&tiers.every(t=>t.tier==='discussion'||t.tier==='other');
+  const gaps=signalGaps(word,events);
+  const stale=verdictStale(word,events);
+  const verdict=verdictOf(word);
+  const prior=priorBeliefOf(word);
+  const unreviewed=newSinceReview(events,word.reviewedAt).length;
+  const qs=(word.questions||[]);
+  // 優先順: 結論の妥当性 > 証拠の質 > 自己矛盾 > 探究の怠り
+  if(verdict==='answered'&&stale>0)out.push({key:'stale',ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
+  if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
+  if(verdict==='answered'&&qs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
+  if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
+  if(n>0&&qs.length===0)out.push({key:'no-questions',ja:'まだ一つも問いを立てていない。本当に疑問はないか?',en:'You have posed no questions. Is nothing in doubt?'});
+  if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
+  if(unreviewed>=10)out.push({key:'unreviewed',ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
+  return out.slice(0,3);
+}
 // 弁証法(dialektikē): 語は孤島ではない。ある単語の収集テキストに別の登録語が
 // 現れたら、それは問いどうしの連環。相互参照を関連として引き出す。
 function relatedWords(items,others){
@@ -2162,6 +2193,13 @@ const WordExporter={
       }else{
         parts.push(`${pd.ja} (${pd.en}) → 探究継続中 (ongoing)`,'');
       }
+    }
+    // 問答(elenchus): 探究の構造から導かれる、探究者への問い。
+    const prompts=socraticPrompts(word,events);
+    if(prompts.length){
+      parts.push('## 問答','');
+      for(const p of prompts)parts.push(`- ${p.ja} / ${p.en}`);
+      parts.push('');
     }
     if(fresh.length){
       parts.push(`## 新着 (${fresh.length})`,'');
@@ -2457,6 +2495,9 @@ async function renderWords(){
     const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`).join('')}</ul>`:'';
     const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
     const qAdd=`<div class="word-q-add"><input type="text" placeholder="${qPh}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} への未解決の問い`:`open question for ${w.term}`)}" enterkeyhint="done" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'問いを追加':'add question')}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
+    // 問答(elenchus): システムが探究の構造から問いを投げ返す。
+    const prompts=socraticPrompts(w,items);
+    const elenchusBlock=prompts.length?`<div class="word-elenchus"><span class="word-elenchus-label">${t('word.elenchus')}</span><ul>${prompts.map(p=>`<li>${escapeHtml(currentLang==='ja'?p.ja:p.en)}</li>`).join('')}</ul></div>`:'';
 
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決を対比。変容があれば示す。
     const shift=cognitiveShift(w);
@@ -2479,6 +2520,7 @@ async function renderWords(){
       ${gapLine}
       ${relLine}
       ${qList}${qAdd}
+      ${elenchusBlock}
       ${wiki}
       <div class="word-actions">
         <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
