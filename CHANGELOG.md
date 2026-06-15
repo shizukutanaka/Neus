@@ -96,7 +96,14 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - Round 7 — 問い群 (Questions): open questions array on each watchword, with add/remove UI and dossier export support
 - Round 8 — 再検討 (Re-examination): verdictAt timestamp; settled verdicts (answered/suspended) flag new evidence arriving afterward with a re-examine badge that re-opens the inquiry, plus dossier `reexamine` frontmatter
 
+#### 改良 — 現段階の短所の洗い出しと修正
+収集機能の堅牢性とUIの一貫性に関する課題を洗い出して修正:
+- **収集の同時実行ガード**: 手動COLLECT / POLLボタン / periodicsync が重なると同一フィードを二重取得し帯域を浪費、件数トーストも崩れていた。`WordCollector` に `busy` ロックを追加し直列化(`isBusy()` 公開、公開 `collectOne`/`collectAll` はロック取得、内部 `_collectOne` はロックなし)
+- **件数表示の正直化・一貫化**: `collectOne` の戻り値は重複排除前の生取得数のため「collected N」は過大表示だった。トーストを「取得 / fetched」表記に修正し、フィールドを `lastCount` → `lastFetched` に改名。WORDSモーダルの件数を保存済み実数(タグ集計)に変更しWORDSビューと一致させた
+- **再検討の取り消し可能化**: 再検討バッジのクリックは決着済み裁決を一発で `open` に戻す破壊的操作だった。`UndoStack` でロールバック可能に(誤操作復旧)
+
 #### Tests
+- `tests/word-collector-guard.test.mjs`(busyロックの直列化モデル + 例外時のロック解放 + ガード/件数/Undoワイヤリング)
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
 - `tests/word-collect-integration.test.mjs`(フィードXML→パース→word:タグ付与→ドシエ出力のE2Eをjsdomで検証)

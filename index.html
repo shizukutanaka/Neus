@@ -1716,6 +1716,10 @@ const WORD_FEEDS={
   arxiv: {label:'arXiv',        build:(q)=>`https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30`},
 };
 const WordCollector=(()=>{
+  // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを
+  // 二重取得して帯域を浪費し件数表示が崩れる。単一の busy フラグで直列化する。
+  let busy=false;
+  const isBusy=()=>busy;
   // Wikipedia REST summary(JSON)をワーカー経由で取得。失敗時はnull。
   async function fetchWikiLang(term,lang){
     const title=encodeURIComponent((term||'').trim().replace(/\s+/g,'_'));
@@ -1735,8 +1739,8 @@ const WordCollector=(()=>{
     for(const lang of langs){const w=await fetchWikiLang(word.term,lang);if(w)return w;}
     return null;
   }
-  // 1単語を収集: Wikipedia要約 + 有効な各検索フィードを取得し event パイプラインへ流す。
-  async function collectOne(word){
+  // 1単語を収集(ロックなし内部実装): Wikipedia要約 + 有効な各検索フィードを取得し event パイプラインへ流す。
+  async function _collectOne(word){
     let total=0;
     if(word.sources?.wikipedia){
       const wiki=await fetchWiki(word);
@@ -1762,20 +1766,31 @@ const WordCollector=(()=>{
       for(const raw of items)Bus.publish('inbound.fetched',raw);
       total+=items.length;
     }
-    word.lastCollectedAt=Date.now();word.lastCount=total;
+    // total は取得した生件数(重複排除・ブロック前)。fetched としてのみ意味を持つ。
+    word.lastCollectedAt=Date.now();word.lastFetched=total;
     await Store.putWord(word);
     return total;
   }
+  // 公開API: 単語1件の収集。多重起動を防ぐ。
+  async function collectOne(word){
+    if(busy)return 0;
+    busy=true;
+    try{return await _collectOne(word);}finally{busy=false;}
+  }
   async function collectAll(){
+    if(busy)return 0;
     if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return 0;}
     const words=(await Store.listWords()).filter(w=>w.enabled!==false);
     if(words.length===0)return 0;
-    toast(currentLang==='ja'?`${words.length}単語を収集中...`:`collecting ${words.length} word(s)...`);
-    let total=0;for(const w of words)total+=await collectOne(w);
-    toast(currentLang==='ja'?`${total}件収集`:`collected ${total} item(s)`,'ok');
-    return total;
+    busy=true;
+    try{
+      toast(currentLang==='ja'?`${words.length}単語を収集中...`:`collecting ${words.length} word(s)...`);
+      let total=0;for(const w of words)total+=await _collectOne(w);
+      toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
+      return total;
+    }finally{busy=false;}
   }
-  return{collectOne,collectAll,fetchWiki};
+  return{collectOne,collectAll,fetchWiki,isBusy};
 })();
 
 // ===== PROCESSORS =======================================================
@@ -2435,7 +2450,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
     await Store.putWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
@@ -2458,11 +2473,19 @@ $('#view').addEventListener('click',async(e)=>{
     await Store.putWord(word);await renderView();return;
   }
   if(act==='reexamine'){
-    // 裁決を白紙へ戻す: 新証拠の到来は結論を再び問いに開く。
+    // 裁決を白紙へ戻す: 新証拠の到来は結論を再び問いに開く。誤操作に備え取り消し可能に。
+    const prevStatus=verdictOf(word),prevAt=word.verdictAt||null;
     if(!word.verdict)word.verdict={status:'open',note:''};
     word.verdict.status='open';
     word.verdictAt=Date.now();
-    await Store.putWord(word);await renderView();return;
+    await Store.putWord(word);await renderView();
+    UndoStack.offer(currentLang==='ja'?'裁決を再検討に戻しました':'Verdict re-opened',async()=>{
+      const w=await Store.getWord(word.id);if(!w)return;
+      if(!w.verdict)w.verdict={status:'open',note:''};
+      w.verdict.status=prevStatus;w.verdictAt=prevAt;
+      await Store.putWord(w);await renderView();
+    });
+    return;
   }
   if(act==='addq'){
     const input=$(`[data-wqinput="${word.id}"]`);
@@ -2842,12 +2865,15 @@ async function renderWordList(){
   const words=(await Store.listWords()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   if(words.length===0){$('#word-list').innerHTML=`<div style="color:var(--fg-3);">${currentLang==='ja'?'なし':'none'}</div>`;return;}
   const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'}];
+  // 実際に保存されているアイテム数で表示(重複排除後)。WORDSビューと一致させる。
+  const all=await Store.allEvents();
+  const countFor=(w)=>{const tag='word:'+w.normalized;return all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).length;};
   $('#word-list').innerHTML=words.map(w=>{
     const srcToggles=srcDefs.map(s=>`<label><input type="checkbox" data-wmsrc="${s.key}" data-id="${w.id}"${w.sources?.[s.key]?' checked':''}> ${s.label}</label>`).join('');
     return `<div class="word-row" data-id="${w.id}">
       <div class="word-row-top">
         <strong>${escapeHtml(w.term)}</strong>
-        <span style="color:var(--fg-3);">· ${w.lastCount||0} ${currentLang==='ja'?'件':'items'}</span>
+        <span style="color:var(--fg-3);">· ${countFor(w)} ${currentLang==='ja'?'件':'items'}</span>
         <div class="word-row-actions">
           <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
           <button data-wmact="collect" data-id="${w.id}">COLLECT</button>
@@ -2873,7 +2899,7 @@ async function addWord(){
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   const note=$('#word-note').value.trim();
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
   await Store.putWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
