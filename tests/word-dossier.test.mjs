@@ -22,6 +22,23 @@ function signalGaps(word, events) {
   return { active, silent };
 }
 
+// Mirrored from relatedWords in index.html
+function relatedWords(items, others) {
+  const hay = items.map(e => `${e.content?.title || ''} ${e.content?.snippet || ''}`).join('\n').toLowerCase();
+  if (!hay.trim()) return [];
+  const res = [];
+  for (const ow of others) {
+    const n = (ow.normalized || '').toLowerCase();
+    const isAscii = /^[\x00-\x7f]+$/.test(n);
+    if (n.length < (isAscii ? 3 : 2)) continue;
+    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = isAscii ? new RegExp(`\\b${esc}\\b`, 'g') : new RegExp(esc, 'g');
+    const m = hay.match(re);
+    if (m && m.length) res.push({ term: ow.term, normalized: ow.normalized, count: m.length });
+  }
+  return res.sort((a, b) => b.count - a.count).slice(0, 6);
+}
+
 // Mirrored from sourceTier / tierBreakdown in index.html
 const TIER_DEFS = [
   { key: 'research', ja: '一次(研究)', en: 'research' },
@@ -55,12 +72,13 @@ function aggregateTags(events) {
 }
 
 // Mirrored from WordExporter.toDossier
-function toDossier(word, events) {
+function toDossier(word, events, others = []) {
   const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
   const fresh = newSinceReview(events, word.reviewedAt);
   const gaps = signalGaps(word, events);
   const showGaps = !!word.lastCollectedAt && gaps.silent.length > 0;
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const related = relatedWords(events, others);
+  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
@@ -74,6 +92,7 @@ function toDossier(word, events) {
     parts.push('');
   }
   if (showGaps) parts.push('## 空白', '', `有効だが0件: ${gaps.silent.join(', ')}`, '');
+  if (related.length) parts.push('## 関連', '', related.map(r => `- ${r.term} (${r.count})`).join('\n'), '');
   if (fresh.length) {
     parts.push(`## 新着 (${fresh.length})`, '');
     for (const ev of fresh) {
@@ -299,5 +318,30 @@ describe('WordExporter.toDossier — signal gaps', () => {
     const word = { term: 'WebGPU', lang: 'en', normalized: 'webgpu', reviewedAt: 0, lastCollectedAt: 1000, sources: { news: true } };
     const md = toDossier(word, events);
     expect(md).not.toContain('## 空白');
+  });
+});
+
+// Words are not islands (Socratic dialectic): mutual reference across the inquiry.
+describe('WordExporter.toDossier — related words', () => {
+  const word = { term: 'WebGPU', lang: 'en', normalized: 'webgpu', reviewedAt: 0 };
+  const events = [mkEvent({ src: 'News', title: 'WebGPU vs WebGL', snippet: 'also wgpu' })];
+  const others = [{ term: 'WebGL', normalized: 'webgl' }, { term: 'wgpu', normalized: 'wgpu' }];
+
+  it('records related words in frontmatter and a 関連 section', () => {
+    const md = toDossier(word, events, others);
+    expect(md).toContain('related: webgl, wgpu');
+    expect(md).toContain('## 関連');
+    expect(md).toContain('- WebGL (1)');
+    expect(md).toContain('- wgpu (1)');
+  });
+
+  it('omits relatedness when no other word is mentioned', () => {
+    const md = toDossier(word, events, [{ term: 'Vulkan', normalized: 'vulkan' }]);
+    expect(md).not.toContain('## 関連');
+    expect(md).not.toContain('related:');
+  });
+
+  it('defaults to no relatedness when others is not supplied', () => {
+    expect(toDossier(word, events)).not.toContain('## 関連');
   });
 });
