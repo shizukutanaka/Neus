@@ -2276,11 +2276,38 @@ const WordExporter={
     downloadFile(`neus-word-${wordSlug(word.term)}.md`,this.toDossier(word,events,others),'text/markdown');
     toast(currentLang==='ja'?'Markdownを書き出し':'markdown exported','ok');
   },
+  // 完全な構造化レコード(機械可読・再取込/バックアップ用)。MDドシエと同じ探究状態を漏れなく含む。
+  toWordJson(word,events,others=[]){
+    const shift=cognitiveShift(word);
+    return{
+      app:'neus',kind:'word-dossier',schema:2,exportedAt:new Date().toISOString(),
+      word:{
+        term:word.term,normalized:word.normalized,lang:word.lang||'en',
+        note:word.note||'',questionHistory:word.questionHistory||[],
+        priorBelief:priorBeliefOf(word),
+        verdict:{status:verdictOf(word),note:word.verdict?.note||''},verdictAt:word.verdictAt||null,
+        questions:word.questions||[],
+        sources:word.sources||{},enabled:word.enabled!==false,
+        createdAt:word.createdAt||null,reviewedAt:word.reviewedAt||null,
+        lastCollectedAt:word.lastCollectedAt||null,lastFetched:word.lastFetched||0,
+        wiki:word.wiki||null,
+      },
+      analysis:{
+        tiers:tierBreakdown(events),
+        gaps:signalGaps(word,events),
+        related:relatedWords(events,others),
+        cognitiveShift:{prior:shift.prior,verdict:shift.verdict,changed:shift.changed},
+        reexamine:verdictStale(word,events),
+        prompts:socraticPrompts(word,events).map(p=>p.key),
+        unreviewed:newSinceReview(events,word.reviewedAt).length,
+      },
+      items:events,
+    };
+  },
   async downloadJson(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
-    const dump={app:'neus',kind:'word-dossier',exportedAt:new Date().toISOString(),word:{term:word.term,lang:word.lang,normalized:word.normalized,wiki:word.wiki||null},related:relatedWords(events,others),items:events};
-    downloadFile(`neus-word-${wordSlug(word.term)}.json`,JSON.stringify(dump,null,2),'application/json');
+    downloadFile(`neus-word-${wordSlug(word.term)}.json`,JSON.stringify(this.toWordJson(word,events,others),null,2),'application/json');
     toast(currentLang==='ja'?'JSONを書き出し':'json exported','ok');
   },
   async toVault(word){
