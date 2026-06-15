@@ -102,7 +102,13 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - **件数表示の正直化・一貫化**: `collectOne` の戻り値は重複排除前の生取得数のため「collected N」は過大表示だった。トーストを「取得 / fetched」表記に修正し、フィールドを `lastCount` → `lastFetched` に改名。WORDSモーダルの件数を保存済み実数(タグ集計)に変更しWORDSビューと一致させた
 - **再検討の取り消し可能化**: 再検討バッジのクリックは決着済み裁決を一発で `open` に戻す破壊的操作だった。`UndoStack` でロールバック可能に(誤操作復旧)
 
+#### 改良 — アクセシビリティとキーボード操作の対等性(Apple HIG)
+動的生成される単語コントロールのa11yギャップを洗い出して修正:
+- **aria-label の付与**: 裁決ピル(現在の状態を読み上げ)/ 再検討バッジ(件数+理由)/ 関連チップ / 提案チップ / 問い入力欄 / 問い削除ボタンに `aria-label` を追加。アプリ他箇所(検索・キーワード入力等)の慣習に一致させた。これまで `title` のみでスクリーンリーダーに伝わりにくかった
+- **問い入力のEnter送信**: インラインの問い入力欄は「+ Q」ボタンのクリックでしか追加できずキーボードのみで完結しなかった。`#view` の keydown ハンドラで Enter 送信に対応し `enterkeyhint="done"` を付与
+
 #### Tests
+- `tests/word-a11y.test.mjs`(単語コントロールのaria-label + 問い入力のEnter送信・enterkeyhintワイヤリング)
 - `tests/word-collector-guard.test.mjs`(busyロックの直列化モデル + 例外時のロック解放 + ガード/件数/Undoワイヤリング)
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)

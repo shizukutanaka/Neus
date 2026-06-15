@@ -2371,7 +2371,7 @@ function renderWordSuggestions(words,all){
   if(sugg.length===0)return '';
   const chips=sugg.map(s=>{
     const why=s.reason==='keyword'?(currentLang==='ja'?'WATCHキーワードから':'from your WATCH keywords'):(currentLang==='ja'?'スター記事の頻出タグ':'frequent tag in starred items');
-    return `<button class="word-suggest" data-wact="suggest" data-term="${escapeAttr(s.term)}" title="${escapeAttr(why)}">+ ${escapeHtml(s.term)}</button>`;
+    return `<button class="word-suggest" data-wact="suggest" data-term="${escapeAttr(s.term)}" title="${escapeAttr(why)}" aria-label="${escapeAttr(currentLang==='ja'?`${s.term} を登録(${why})`:`register ${s.term} (${why})`)}">+ ${escapeHtml(s.term)}</button>`;
   }).join('');
   return `<div class="word-suggest-strip"><span class="word-suggest-label">${currentLang==='ja'?'提案':'Suggested'}</span>${chips}</div>`;
 }
@@ -2397,22 +2397,26 @@ async function renderWords(){
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
     const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
     const vdef=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
-    const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}">${currentLang==='ja'?vdef.ja:vdef.en}</button>`;
+    const vlabel=currentLang==='ja'?vdef.ja:vdef.en;
+    const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}" aria-label="${currentLang==='ja'?`裁決: ${vlabel}。クリックで変更`:`verdict: ${vlabel}. Click to cycle`}">${vlabel}</button>`;
     // 再検討バッジ: 裁決後に新証拠が来たら結論を問い直す合図。
     const stale=verdictStale(w,items);
-    const reexamineBadge=stale>0?`<button class="word-reexamine" data-wact="reexamine" data-id="${w.id}" title="${currentLang==='ja'?'裁決後に到来した新証拠。結論を問い直す':'new evidence since your verdict — re-open the inquiry'}">${currentLang==='ja'?'再検討':'re-examine'} ${stale}</button>`:'';
+    const reexamineLabel=currentLang==='ja'?`裁決後に到来した新証拠。結論を問い直す`:`new evidence since your verdict — re-open the inquiry`;
+    const reexamineBadge=stale>0?`<button class="word-reexamine" data-wact="reexamine" data-id="${w.id}" title="${reexamineLabel}" aria-label="${currentLang==='ja'?`再検討 ${stale}件: ${reexamineLabel}`:`re-examine ${stale}: ${reexamineLabel}`}">${currentLang==='ja'?'再検討':'re-examine'} ${stale}</button>`:'';
     const verdictNote=w.verdict?.note?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(w.verdict.note)}</p>`:'';
     // 問い群(残余問題): ユーザーが記録する未解決の問い。
     const qs=(w.questions||[]);
-    const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${currentLang==='ja'?'削除':'remove'}">&times;</button></li>`).join('')}</ul>`:'';
-    const qAdd=`<div class="word-q-add"><input type="text" placeholder="${escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...')}" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
+    const qDelLabel=currentLang==='ja'?'問いを削除':'remove question';
+    const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`).join('')}</ul>`:'';
+    const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
+    const qAdd=`<div class="word-q-add"><input type="text" placeholder="${qPh}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} への未解決の問い`:`open question for ${w.term}`)}" enterkeyhint="done" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'問いを追加':'add question')}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
     const tiers=tierBreakdown(items);
     const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
     const gaps=signalGaps(w,items);
     const gapLine=(w.lastCollectedAt&&gaps.silent.length)?`<div class="word-gap" title="${currentLang==='ja'?'有効だが今回0件':'enabled but returned nothing'}">${currentLang==='ja'?'空白':'no signal'}: ${gaps.silent.map(escapeHtml).join(', ')}</div>`:'';
     const others=sorted.filter(x=>x.id!==w.id).map(x=>({term:x.term,normalized:x.normalized}));
     const related=relatedWords(items,others);
-    const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
+    const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}" aria-label="${escapeAttr(currentLang==='ja'?`関連語 ${r.term} で絞り込む(${r.count}件)`:`filter by related word ${r.term} (${r.count})`)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${reexamineBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
@@ -2515,6 +2519,14 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='md')return WordExporter.downloadMd(word);
   if(act==='json')return WordExporter.downloadJson(word);
   if(act==='vault')return WordExporter.toVault(word);
+});
+
+// 問い入力欄でEnter → 追加(マウスを使わずキーボードのみで問いを登録できる対等性)
+$('#view').addEventListener('keydown',(e)=>{
+  if(e.key!=='Enter')return;
+  const input=e.target.closest('input[data-wqinput]');if(!input)return;
+  e.preventDefault();
+  input.parentElement?.querySelector('button[data-wact="addq"]')?.click();
 });
 
 async function renderView(){
