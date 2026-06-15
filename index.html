@@ -614,9 +614,11 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
 
     <div class="row">
       <button id="word-cancel" type="button">CLOSE</button>
+      <button id="word-import" type="button">IMPORT</button>
       <button id="word-export-all" type="button">EXPORT ALL</button>
       <button id="word-collect-all" type="button">COLLECT ALL</button>
     </div>
+    <input type="file" id="word-import-file" accept="application/json,.json" hidden>
   </div>
 </div>
 
@@ -755,6 +757,7 @@ const DICT={
     'word.add':'追加',
     'word.collectall':'すべて収集',
     'word.exportall':'一括出力',
+    'word.import':'取込',
     'word.note':'問い(任意)',
     'word.note.ph':'本番投入できる段階か?',
     'word.reviewed':'確認済み',
@@ -853,6 +856,7 @@ const DICT={
     'word.add':'ADD',
     'word.collectall':'COLLECT ALL',
     'word.exportall':'EXPORT ALL',
+    'word.import':'IMPORT',
     'word.note':'Question (optional)',
     'word.note.ph':'Is it production-ready?',
     'word.reviewed':'REVIEWED',
@@ -935,6 +939,7 @@ function applyI18N(){
   $('#word-add').textContent=t('word.add');
   $('#word-collect-all').textContent=t('word.collectall');
   $('#word-export-all').textContent=t('word.exportall');
+  $('#word-import').textContent=t('word.import');
   $('#lbl-word-note').textContent=t('word.note');
   $('#word-note').placeholder=t('word.note.ph');
   $('#lbl-word-prior').textContent=t('word.prior');
@@ -2034,6 +2039,26 @@ const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ
 // 単語の正規化(重複登録防止のキー): NFKCで全角/半角・互換文字を統一、内部空白を畳み込み、小文字化。
 // 表示用の term は生のまま保持し、照合・タグ付けにのみ normalized を用いる。
 const normalizeTerm=(s)=>(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+// インポート用: ドシエJSON(schema 1/2)から word オブジェクトを安全に再構成。無効なら null。
+function wordFromImport(dump){
+  if(!dump||dump.kind!=='word-dossier'||!dump.word)return null;
+  const w=dump.word;
+  const term=(w.term||'').trim();
+  if(!term)return null;
+  const now=Date.now();
+  return{
+    id:uuid(),term,normalized:normalizeTerm(term),lang:w.lang||'en',
+    note:w.note||'',questionHistory:Array.isArray(w.questionHistory)?w.questionHistory:[],
+    priorBelief:w.priorBelief||'curious',
+    sources:(w.sources&&typeof w.sources==='object')?w.sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},
+    enabled:w.enabled!==false,
+    verdict:{status:w.verdict?.status||'open',note:w.verdict?.note||''},verdictAt:w.verdictAt||null,
+    questions:Array.isArray(w.questions)?w.questions:[],
+    createdAt:w.createdAt||now,reviewedAt:w.reviewedAt||now,
+    lastCollectedAt:w.lastCollectedAt||null,lastFetched:w.lastFetched||0,
+    wiki:w.wiki||null,
+  };
+}
 // 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
 const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
 // 裁決(探究の帰結): 問いは答えに向かわなければならない。探究の現在地を4段階で記録。
@@ -2327,6 +2352,27 @@ const WordExporter={
     }
     downloadFile(`neus-words-${new Date().toISOString().slice(0,10)}.md`,docs.join('\n\n'),'text/markdown');
     toast(currentLang==='ja'?`${words.length}単語を書き出し`:`exported ${words.length} word(s)`,'ok');
+  },
+  // ドシエJSONを取込: 単語を復元し、付随アイテムも重複排除しつつ取り込む(往復可能)。
+  async importJson(file){
+    let dump;
+    try{dump=JSON.parse(await file.text());}catch{toast(currentLang==='ja'?'JSONを解析できません':'cannot parse JSON','err');return;}
+    const word=wordFromImport(dump);
+    if(!word){toast(currentLang==='ja'?'無効なドシエファイル':'invalid dossier file','err');return;}
+    const existing=await Store.findWordByTerm(word.normalized);
+    if(existing){
+      if(!await confirmAsync(currentLang==='ja'?`「${word.term}」は登録済み。置き換えますか?`:`"${word.term}" exists. Replace?`))return;
+      word.id=existing.id; // 既存IDを維持し word: タグの整合を保つ
+    }
+    await Store.putWord(word);
+    let imported=0;
+    for(const ev of (Array.isArray(dump.items)?dump.items:[])){
+      if(!ev||!ev.hash||!ev.id)continue;
+      if(await Store.findByHash(ev.hash))continue;
+      await Store.putEvent(ev);FTSIndex.add(ev);imported++;
+    }
+    await renderWordList();await refreshCounts();await renderView();
+    toast(currentLang==='ja'?`「${word.term}」を取込(${imported}件)`:`imported "${word.term}" (${imported} items)`,'ok');
   },
 };
 
@@ -3091,6 +3137,8 @@ $('#word-add').addEventListener('click',addWord);
 $('#word-input').addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();addWord();}});
 $('#word-collect-all').addEventListener('click',async()=>{await WordCollector.collectAll();await renderWordList();await refreshCounts();await renderView();});
 $('#word-export-all').addEventListener('click',()=>WordExporter.downloadAllMd());
+$('#word-import').addEventListener('click',()=>$('#word-import-file').click());
+$('#word-import-file').addEventListener('change',async(e)=>{const f=e.target.files?.[0];if(f)await WordExporter.importJson(f);e.target.value='';});
 $('#word-list').addEventListener('click',async(e)=>{
   const btn=e.target.closest('button[data-wmact]');if(!btn)return;
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
