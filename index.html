@@ -86,6 +86,12 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-new{font-family:var(--font-mono);font-size:11px;color:var(--accent);border:1px solid var(--accent-line);border-radius:10px;padding:1px 8px;vertical-align:middle;}
 .word-note{margin:2px 0 8px;font-size:13px;color:var(--fg-2);font-style:italic;}
 .word-note::before{content:"? ";color:var(--fg-3);font-style:normal;}
+.word-note-empty{color:var(--fg-3);font-style:normal;}
+.word-refine-btn{font-family:var(--font-mono);font-size:10px;padding:0 6px;margin-left:6px;border:1px solid var(--line);border-radius:8px;background:none;color:var(--fg-3);cursor:pointer;font-style:normal;}
+.word-refine-btn:hover{color:var(--accent);border-color:var(--accent-line);}
+.word-revised{font-family:var(--font-mono);font-size:9px;color:var(--fg-3);border:1px solid var(--line);border-radius:8px;padding:0 5px;margin-left:6px;font-style:normal;}
+.word-refine{display:flex;gap:6px;margin:0 0 10px;}
+.word-refine input{flex:1;font-size:12px;font-family:var(--font-mono);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);}
 .word-prov{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;}
 .word-prov-tier{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:10px;padding:1px 8px;}
 .word-prov-tier.tier-research{color:var(--accent);border-color:var(--accent-line);}
@@ -2053,6 +2059,16 @@ function cognitiveShift(word){
   const vd=VERDICT_DEFS.find(d=>d.key===verdict)||VERDICT_DEFS[0];
   return{prior,verdict,pd,vd,changed:prior!==verdict&&verdict!=='open'};
 }
+// 問いの彫琢(elenchus): 問いそのものが暫定的。論駁はしばしば問いの誤りを暴く。
+// 旧い定式化を履歴に残し、問いの変遷を探究の一部として記録する。純粋関数。
+function refineQuestion(word,newText){
+  const text=(newText||'').trim();
+  const cur=(word.note||'').trim();
+  if(!text||text===cur)return null; // 変更なし
+  const history=[...(word.questionHistory||[])];
+  if(cur)history.push({text:cur,at:Date.now()});
+  return{note:text,questionHistory:history.slice(-5)};
+}
 // 再検討(知に終わりなし): 裁決後に到来した新証拠の数。決着した結論ほど反証に晒すべき、というエレンコスの自己適用。
 const SETTLED_VERDICTS=new Set(['answered','suspended']);
 function verdictStale(word,events){
@@ -2165,9 +2181,17 @@ const WordExporter={
     const related=relatedWords(events,others);
     const stale=verdictStale(word,events);
     const shift=cognitiveShift(word);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
+    // 問いの変遷(elenchus): 旧い定式化があれば、問いがどう彫琢されたかを記録。
+    const qHist=(word.questionHistory||[]);
+    if(qHist.length){
+      parts.push('## 問いの変遷','');
+      for(const h of qHist)parts.push(`- ~~${h.text}~~`);
+      if(word.note)parts.push(`- **${word.note}**`);
+      parts.push('');
+    }
     if(word.wiki?.extract){
       parts.push('## 定義','',word.wiki.extract,'');
       if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
@@ -2480,7 +2504,13 @@ async function renderWords(){
     const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
     const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
-    const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
+    // 問いの彫琢: 問いは編集可能で、旧い定式化は履歴に残る。
+    const revisions=(w.questionHistory||[]).length;
+    const revisedTag=revisions>0?`<span class="word-revised" title="${escapeAttr(currentLang==='ja'?`${revisions}回 推敲`:`refined ${revisions}x`)}">${currentLang==='ja'?`推敲 ${revisions}`:`rev ${revisions}`}</span>`:'';
+    const noteText=w.note?escapeHtml(w.note):`<span class="word-note-empty">${currentLang==='ja'?'問い未設定':'no question yet'}</span>`;
+    const refineBtn=`<button class="word-refine-btn" data-wact="refineq" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?'問いを彫琢':'refine question')}">${currentLang==='ja'?'彫琢':'refine'}</button>`;
+    const noteLine=`<p class="word-note">${noteText}${revisedTag}${refineBtn}</p>`;
+    const refineRow=`<div class="word-refine" data-refine="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.note||'')}" data-rqinput="${escapeAttr(w.id)}" maxlength="200" enterkeyhint="done" aria-label="${escapeAttr(currentLang==='ja'?'問いを彫琢':'refine the question')}"><button data-wact="saveq" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button></div>`;
     const vdef=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
     const vlabel=currentLang==='ja'?vdef.ja:vdef.en;
     const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}" aria-label="${currentLang==='ja'?`裁決: ${vlabel}。クリックで変更`:`verdict: ${vlabel}. Click to cycle`}">${vlabel}</button>`;
@@ -2514,6 +2544,7 @@ async function renderWords(){
     sections.push(`<section class="word-section" data-word="${w.id}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${reexamineBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
+      ${refineRow}
       ${shiftLine}
       ${verdictNote}
       ${provLine}
@@ -2549,7 +2580,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
     await Store.putWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
@@ -2564,6 +2595,18 @@ $('#view').addEventListener('click',async(e)=>{
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
   if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await refreshCounts();await renderView();return;}
   if(act==='reviewed'){word.reviewedAt=Date.now();await Store.putWord(word);await renderView();return;}
+  if(act==='refineq'){
+    const row=$(`[data-refine="${word.id}"]`);
+    if(row){row.style.display='flex';row.querySelector('input')?.focus();}
+    return;
+  }
+  if(act==='saveq'){
+    const input=$(`[data-rqinput="${word.id}"]`);
+    const patch=refineQuestion(word,input?.value);
+    if(patch){Object.assign(word,patch);await Store.putWord(word);await renderView();}
+    else{const row=$(`[data-refine="${word.id}"]`);if(row)row.style.display='none';}
+    return;
+  }
   if(act==='setverd'){
     const cur=verdictOf(word);
     if(!word.verdict)word.verdict={status:'open',note:''};
@@ -2619,9 +2662,11 @@ $('#view').addEventListener('click',async(e)=>{
 // 問い入力欄でEnter → 追加(マウスを使わずキーボードのみで問いを登録できる対等性)
 $('#view').addEventListener('keydown',(e)=>{
   if(e.key!=='Enter')return;
-  const input=e.target.closest('input[data-wqinput]');if(!input)return;
-  e.preventDefault();
-  input.parentElement?.querySelector('button[data-wact="addq"]')?.click();
+  // 問い追加(addq)と問いの彫琢(saveq)、どちらの入力欄でもEnterで送信できる対等性。
+  const qi=e.target.closest('input[data-wqinput]');
+  if(qi){e.preventDefault();qi.parentElement?.querySelector('button[data-wact="addq"]')?.click();return;}
+  const ri=e.target.closest('input[data-rqinput]');
+  if(ri){e.preventDefault();ri.parentElement?.querySelector('button[data-wact="saveq"]')?.click();}
 });
 
 async function renderView(){
@@ -3007,7 +3052,7 @@ async function addWord(){
   const note=$('#word-note').value.trim();
   const priorBelief=$('#word-prior').value||'curious';
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
   await Store.putWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
