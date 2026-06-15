@@ -84,9 +84,17 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - **Round 6 — 裁決 (Verdict)**: 各watchwordに verdict ライフサイクルフィールドを追加(open/converging/answered/suspended)。WORDSビューにステータスピルボタンを表示しワンタップでサイクル。ドシエに `verdict_status` / `verdict_note` frontmatterと `## 裁決` セクションを追加(open+メモなしは非表示)
 - **Round 7 — 問い群 (Questions)**: 各watchwordに未解決の問い配列を追加。WORDSビューで追加/削除UI。ドシエに `## 問い群` セクションを追加(ソクラテス的「無知の知」の記録)
 
+#### 視点の転換 — 「裁決は一度下せば不変ではない」(エレンコスの自己適用: 再検討)
+下した結論はそのまま正しいという前提を覆す。真の知は反復的な再検討に耐えねばならない。エレンコスを他者でなく *自らの結論* に向ける:
+- **Round 8 — 再検討 (Re-examination)**: 裁決を下した時刻 `verdictAt` を記録。決着済み(answered / suspended)の語に、その後到来した新証拠(`timestamp > verdictAt`)があれば WORDS ビューに **再検討バッジ(件数つき)** を表示
+- バッジをクリックすると裁決を `open` に戻し探究を再開(`data-wact="reexamine"`)。converging は進行中とみなし対象外
+- 単語ドシエに frontmatter `reexamine` と `## 裁決` セクション内の「再検討」行を追加。「結論後に何件の反証が来たか」を可視化
+- `verdictStale()` / `SETTLED_VERDICTS` をビュー/出力で共用
+
 ### Added
 - Round 6 — 裁決 (Verdict): verdict lifecycle field on each watchword (open/converging/answered/suspended), with pill button to cycle status and dossier export support
 - Round 7 — 問い群 (Questions): open questions array on each watchword, with add/remove UI and dossier export support
+- Round 8 — 再検討 (Re-examination): verdictAt timestamp; settled verdicts (answered/suspended) flag new evidence arriving afterward with a re-examine badge that re-opens the inquiry, plus dossier `reexamine` frontmatter
 
 #### Tests
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
@@ -94,6 +102,7 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - `tests/word-collect-integration.test.mjs`(フィードXML→パース→word:タグ付与→ドシエ出力のE2Eをjsdomで検証)
 - `tests/word-verdict.test.mjs`(VERDICT_DEFS / verdictOf / nextVerdict / toDossier裁決セクション)
 - `tests/word-questions.test.mjs`(問い群セクション生成 + addq/delq UIワイヤリング確認)
+- `tests/word-reexamine.test.mjs`(verdictStale / 境界条件 / reexamine UI・ドシエワイヤリング)
 
 ## [v0.11.0] - 2026-05-30
 

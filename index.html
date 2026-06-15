@@ -116,6 +116,8 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-verdict.v-converging{color:#f5a623;border-color:#f5a623;}
 .word-verdict.v-answered{color:#4caf50;border-color:#4caf50;}
 .word-verdict.v-suspended{color:var(--fg-3);border-color:var(--line);opacity:0.55;}
+.word-reexamine{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid var(--accent-line);color:var(--accent);background:none;cursor:pointer;margin-left:6px;vertical-align:middle;}
+.word-reexamine:hover{background:var(--accent);color:var(--bg-1);}
 .word-q-list{margin:0 0 10px;padding:0;list-style:none;font-size:12px;color:var(--fg-2);}
 .word-q-list li{display:flex;align-items:center;gap:6px;padding:2px 0;font-family:var(--font-mono);}
 .word-q-list li::before{content:"?";color:var(--fg-3);flex-shrink:0;}
@@ -1994,6 +1996,14 @@ const VERDICT_DEFS=[
 ];
 function verdictOf(word){return word.verdict?.status||'open';}
 function nextVerdict(status){const keys=VERDICT_DEFS.map(d=>d.key);const i=keys.indexOf(status);return keys[(i+1)%keys.length];}
+// 再検討(知に終わりなし): 裁決後に到来した新証拠の数。決着した結論ほど反証に晒すべき、というエレンコスの自己適用。
+const SETTLED_VERDICTS=new Set(['answered','suspended']);
+function verdictStale(word,events){
+  if(!SETTLED_VERDICTS.has(verdictOf(word)))return 0;
+  const since=word.verdictAt||0;
+  if(!since)return 0;
+  return events.filter(e=>(e.timestamp||0)>since).length;
+}
 // エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
 const TIER_DEFS=[
   {key:'research',ja:'一次(研究)',en:'research'},
@@ -2072,7 +2082,8 @@ const WordExporter={
     const gaps=signalGaps(word,events);
     const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
     const related=relatedWords(events,others);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,'---'].filter(Boolean).join('\n');
+    const stale=verdictStale(word,events);
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     if(word.wiki?.extract){
@@ -2105,6 +2116,8 @@ const WordExporter={
       parts.push('## 裁決','');
       parts.push(`${vdefD.ja} / ${vdefD.en} (${vd})`);
       if(word.verdict?.note)parts.push(`> ${word.verdict.note}`);
+      // 再検討(知に終わりなし): 裁決後の新証拠は結論を問い直す合図。
+      if(stale>0)parts.push('',`再検討 / re-examine: ${stale} new item(s) arrived after this verdict.`);
       parts.push('');
     }
     // 問い群(残余問題): まだ答えられていない問い。ソクラテス的無知の知。
@@ -2370,6 +2383,9 @@ async function renderWords(){
     const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
     const vdef=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
     const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}">${currentLang==='ja'?vdef.ja:vdef.en}</button>`;
+    // 再検討バッジ: 裁決後に新証拠が来たら結論を問い直す合図。
+    const stale=verdictStale(w,items);
+    const reexamineBadge=stale>0?`<button class="word-reexamine" data-wact="reexamine" data-id="${w.id}" title="${currentLang==='ja'?'裁決後に到来した新証拠。結論を問い直す':'new evidence since your verdict — re-open the inquiry'}">${currentLang==='ja'?'再検討':'re-examine'} ${stale}</button>`:'';
     const verdictNote=w.verdict?.note?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(w.verdict.note)}</p>`:'';
     // 問い群(残余問題): ユーザーが記録する未解決の問い。
     const qs=(w.questions||[]);
@@ -2384,7 +2400,7 @@ async function renderWords(){
     const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
-      <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
+      <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${reexamineBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
       ${verdictNote}
       ${provLine}
@@ -2419,7 +2435,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},questions:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
     await Store.putWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
@@ -2438,6 +2454,14 @@ $('#view').addEventListener('click',async(e)=>{
     const cur=verdictOf(word);
     if(!word.verdict)word.verdict={status:'open',note:''};
     word.verdict.status=nextVerdict(cur);
+    word.verdictAt=Date.now();
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='reexamine'){
+    // 裁決を白紙へ戻す: 新証拠の到来は結論を再び問いに開く。
+    if(!word.verdict)word.verdict={status:'open',note:''};
+    word.verdict.status='open';
+    word.verdictAt=Date.now();
     await Store.putWord(word);await renderView();return;
   }
   if(act==='addq'){
@@ -2849,7 +2873,7 @@ async function addWord(){
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   const note=$('#word-note').value.trim();
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},questions:[]};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[]};
   await Store.putWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
