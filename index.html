@@ -78,6 +78,57 @@ input,select,textarea{font:inherit;color:inherit;}
 .overflow-menu.show{display:flex;}
 .overflow-menu button{text-align:left;padding:10px 12px;min-height:44px;width:100%;border:1px solid transparent!important;border-radius:var(--radius);}
 .overflow-menu button:hover{background:var(--bg-3);}
+/* WORDS view + modal */
+.word-section{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;background:var(--bg-2);}
+.word-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.word-head h2{font-size:18px;margin:0;}
+.word-off{color:var(--fg-3);font-size:12px;font-family:var(--font-mono);}
+.word-new{font-family:var(--font-mono);font-size:11px;color:var(--accent);border:1px solid var(--accent-line);border-radius:10px;padding:1px 8px;vertical-align:middle;}
+.word-note{margin:2px 0 8px;font-size:13px;color:var(--fg-2);font-style:italic;}
+.word-note::before{content:"? ";color:var(--fg-3);font-style:normal;}
+.word-prov{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px;}
+.word-prov-tier{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:10px;padding:1px 8px;}
+.word-prov-tier.tier-research{color:var(--accent);border-color:var(--accent-line);}
+.word-gap{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 10px;}
+.word-gap::before{content:"\2014  ";color:var(--fg-3);}
+.word-rel{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 10px;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);}
+.word-rel-chip{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border:1px solid var(--line);border-radius:10px;color:var(--fg-2);}
+.word-rel-chip:hover{border-color:var(--accent-line);color:var(--accent);}
+.word-meta{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);}
+.word-wiki{margin:8px 0;font-size:13px;color:var(--fg-2);line-height:1.6;}
+.word-wiki p{margin:0 0 6px;}
+.word-wiki a{font-family:var(--font-mono);font-size:11px;}
+.word-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px;}
+.word-actions button{font-family:var(--font-mono);font-size:11px;padding:6px 10px;}
+.word-empty{color:var(--fg-3);font-family:var(--font-mono);font-size:12px;padding:8px 0;}
+.word-src-toggles{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px;font-size:13px;}
+.word-src-toggles label{display:flex;align-items:center;gap:6px;}
+.word-suggest-strip{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line);}
+.word-suggest-label{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--fg-3);}
+.word-suggest{font-family:var(--font-mono);font-size:11px;padding:4px 10px;border:1px dashed var(--line);border-radius:14px;color:var(--fg-2);}
+.word-suggest:hover{border-color:var(--accent-line);color:var(--accent);}
+.word-view-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.word-view-header h2{margin:0;font-size:14px;font-family:var(--font-mono);color:var(--fg-2);}
+.word-stale{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-left:8px;cursor:pointer;text-decoration:underline;}
+.word-stale:hover{color:var(--accent);}
+.word-verdict{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid;cursor:pointer;margin-left:6px;vertical-align:middle;transition:opacity .15s;}
+.word-verdict.v-open{color:var(--fg-3);border-color:var(--line);}
+.word-verdict.v-converging{color:#f5a623;border-color:#f5a623;}
+.word-verdict.v-answered{color:#4caf50;border-color:#4caf50;}
+.word-verdict.v-suspended{color:var(--fg-3);border-color:var(--line);opacity:0.55;}
+.word-q-list{margin:0 0 10px;padding:0;list-style:none;font-size:12px;color:var(--fg-2);}
+.word-q-list li{display:flex;align-items:center;gap:6px;padding:2px 0;font-family:var(--font-mono);}
+.word-q-list li::before{content:"?";color:var(--fg-3);flex-shrink:0;}
+.word-q-del{font-size:10px;padding:1px 5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;background:none;cursor:pointer;}
+.word-q-del:hover{color:var(--fg-1);border-color:var(--fg-2);}
+.word-q-add{display:flex;gap:6px;margin:4px 0 12px;}
+.word-q-add input{flex:1;font-size:12px;font-family:var(--font-mono);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);}
+.word-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);}
+.word-row-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.word-row-srcs{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--fg-3);font-family:var(--font-mono);}
+.word-row-srcs label{display:flex;align-items:center;gap:4px;cursor:pointer;}
+.word-row-actions{display:flex;gap:6px;}
+.word-row-actions button{font-size:11px;padding:5px 9px;}
 .header .actions button.on{color:var(--accent);border-color:var(--accent-line);}
 .header .actions button:disabled{opacity:.4;cursor:not-allowed;}
 
@@ -312,6 +363,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
         <button id="btn-menu" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Menu" aria-controls="overflow-menu">☰</button>
         <div class="overflow-menu" id="overflow-menu" role="menu" aria-labelledby="btn-menu">
           <button id="btn-sources" type="button" role="menuitem">SOURCES</button>
+          <button id="btn-words" type="button" role="menuitem">WORDS</button>
           <button id="btn-keywords" type="button" role="menuitem">KEYWORDS</button>
           <button id="btn-stats" type="button" role="menuitem">STATS</button>
           <button id="btn-vault" type="button" role="menuitem">VAULT</button>
@@ -327,6 +379,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
     <button data-view="starred" role="tab" aria-selected="false">STARRED<span class="count" id="cnt-starred">0</span></button>
     <button data-view="archived" role="tab" aria-selected="false">ARCHIVED<span class="count" id="cnt-archived">0</span></button>
     <button data-view="later" role="tab" aria-selected="false">LATER<span class="count" id="cnt-later">0</span></button>
+    <button data-view="words" id="nav-words" role="tab" aria-selected="false">WORDS<span class="count" id="cnt-words">0</span></button>
     <button data-view="digest" id="nav-digest" role="tab" aria-selected="false">DIGEST</button>
     <button data-view="search" id="nav-search" role="tab" aria-selected="false" style="display:none;">SEARCH<span class="count" id="cnt-search">0</span></button>
     </div>
@@ -506,6 +559,41 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
   </div>
 </div>
 
+<!-- Words modal -->
+<div class="modal" id="modal-words" role="dialog" aria-modal="true" aria-labelledby="hd-words">
+  <div class="modal-card">
+    <h3 id="hd-words">WORDS</h3>
+    <p class="hint-text" id="word-hint">単語を登録すると、その情報を各検索ソースから自動収集します。出力(Markdown / JSON / Vault)も可能。</p>
+
+    <label for="word-input" id="lbl-word-input">単語(入力してADD)</label>
+    <input type="text" id="word-input" placeholder="WebGPU" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" inputmode="text" aria-label="登録する単語">
+
+    <label for="word-note" id="lbl-word-note">問い(任意)</label>
+    <input type="text" id="word-note" placeholder="本番投入できる段階か?" autocomplete="off" aria-label="この単語を追う問い">
+
+    <h4 id="hd-word-src">収集ソース</h4>
+    <div id="word-src-toggles" class="word-src-toggles">
+      <label><input type="checkbox" id="wsrc-wikipedia" checked> Wikipedia</label>
+      <label><input type="checkbox" id="wsrc-news" checked> Google News</label>
+      <label><input type="checkbox" id="wsrc-reddit" checked> Reddit</label>
+      <label><input type="checkbox" id="wsrc-hn" checked> Hacker News</label>
+      <label><input type="checkbox" id="wsrc-arxiv"> arXiv</label>
+    </div>
+    <div class="row">
+      <button class="primary" id="word-add" type="button">ADD</button>
+    </div>
+
+    <h4 id="hd-word-list">登録済み</h4>
+    <div id="word-list" style="font-family:var(--font-mono);font-size:12px;"></div>
+
+    <div class="row">
+      <button id="word-cancel" type="button">CLOSE</button>
+      <button id="word-export-all" type="button">EXPORT ALL</button>
+      <button id="word-collect-all" type="button">COLLECT ALL</button>
+    </div>
+  </div>
+</div>
+
 <!-- Stats modal -->
 <!-- Help modal removed: replaced by modal-shortcuts -->
 
@@ -577,7 +665,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
 // ===== CONFIG ===========================================================
 const CONFIG = Object.freeze({
   proxy: 'https://neus-proxy.example.workers.dev',
-  dbName: 'neus-v1', dbVersion: 1, maxViewItems: 50,
+  dbName: 'neus-v1', dbVersion: 2, maxViewItems: 50,
   byokDefaults: {
     anthropic:{ model:'claude-haiku-4-5-20251001', endpoint:'https://api.anthropic.com/v1/messages' },
     openai:   { model:'gpt-4o-mini',               endpoint:'https://api.openai.com/v1/chat/completions' },
@@ -630,6 +718,24 @@ const DICT={
     'onboard.btn.select-vault':'Vaultを選択','share.added':'共有リンクを保存',
     'exported':'書出済',
     'btn.keywords':'キーワード',
+    'btn.words':'単語',
+    'word.manage':'単語を登録',
+    'word.collect':'収集',
+    'word.filter':'絞り込み',
+    'word.hint':'単語を登録すると、その情報を各検索ソースから自動収集します。出力(Markdown / JSON / Vault)も可能。',
+    'word.input':'単語(入力してADD)',
+    'word.src':'収集ソース',
+    'word.list':'登録済み',
+    'word.add':'追加',
+    'word.collectall':'すべて収集',
+    'word.exportall':'一括出力',
+    'word.note':'問い(任意)',
+    'word.note.ph':'本番投入できる段階か?',
+    'word.reviewed':'確認済み',
+    'word.verdict':'裁決',
+    'word.verdict.cycle':'裁決を変更',
+    'word.q.add':'問いを追加',
+    'word.q.ph':'未解決の問いを追加...',
     'hd.keywords':'キーワード管理',
     'hd.kw.watch':'WATCH(気になる)',
     'hd.kw.block':'BLOCK(ブロック)',
@@ -707,6 +813,24 @@ const DICT={
     'onboard.btn.select-vault':'Select Vault','share.added':'Shared link saved',
     'exported':'exported',
     'btn.keywords':'KEYWORDS',
+    'btn.words':'WORDS',
+    'word.manage':'REGISTER WORD',
+    'word.collect':'COLLECT',
+    'word.filter':'FILTER',
+    'word.hint':'Register a word to auto-collect its information from search sources. Output to Markdown / JSON / Vault.',
+    'word.input':'Word (type then ADD)',
+    'word.src':'Collect from',
+    'word.list':'Registered',
+    'word.add':'ADD',
+    'word.collectall':'COLLECT ALL',
+    'word.exportall':'EXPORT ALL',
+    'word.note':'Question (optional)',
+    'word.note.ph':'Is it production-ready?',
+    'word.reviewed':'REVIEWED',
+    'word.verdict':'Verdict',
+    'word.verdict.cycle':'Cycle verdict',
+    'word.q.add':'Add question',
+    'word.q.ph':'Add an open question...',
     'hd.keywords':'KEYWORD RULES',
     'hd.kw.watch':'WATCH (Highlight)',
     'hd.kw.block':'BLOCK (Hide)',
@@ -771,6 +895,17 @@ function applyI18N(){
   $('#btn-sources').textContent=t('btn.sources');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-keywords').textContent=t('btn.keywords');
+  $('#btn-words').textContent=t('btn.words');
+  $('#word-hint').textContent=t('word.hint');
+  $('#lbl-word-input').textContent=t('word.input');
+  $('#hd-word-src').textContent=t('word.src');
+  $('#hd-word-list').textContent=t('word.list');
+  $('#word-add').textContent=t('word.add');
+  $('#word-collect-all').textContent=t('word.collectall');
+  $('#word-export-all').textContent=t('word.exportall');
+  $('#lbl-word-note').textContent=t('word.note');
+  $('#word-note').placeholder=t('word.note.ph');
+  $('#word-cancel').textContent=t('btn.close');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-vault').textContent=t('btn.vault');
   $('#btn-settings').textContent=t('btn.settings');
@@ -885,6 +1020,7 @@ const Store=(()=>{
       if(!d.objectStoreNames.contains('events')){const os=d.createObjectStore('events',{keyPath:'id'});os.createIndex('timestamp','timestamp');os.createIndex('hash','hash',{unique:false});os.createIndex('sourceId','source.id');os.createIndex('read','state.read');os.createIndex('starred','state.starred');os.createIndex('archived','state.archived');}
       if(!d.objectStoreNames.contains('sources'))d.createObjectStore('sources',{keyPath:'id'});
       if(!d.objectStoreNames.contains('settings'))d.createObjectStore('settings',{keyPath:'key'});
+      if(!d.objectStoreNames.contains('words'))d.createObjectStore('words',{keyPath:'id'});
     };
     req.onsuccess=()=>{db=req.result;resolve();};req.onerror=()=>reject(req.error);
   });}
@@ -925,6 +1061,11 @@ const Store=(()=>{
     async listSources(){return r2p(tx(['sources']).objectStore('sources').getAll());},
     async findSourceByUrl(url){return(await this.listSources()).find(s=>s.url===url);},
     async deleteSource(id){return r2p(tx(['sources'],'readwrite').objectStore('sources').delete(id));},
+    async putWord(w){return r2p(tx(['words'],'readwrite').objectStore('words').put(w));},
+    async getWord(id){return r2p(tx(['words']).objectStore('words').get(id));},
+    async listWords(){return r2p(tx(['words']).objectStore('words').getAll());},
+    async deleteWord(id){return r2p(tx(['words'],'readwrite').objectStore('words').delete(id));},
+    async findWordByTerm(normalized){return(await this.listWords()).find(w=>w.normalized===normalized);},
     async getSetting(key){const r=await r2p(tx(['settings']).objectStore('settings').get(key));return r?.value;},
     async putSetting(key,value){return r2p(tx(['settings'],'readwrite').objectStore('settings').put({key,value}));},
     async deleteSetting(key){return r2p(tx(['settings'],'readwrite').objectStore('settings').delete(key));},
@@ -1035,7 +1176,15 @@ const VaultWriter=(()=>{
     return count;
   }
 
-  return{exportEvent,exportBatch};
+  // 単語ドシエを Vault の neus/words/{slug}.md に直接書き出す
+  async function exportWordDossier(word,md){
+    const root=await ensureWriteAccess();if(!root)return false;
+    const fh=await getOrCreateFileHandle(root,['neus','words'],`${wordSlug(word.term)}.md`);
+    const w=await fh.createWritable();await w.write(md);await w.close();
+    return true;
+  }
+
+  return{exportEvent,exportBatch,exportWordDossier};
 })();
 
 // ===== FTS INDEX ========================================================
@@ -1145,6 +1294,8 @@ const NetworkMonitor=(()=>{
 const SourceFailTracker=(()=>{
   const fails=new Map();
   Bus.subscribe('inbound.error',async({source})=>{
+    // word由来の合成ソースは登録RSSソースではないため自動無効化の対象外
+    if(typeof source.id==='string'&&source.id.startsWith('word:'))return;
     const n=(fails.get(source.id)||0)+1;fails.set(source.id,n);
     if(n>=CONFIG.sourceMaxFails){
       const s=await Store.findSourceByUrl(source.url);
@@ -1414,6 +1565,7 @@ if('serviceWorker'in navigator){
       // SWは取得をトリガしただけなので、メインスレッドでPOLL実行
       const before=await Store.countAll();
       await RSSPoller.fetchAll();
+      await WordCollector.collectAll();
       const after=await Store.countAll();
       const fetched=after-before;
       const s=await AutoSync.getSettings();
@@ -1551,10 +1703,85 @@ const RSSPoller=(()=>{
   return{fetchOne,fetchAll,parseFeed};
 })();
 
+// ===== WORD COLLECTOR ===================================================
+// 単語(watchword)を登録し、その単語に関する情報をRSS検索フィード経由で自動収集する。
+// 各ソースは検索クエリ付きのRSS/Atomを返すため、既存の /rss プロキシをそのまま再利用する。
+// Wikipedia要約のみJSONのため、ワーカーの /json 中継(ドメイン許可リスト付き)を使う。
+const WORD_FEEDS={
+  news:  {label:'Google News', build:(q,lang)=>{const hl=lang==='ja'?'ja':'en-US',gl=lang==='ja'?'JP':'US',ceid=lang==='ja'?'JP:ja':'US:en';return`https://news.google.com/rss/search?q=${q}&hl=${hl}&gl=${gl}&ceid=${ceid}`;}},
+  reddit:{label:'Reddit',      build:(q)=>`https://www.reddit.com/search.rss?q=${q}&sort=new`},
+  hn:    {label:'Hacker News',  build:(q)=>`https://hnrss.org/newest?q=${q}&count=30`},
+  arxiv: {label:'arXiv',        build:(q)=>`https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30`},
+};
+const WordCollector=(()=>{
+  // Wikipedia REST summary(JSON)をワーカー経由で取得。失敗時はnull。
+  async function fetchWikiLang(term,lang){
+    const title=encodeURIComponent((term||'').trim().replace(/\s+/g,'_'));
+    const api=`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${title}`;
+    const url=`${CONFIG.proxy}/json?url=${encodeURIComponent(api)}`;
+    try{
+      const res=await fetch(url);
+      if(!res.ok)return null;
+      const j=await res.json();
+      if(!j||!j.extract||j.type==='disambiguation')return null;
+      return{title:j.title||term,extract:j.extract,url:j.content_urls?.desktop?.page||'',thumbnail:j.thumbnail?.source||''};
+    }catch{return null;}
+  }
+  // 端末言語のWikipediaに記事が無ければ英語版へフォールバックする
+  async function fetchWiki(word){
+    const langs=[...new Set([word.lang||'en','en'])];
+    for(const lang of langs){const w=await fetchWikiLang(word.term,lang);if(w)return w;}
+    return null;
+  }
+  // 1単語を収集: Wikipedia要約 + 有効な各検索フィードを取得し event パイプラインへ流す。
+  async function collectOne(word){
+    let total=0;
+    if(word.sources?.wikipedia){
+      const wiki=await fetchWiki(word);
+      if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
+    }
+    const q=encodeURIComponent((word.term||'').trim());
+    for(const key of Object.keys(WORD_FEEDS)){
+      if(!word.sources?.[key])continue;
+      const feedUrl=WORD_FEEDS[key].build(q,word.lang||'en');
+      // wordTerm を付与すると正規化ハンドラが word: タグを付け、source.type を 'word' にする
+      const source={id:'word:'+word.id,type:'word',name:`${word.term} · ${WORD_FEEDS[key].label}`,url:feedUrl,wordTerm:word.normalized};
+      const proxyUrl=`${CONFIG.proxy}/rss?url=${encodeURIComponent(feedUrl)}`;
+      // 一時的ネットワーク障害には1回だけリトライ(POLLの簡易版)
+      let res,netErr;
+      for(let attempt=0;attempt<2;attempt++){
+        if(attempt>0)await new Promise(r=>setTimeout(r,400));
+        try{res=await fetch(proxyUrl);netErr=null;break;}catch(e){netErr=e;}
+      }
+      if(netErr){Bus.publish('inbound.error',{source,error:'network'});continue;}
+      if(!res.ok){Bus.publish('inbound.error',{source,error:`http_${res.status}`});continue;}
+      let items;
+      try{items=RSSPoller.parseFeed(await res.text(),source);}catch{Bus.publish('inbound.error',{source,error:'parse'});continue;}
+      for(const raw of items)Bus.publish('inbound.fetched',raw);
+      total+=items.length;
+    }
+    word.lastCollectedAt=Date.now();word.lastCount=total;
+    await Store.putWord(word);
+    return total;
+  }
+  async function collectAll(){
+    if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return 0;}
+    const words=(await Store.listWords()).filter(w=>w.enabled!==false);
+    if(words.length===0)return 0;
+    toast(currentLang==='ja'?`${words.length}単語を収集中...`:`collecting ${words.length} word(s)...`);
+    let total=0;for(const w of words)total+=await collectOne(w);
+    toast(currentLang==='ja'?`${total}件収集`:`collected ${total} item(s)`,'ok');
+    return total;
+  }
+  return{collectOne,collectAll,fetchWiki};
+})();
+
 // ===== PROCESSORS =======================================================
 Bus.subscribe('inbound.fetched',async({raw,source})=>{
   const hash=await sha256(raw.link+'|'+raw.title);
-  const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags:[],userTags:[],score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:raw.link,hash};
+  // word由来のソースは word:{term} 自動タグを付与し、ソース種別を 'word' にする
+  const autoTags=source.wordTerm?['word:'+source.wordTerm]:[];
+  const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:raw.link,hash};
   Bus.publish('event.normalized',ev);
 });
 
@@ -1753,6 +1980,192 @@ const MarkdownExporter={
   async copy(ev){try{await navigator.clipboard.writeText(this.toMarkdown(ev));toast('markdown copied','ok');}catch{toast('clipboard denied','err');}}
 };
 
+// ===== WORD EXPORTER ====================================================
+// 1単語の収集結果(Wikipedia定義 + 収集アイテム)を1つの「単語ドシエ」にまとめて出力する。
+const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||'word';
+// 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
+const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
+// 裁決(探究の帰結): 問いは答えに向かわなければならない。探究の現在地を4段階で記録。
+const VERDICT_DEFS=[
+  {key:'open',      ja:'探究中',  en:'open'},
+  {key:'converging',ja:'収束中',  en:'converging'},
+  {key:'answered',  ja:'解決',    en:'answered'},
+  {key:'suspended', ja:'保留',    en:'suspended'},
+];
+function verdictOf(word){return word.verdict?.status||'open';}
+function nextVerdict(status){const keys=VERDICT_DEFS.map(d=>d.key);const i=keys.indexOf(status);return keys[(i+1)%keys.length];}
+// エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
+const TIER_DEFS=[
+  {key:'research',ja:'一次(研究)',en:'research'},
+  {key:'press',   ja:'報道',      en:'press'},
+  {key:'discussion',ja:'議論',    en:'discussion'},
+  {key:'other',   ja:'その他',    en:'other'},
+];
+// source.name 末尾(' · {label}')のフィードラベルから層を判定。議論をニュースより先に。
+function sourceTier(name){
+  const label=((name||'').split('·').pop()||'').trim().toLowerCase();
+  if(label.includes('arxiv'))return 'research';
+  if(label.includes('reddit')||label.includes('hacker'))return 'discussion';
+  if(label.includes('news'))return 'press';
+  return 'other';
+}
+function tierBreakdown(events){
+  const counts=new Map();
+  for(const ev of events){const k=sourceTier(ev.source?.name);counts.set(k,(counts.get(k)||0)+1);}
+  return TIER_DEFS.filter(d=>counts.get(d.key)).map(d=>({tier:d.key,ja:d.ja,en:d.en,count:counts.get(d.key)}));
+}
+// アポリア(無知の知): 有効なのに0件だったソース = 探究の空白。沈黙も情報。
+const feedLabelOf=(name)=>((name||'').split('·').pop()||'').trim();
+function signalGaps(word,events){
+  const present=new Set(events.map(e=>feedLabelOf(e.source?.name)));
+  const active=[],silent=[];
+  if(word.sources?.wikipedia)(word.wiki?.extract?active:silent).push('Wikipedia');
+  for(const key of Object.keys(WORD_FEEDS)){
+    if(!word.sources?.[key])continue;
+    (present.has(WORD_FEEDS[key].label)?active:silent).push(WORD_FEEDS[key].label);
+  }
+  return {active,silent};
+}
+// 弁証法(dialektikē): 語は孤島ではない。ある単語の収集テキストに別の登録語が
+// 現れたら、それは問いどうしの連環。相互参照を関連として引き出す。
+function relatedWords(items,others){
+  const hay=items.map(e=>`${e.content?.title||''} ${e.content?.snippet||''}`).join('\n').toLowerCase();
+  if(!hay.trim())return [];
+  const res=[];
+  for(const ow of others){
+    const n=(ow.normalized||'').toLowerCase();
+    const isAscii=/^[\x00-\x7f]+$/.test(n);
+    if(n.length<(isAscii?3:2))continue;  // ASCII短語は誤検出が多い。CJKは2字で十分。
+    const esc=n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const re=isAscii?new RegExp(`\\b${esc}\\b`,'g'):new RegExp(esc,'g');
+    const m=hay.match(re);
+    if(m&&m.length)res.push({term:ow.term,normalized:ow.normalized,count:m.length});
+  }
+  return res.sort((a,b)=>b.count-a.count).slice(0,6);
+}
+const WordExporter={
+  // 単語に紐づく収集イベント(アーカイブ除く)を新しい順で取得
+  async gather(word){
+    const all=await Store.allEvents();
+    const tag='word:'+word.normalized;
+    return all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived)
+              .sort((a,b)=>(b.publishedAt||b.timestamp)-(a.publishedAt||a.timestamp));
+  },
+  // 自分以外の登録語(関連検出用)
+  async othersOf(word){
+    return (await Store.listWords()).filter(w=>w.normalized!==word.normalized).map(w=>({term:w.term,normalized:w.normalized}));
+  },
+  // 収集イベントから word: タグを除いた頻出タグを集計する
+  aggregateTags(events){
+    const counts=new Map();
+    for(const ev of events){
+      for(const tg of [...(ev.meta?.autoTags||[]),...(ev.meta?.userTags||[])]){
+        if(!tg||tg.startsWith('word:'))continue;
+        counts.set(tg,(counts.get(tg)||0)+1);
+      }
+    }
+    return [...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20);
+  },
+  toDossier(word,events,others=[]){
+    const srcList=['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join(', ')||'-';
+    const fresh=newSinceReview(events,word.reviewedAt);
+    const gaps=signalGaps(word,events);
+    const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
+    const related=relatedWords(events,others);
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,'---'].filter(Boolean).join('\n');
+    const parts=[fm,'',`# ${word.term}`,''];
+    if(word.note)parts.push(`> ${word.note}`,'');
+    if(word.wiki?.extract){
+      parts.push('## 定義','',word.wiki.extract,'');
+      if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
+    }
+    // 出所(知の階層): 研究 > 報道 > 議論。何を「知り」何を「聞いた」かを区別する。
+    const tiers=tierBreakdown(events);
+    if(tiers.length){
+      parts.push('## 出所','');
+      for(const tb of tiers)parts.push(`- ${tb.ja} (${tb.en}): ${tb.count}`);
+      parts.push('');
+    }
+    // 空白(無知の知): 有効なのに0件だったソース。探究の境界。
+    if(showGaps)parts.push('## 空白','',`有効だが0件: ${gaps.silent.join(', ')}`,'');
+    // 関連(弁証法): 収集テキストに現れた他の登録語。問いの連環。
+    if(related.length)parts.push('## 関連','',related.map(r=>`- ${r.term} (${r.count})`).join('\n'),'');
+    if(fresh.length){
+      parts.push(`## 新着 (${fresh.length})`,'');
+      for(const ev of fresh){
+        const d=ev.publishedAt?isoDate(ev.publishedAt).slice(0,10):'';
+        parts.push(`- [${ev.content.title}](${ev.url||''})${d?` — ${d}`:''}`);
+      }
+      parts.push('');
+    }
+    // 裁決(探究の帰結): open以外またはノートがある場合に表示。
+    const vd=verdictOf(word);
+    const vdefD=VERDICT_DEFS.find(d=>d.key===vd)||VERDICT_DEFS[0];
+    if(vd!=='open'||word.verdict?.note){
+      parts.push('## 裁決','');
+      parts.push(`${vdefD.ja} / ${vdefD.en} (${vd})`);
+      if(word.verdict?.note)parts.push(`> ${word.verdict.note}`);
+      parts.push('');
+    }
+    // 問い群(残余問題): まだ答えられていない問い。ソクラテス的無知の知。
+    const qs=(word.questions||[]);
+    if(qs.length){
+      parts.push('## 問い群','');
+      for(const q of qs)parts.push(`- ${q.text}`);
+      parts.push('');
+    }
+    parts.push(`## 収集アイテム (${events.length})`,'');
+    // ソース別にグルーピング
+    const groups=new Map();
+    for(const ev of events){const k=ev.source.name||'other';if(!groups.has(k))groups.set(k,[]);groups.get(k).push(ev);}
+    for(const[name,list]of groups){
+      parts.push(`### ${name}`,'');
+      for(const ev of list){
+        const d=ev.publishedAt?isoDate(ev.publishedAt).slice(0,10):'';
+        parts.push(`- [${ev.content.title}](${ev.url||''})${d?` — ${d}`:''}`);
+        if(ev.content.snippet)parts.push(`  - ${ev.content.snippet.slice(0,200)}`);
+      }
+      parts.push('');
+    }
+    const tags=this.aggregateTags(events);
+    if(tags.length){
+      parts.push('## タグ','',tags.map(([t,n])=>`- ${t} (${n})`).join('\n'),'');
+    }
+    return parts.join('\n');
+  },
+  async downloadMd(word){
+    const events=await this.gather(word);
+    const others=await this.othersOf(word);
+    downloadFile(`neus-word-${wordSlug(word.term)}.md`,this.toDossier(word,events,others),'text/markdown');
+    toast(currentLang==='ja'?'Markdownを書き出し':'markdown exported','ok');
+  },
+  async downloadJson(word){
+    const events=await this.gather(word);
+    const others=await this.othersOf(word);
+    const dump={app:'neus',kind:'word-dossier',exportedAt:new Date().toISOString(),word:{term:word.term,lang:word.lang,normalized:word.normalized,wiki:word.wiki||null},related:relatedWords(events,others),items:events};
+    downloadFile(`neus-word-${wordSlug(word.term)}.json`,JSON.stringify(dump,null,2),'application/json');
+    toast(currentLang==='ja'?'JSONを書き出し':'json exported','ok');
+  },
+  async toVault(word){
+    const events=await this.gather(word);
+    const others=await this.othersOf(word);
+    const ok=await VaultWriter.exportWordDossier(word,this.toDossier(word,events,others));
+    if(ok)toast(currentLang==='ja'?'Vaultへ書き出し':'written to vault','ok');
+  },
+  // 全watchwordを1つのMarkdownにまとめて出力(アウトプット一括)
+  async downloadAllMd(){
+    const words=(await Store.listWords()).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    if(words.length===0){toast(currentLang==='ja'?'単語がありません':'no words','err');return;}
+    const docs=[];
+    for(const w of words){
+      const others=words.filter(o=>o.normalized!==w.normalized).map(o=>({term:o.term,normalized:o.normalized}));
+      docs.push(this.toDossier(w,await this.gather(w),others));
+    }
+    downloadFile(`neus-words-${new Date().toISOString().slice(0,10)}.md`,docs.join('\n\n'),'text/markdown');
+    toast(currentLang==='ja'?`${words.length}単語を書き出し`:`exported ${words.length} word(s)`,'ok');
+  },
+};
+
 // ===== VIEWS ============================================================
 let currentView='inbox';let searchQuery='';let searchResults=[];
 const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starred:{starred:true},archived:{archived:true},later:{later:true,archived:false}};
@@ -1765,6 +2178,7 @@ async function refreshCounts(){
   // LATER count: listEvents scan (no dedicated index, OK for <500 items)
   const laterEvents=await Store.listEvents({filter:{later:true,archived:false},limit:1000});
   $('#cnt-later').textContent=laterEvents.length;
+  $('#cnt-words').textContent=(await Store.listWords()).length;
   $('#cnt-search').textContent=searchResults.length;
 }
 
@@ -1893,11 +2307,178 @@ async function renderDigest(){
   <svg width="${svgW}" height="${h+45}" viewBox="0 0 ${svgW} ${h+45}" style="max-width:100%;" role="img" aria-label="${t('digest.week.trend')}: 7-day event count">${trendBars}</svg>`;
 }
 
+// WORDSビュー: 登録単語ごとに Wikipedia定義 + 直近の収集アイテム + 出力ボタンを表示
+const WIKI_STALE_MS=7*24*60*60*1000;
+
+// 産婆術: ユーザー自身の行動(WATCHキーワード / STAR記事の頻出タグ)に潜む
+// 「まだ名付けていない問い」を watchword 候補として引き出す。純粋なランク付け。
+function rankWordSuggestions({watchPatterns=[],tagCounts={},existing=new Set(),limit=6}={}){
+  const cand=new Map(); // normalized -> {term,score,reason}
+  const add=(term,score,reason)=>{
+    const norm=(term||'').trim().toLowerCase();
+    if(norm.length<2||existing.has(norm))return;
+    const cur=cand.get(norm);
+    if(cur){cur.score+=score;if(reason==='keyword')cur.reason='keyword';}
+    else cand.set(norm,{term:(term||'').trim(),score,reason});
+  };
+  for(const p of watchPatterns)add(p,100,'keyword');     // 明示的な関心は最優先
+  for(const[tag,n]of Object.entries(tagCounts))add(tag,n,'tag');
+  return [...cand.values()].sort((a,b)=>b.score-a.score).slice(0,limit);
+}
+// 候補を集めてチップ列のHTMLを生成(登録済みは除外)。候補ゼロなら空文字。
+function renderWordSuggestions(words,all){
+  const existing=new Set(words.map(w=>w.normalized));
+  const rules=KeywordRules.getRules();
+  const watchPatterns=(rules.watch||[]).filter(r=>r.pattern&&r.mode!=='regex').map(r=>r.pattern);
+  const tagCounts={};
+  for(const ev of all){
+    if(!ev.state?.starred)continue;
+    for(const tg of [...(ev.meta?.autoTags||[]),...(ev.meta?.userTags||[])]){
+      if(!tg||tg.startsWith('word:'))continue;
+      const term=tg.includes(':')?tg.split(':').pop():tg;  // watch:ai -> ai
+      tagCounts[term]=(tagCounts[term]||0)+1;
+    }
+  }
+  const sugg=rankWordSuggestions({watchPatterns,tagCounts,existing});
+  if(sugg.length===0)return '';
+  const chips=sugg.map(s=>{
+    const why=s.reason==='keyword'?(currentLang==='ja'?'WATCHキーワードから':'from your WATCH keywords'):(currentLang==='ja'?'スター記事の頻出タグ':'frequent tag in starred items');
+    return `<button class="word-suggest" data-wact="suggest" data-term="${escapeAttr(s.term)}" title="${escapeAttr(why)}">+ ${escapeHtml(s.term)}</button>`;
+  }).join('');
+  return `<div class="word-suggest-strip"><span class="word-suggest-label">${currentLang==='ja'?'提案':'Suggested'}</span>${chips}</div>`;
+}
+
+async function renderWords(){
+  const words=await Store.listWords();
+  const all=await Store.allEvents();
+  const suggestHtml=renderWordSuggestions(words,all);
+  if(words.length===0){
+    return `${suggestHtml}<div class="empty"><div class="icon">+</div><div>${currentLang==='ja'?'登録された単語がありません':'no words registered'}</div><div class="hint">${currentLang==='ja'?'単語を登録すると関連情報を自動収集します':'register a word to auto-collect its information'}</div><button id="empty-words" type="button">${t('word.manage')}</button></div>`;
+  }
+  const sorted=words.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const header=`<div class="word-view-header"><h2>${sorted.length} ${currentLang==='ja'?'単語':'words'}</h2><button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
+  const sections=[];
+  for(const w of sorted){
+    const tag='word:'+w.normalized;
+    const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).sort((a,b)=>(b.publishedAt||b.timestamp)-(a.publishedAt||a.timestamp));
+    const recent=items.slice(0,5);
+    const newCount=newSinceReview(items,w.reviewedAt).length;
+    const wikiStale=w.wiki?.fetchedAt&&(Date.now()-w.wiki.fetchedAt>WIKI_STALE_MS);
+    const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
+    const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
+    const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
+    const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
+    const vdef=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
+    const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}">${currentLang==='ja'?vdef.ja:vdef.en}</button>`;
+    const verdictNote=w.verdict?.note?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(w.verdict.note)}</p>`:'';
+    // 問い群(残余問題): ユーザーが記録する未解決の問い。
+    const qs=(w.questions||[]);
+    const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${currentLang==='ja'?'削除':'remove'}">&times;</button></li>`).join('')}</ul>`:'';
+    const qAdd=`<div class="word-q-add"><input type="text" placeholder="${escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...')}" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
+    const tiers=tierBreakdown(items);
+    const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
+    const gaps=signalGaps(w,items);
+    const gapLine=(w.lastCollectedAt&&gaps.silent.length)?`<div class="word-gap" title="${currentLang==='ja'?'有効だが今回0件':'enabled but returned nothing'}">${currentLang==='ja'?'空白':'no signal'}: ${gaps.silent.map(escapeHtml).join(', ')}</div>`:'';
+    const others=sorted.filter(x=>x.id!==w.id).map(x=>({term:x.term,normalized:x.normalized}));
+    const related=relatedWords(items,others);
+    const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
+    const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
+    sections.push(`<section class="word-section" data-word="${w.id}">
+      <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
+      ${noteLine}
+      ${verdictNote}
+      ${provLine}
+      ${gapLine}
+      ${relLine}
+      ${qList}${qAdd}
+      ${wiki}
+      <div class="word-actions">
+        <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
+        ${newCount>0?`<button data-wact="reviewed" data-id="${w.id}">${t('word.reviewed')}</button>`:''}
+        <button data-wact="filter" data-id="${w.id}">${t('word.filter')}</button>
+        <button data-wact="md" data-id="${w.id}">DOSSIER MD</button>
+        <button data-wact="json" data-id="${w.id}">JSON</button>
+        <button data-wact="vault" data-id="${w.id}">VAULT</button>
+      </div>
+      ${recent.length?recent.map(ev=>cardHtml(ev)).join(''):`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
+    </section>`);
+  }
+  return suggestHtml+header+sections.join('');
+}
+
+// WORDSビューの単語アクション(収集/フィルタ/出力)
+$('#view').addEventListener('click',async(e)=>{
+  const btn=e.target.closest('button[data-wact]');
+  if(!btn)return;
+  e.stopPropagation();
+  const act=btn.dataset.wact;
+  if(act==='collectall'){btn.disabled=true;await WordCollector.collectAll();await refreshCounts();await renderView();return;}
+  if(act==='suggest'){
+    const term=(btn.dataset.term||'').trim();if(!term)return;
+    const normalized=term.toLowerCase();
+    if(await Store.findWordByTerm(normalized)){await renderView();return;}
+    btn.disabled=true;
+    const now=Date.now();
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},questions:[]};
+    await Store.putWord(word);
+    toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
+    await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
+  }
+  if(act==='relfilter'){
+    const norm=btn.dataset.norm;if(!norm)return;
+    currentView='all';
+    $$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+    const ab=$('.nav button[data-view="all"]');if(ab){ab.classList.add('active');ab.setAttribute('aria-selected','true');}
+    applyFilter('tag','word:'+norm);return;
+  }
+  const word=await Store.getWord(btn.dataset.id);if(!word)return;
+  if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await refreshCounts();await renderView();return;}
+  if(act==='reviewed'){word.reviewedAt=Date.now();await Store.putWord(word);await renderView();return;}
+  if(act==='setverd'){
+    const cur=verdictOf(word);
+    if(!word.verdict)word.verdict={status:'open',note:''};
+    word.verdict.status=nextVerdict(cur);
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='addq'){
+    const input=$(`[data-wqinput="${word.id}"]`);
+    const text=(input?.value||'').trim();
+    if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
+    if(!word.questions)word.questions=[];
+    word.questions.push({id:uuid(),text,createdAt:Date.now()});
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='delq'){
+    const qid=btn.dataset.qid;
+    word.questions=(word.questions||[]).filter(q=>q.id!==qid);
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='refreshwiki'){
+    btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
+    const wiki=await WordCollector.fetchWiki(word);
+    if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='filter'){
+    currentView='all';
+    $$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+    const ab=$('.nav button[data-view="all"]');if(ab){ab.classList.add('active');ab.setAttribute('aria-selected','true');}
+    applyFilter('tag','word:'+word.normalized);return;
+  }
+  if(act==='md')return WordExporter.downloadMd(word);
+  if(act==='json')return WordExporter.downloadJson(word);
+  if(act==='vault')return WordExporter.toVault(word);
+});
+
 async function renderView(){
   const view=$('#view');view.setAttribute('aria-busy','true');
   if(currentView==='digest'){
     view.innerHTML=await renderDigest();
     return;
+  }
+  if(currentView==='words'){
+    view.innerHTML=await renderWords();
+    view.setAttribute('aria-busy','false');return;
   }
   if(currentView==='search'){
     if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;return;}
@@ -2109,7 +2690,7 @@ async function openSourcesModal(){
   $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
 }
 $('#btn-sources').addEventListener('click',openSourcesModal);
-$('#btn-poll').addEventListener('click',()=>RSSPoller.fetchAll().then(()=>refreshCounts()).then(()=>renderView()));
+$('#btn-poll').addEventListener('click',()=>RSSPoller.fetchAll().then(()=>WordCollector.collectAll()).then(()=>refreshCounts()).then(()=>renderView()));
 
 // オーバーフローメニュー(ヘッダーのモバイル集約)
 (function(){
@@ -2232,6 +2813,70 @@ $('#btn-keywords').addEventListener('click',openKeywordsModal);
 $('#kw-cancel').addEventListener('click',()=>$('#modal-keywords').classList.remove('show'));
 $('#modal-keywords').addEventListener('click',(e)=>{if(e.target.id==='modal-keywords')$('#modal-keywords').classList.remove('show');});
 
+// ===== WORDS MODAL =====================================================
+async function renderWordList(){
+  const words=(await Store.listWords()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  if(words.length===0){$('#word-list').innerHTML=`<div style="color:var(--fg-3);">${currentLang==='ja'?'なし':'none'}</div>`;return;}
+  const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'}];
+  $('#word-list').innerHTML=words.map(w=>{
+    const srcToggles=srcDefs.map(s=>`<label><input type="checkbox" data-wmsrc="${s.key}" data-id="${w.id}"${w.sources?.[s.key]?' checked':''}> ${s.label}</label>`).join('');
+    return `<div class="word-row" data-id="${w.id}">
+      <div class="word-row-top">
+        <strong>${escapeHtml(w.term)}</strong>
+        <span style="color:var(--fg-3);">· ${w.lastCount||0} ${currentLang==='ja'?'件':'items'}</span>
+        <div class="word-row-actions">
+          <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
+          <button data-wmact="collect" data-id="${w.id}">COLLECT</button>
+          <button data-wmact="delete" data-id="${w.id}">DEL</button>
+        </div>
+      </div>
+      <div class="word-row-srcs">${srcToggles}</div>
+    </div>`;
+  }).join('');
+}
+async function openWordsModal(){await renderWordList();$('#modal-words').classList.add('show');$('#word-input').focus();}
+$('#btn-words').addEventListener('click',openWordsModal);
+$('#word-cancel').addEventListener('click',()=>$('#modal-words').classList.remove('show'));
+$('#modal-words').addEventListener('click',(e)=>{if(e.target.id==='modal-words')$('#modal-words').classList.remove('show');});
+$('#view').addEventListener('click',(e)=>{if(e.target.id==='empty-words')openWordsModal();});
+
+async function addWord(){
+  const term=$('#word-input').value.trim();
+  if(!term){toast(currentLang==='ja'?'単語を入力':'enter a word','err');return;}
+  const normalized=term.toLowerCase();
+  if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
+  const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked};
+  if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
+  const note=$('#word-note').value.trim();
+  const now=Date.now();
+  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},questions:[]};
+  await Store.putWord(word);
+  $('#word-input').value='';$('#word-note').value='';
+  await renderWordList();await refreshCounts();
+  toast(currentLang==='ja'?'登録しました — 収集中...':'registered — collecting...','ok');
+  await WordCollector.collectOne(word);
+  await renderWordList();await refreshCounts();
+}
+$('#word-add').addEventListener('click',addWord);
+$('#word-input').addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();addWord();}});
+$('#word-collect-all').addEventListener('click',async()=>{await WordCollector.collectAll();await renderWordList();await refreshCounts();await renderView();});
+$('#word-export-all').addEventListener('click',()=>WordExporter.downloadAllMd());
+$('#word-list').addEventListener('click',async(e)=>{
+  const btn=e.target.closest('button[data-wmact]');if(!btn)return;
+  const word=await Store.getWord(btn.dataset.id);if(!word)return;
+  const act=btn.dataset.wmact;
+  if(act==='toggle'){word.enabled=word.enabled===false;await Store.putWord(word);await renderWordList();await refreshCounts();}
+  if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await renderWordList();await refreshCounts();await renderView();}
+  if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();}}
+});
+$('#word-list').addEventListener('change',async(e)=>{
+  const cb=e.target.closest('input[data-wmsrc]');if(!cb)return;
+  const word=await Store.getWord(cb.dataset.id);if(!word)return;
+  if(!word.sources)word.sources={};
+  word.sources[cb.dataset.wmsrc]=cb.checked;
+  await Store.putWord(word);
+});
+
 $('#kw-save').addEventListener('click',async()=>{
   const watchAction=$('#kw-watch-action').value;
   const blockAction=$('#kw-block-action').value;
@@ -2320,11 +2965,12 @@ $('#modal-stats').addEventListener('click',(e)=>{if(e.target.id==='modal-stats')
 $('#stats-backup').addEventListener('click',async()=>{
   const events=await Store.allEvents();
   const sources=await Store.listSources();
+  const words=await Store.listWords();
   const settings={};
   for(const key of ['byok','lang','keyword-rules','onboarding-done']){
     const v=await Store.getSetting(key);if(v!==undefined)settings[key]=v;
   }
-  const dump={version:'1.0',exportedAt:new Date().toISOString(),app:'neus',counts:{events:events.length,sources:sources.length},events,sources,settings};
+  const dump={version:'1.0',exportedAt:new Date().toISOString(),app:'neus',counts:{events:events.length,sources:sources.length,words:words.length},events,sources,words,settings};
   // セキュリティ警告: APIキーは暗号化されている場合のみ含めるべき
   if(settings.byok&&!settings.byok.encrypted){
     if(!await confirmAsync(currentLang==='ja'?'APIキーが暗号化されていません。バックアップに含めますか?':'API key is not encrypted. Include in backup?',{danger:true})){
@@ -2347,9 +2993,11 @@ $('#restore-file').addEventListener('change',async(e)=>{
   const existing=await Store.allEvents();
   for(const ev of existing){FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);}
   for(const s of await Store.listSources())await Store.deleteSource(s.id);
+  for(const w of await Store.listWords())await Store.deleteWord(w.id);
   // 復元
   for(const ev of dump.events){await Store.putEvent(ev);FTSIndex.add(ev);}
   for(const s of (dump.sources||[]))await Store.putSource(s);
+  for(const w of (dump.words||[]))await Store.putWord(w);
   for(const[k,v]of Object.entries(dump.settings||{}))await Store.putSetting(k,v);
   await KeywordRules.load();
   await TagLearner.rebuild();

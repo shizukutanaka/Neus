@@ -6,6 +6,95 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [v0.12.0] - 2026-06-14
+
+### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)
+
+特定の単語/トピックを登録すると、その情報を横断的に自動収集し、まとめて出力できる能動的な調査機能。
+
+#### 入力(収集)
+- 単語ごとに検索フィードを生成し、既存の `/rss` プロキシ経由で取得:
+  - Google News 検索RSS / Reddit 検索RSS / Hacker News(hnrss)/ arXiv(Atom)
+- 単語の定義/概要は Wikipedia REST summary(JSON)から取得
+  - ワーカーに `GET /json?url=` を追加(ホスト許可リスト=Wikipedia/Wikimediaのみ、SSRFガード共有)
+- 収集結果は既存パイプライン(正規化→重複排除→保存→FTS)へ流入。`source.type='word'` と
+  自動タグ `word:{term}` を付与し、フィルタ/検索/出力で束ねる
+- 手動POLLおよびPeriodic Background Sync(AutoSync)に相乗りして自動収集
+
+#### 出力(アウトプット)
+- 単語ドシエ Markdown(定義 + ソース別アイテム一覧)ダウンロード
+- 構造化JSONエクスポート
+- Obsidian Vault へ `neus/words/{slug}.md` 直書き
+- 個別カードの COPY MD は従来どおり
+
+#### UI / ストレージ
+- 新ビュー `WORDS`(単語ごとの定義カード + 直近アイテム + 出力ボタン)
+- `WORDS` モーダル(登録 / 収集ソース選択 / 有効化 / 収集 / 削除)
+- IndexedDB に `words` ストアを追加(dbVersion 1→2、非破壊アップグレード)。バックアップ/復元にも対応
+- JA/EN 文言、アクセント色 `#00C4CC` 準拠、絵文字なし
+
+#### 改善・修正
+- **Fixed**: word由来の合成ソース(`word:*`)が `SourceFailTracker` の自動無効化対象になり、誤解を招く "auto-disabled" トーストを出していた問題を修正(対象外に)
+- Wikipedia定義は端末言語に記事が無い/曖昧さ回避ページの場合、英語版へ自動フォールバック
+- 単語収集のフィード取得に一時的ネットワーク障害向けの1回リトライを追加(POLLの簡易版)
+- WORDSモーダルの ADD / すべて収集 ボタンを i18n 対応(JA/EN)
+- WORDSモーダルの登録済みリストで、各単語の収集ソース(Wikipedia/News/Reddit/HN/arXiv)を行内チェックボックスで即時切替可能に(削除→再登録が不要)
+- WORDSビューにヘッダー(単語数 + COLLECT ALL)を追加。モーダルを開かずに一括収集可能
+- Wikipedia定義が7日以上前/未取得の場合、各単語に「定義を更新 / Refresh definition」リンクを表示しその場で再取得
+- 単語ドシエを拡充: frontmatter に `sources` / `last_collected` を追加、収集アイテムの頻出タグを集計する `## タグ` セクションを追加
+- WORDSモーダルに EXPORT ALL を追加。全watchwordを1つのMarkdownへ一括出力
+- 収集ソース未選択での単語登録をバリデーションで防止
+
+#### 視点の転換 — 「語 = 問い、価値 = 差分」(ソクラテス式の再フレーム)
+語を検索クエリではなく *問い* として扱い、出力の価値を「全アイテム」ではなく「前回レビュー以降の新着 = 答えの変化」と捉え直す:
+- 各単語に任意の **note(問い/意図)** を付与(WORDSモーダルで入力、WORDSビューと ドシエ frontmatter `intent` + 引用に反映)
+- **reviewedAt** を追跡。WORDSビューに **新着件数バッジ** と **REVIEWED(確認済み)** ボタンを表示し、レビュー時点を更新
+- 単語ドシエに frontmatter `unreviewed` と **`## 新着`** セクション(前回レビュー以降のアイテム)を追加
+- 共有判定 `newSinceReview()` をビュー/出力で共用
+
+#### 視点の転換 — 「問いを待つのではなく引き出す」(ソクラテス式の産婆術)
+watchword はユーザーがタイプして生まれるだけ、という前提を覆す。最も価値ある問いはユーザー自身の行動に潜む:
+- **watchword 提案** — WATCHキーワード(明示的な関心)と STAR 記事の頻出タグから候補を抽出し、WORDS ビュー上部にチップ列で提示
+- チップをワンタップで登録 → 既定ソースで即収集(`data-wact="suggest"`)。登録済みは除外
+- 純粋なランク付け `rankWordSuggestions()`(キーワード最優先、同一語はスコア合算、2文字未満ノイズ除去、件数順)
+
+#### 視点の転換 — 「知っていること vs 聞いただけのこと」(エピステーメーとドクサ)
+収集情報をフラットに日付順で並べる前提を覆す。情報には認識上の重みの差がある:
+- 収集元を **信頼の層** に分類: 一次(研究=arXiv)/ 報道(Google News)/ 議論(Reddit・Hacker News)
+- WORDS ビューの各単語に出所バッジ(層ごとの件数、研究はアクセント強調)を表示
+- 単語ドシエに **`## 出所`** セクション(層ごとの件数)を追加。「何を知り、何を聞いたか」を区別
+- `sourceTier()` / `tierBreakdown()` をビュー/出力で共用(議論を報道より先に判定し "Hacker News" の誤分類を回避)
+
+#### 視点の転換 — 「無知の知」(アポリア: 取れなかったものも情報)
+収集できたアイテムだけを語り、有効なのに0件だったソースの沈黙を捨てていた前提を覆す:
+- **空白(no signal)の可視化** — 有効化したのに今回0件だったソース(Wikipedia含む)を検出
+- WORDS ビューの各単語に「空白: arXiv, Reddit」行を表示(初回収集後のみ。沈黙が「まだ収集していない」と混同されるのを防ぐ)
+- 単語ドシエに frontmatter `silent` と **`## 空白`** セクションを追加。探究の境界=次にどこを掘るべきかを明示
+- `signalGaps()` / `feedLabelOf()` をビュー/出力で共用
+
+#### 視点の転換 — 「語は孤島ではない」(弁証法: 問いの連環)
+各単語を独立した島として扱う前提を覆す。一つの定義は他との関係の中にしか立たない:
+- **関連語の検出** — ある単語の収集テキスト(タイトル+抜粋)に別の登録語が現れたら「関連」として提示。出現回数でランク
+- WORDS ビューの各単語に関連チップ(クリックでその語の収集物へフィルタ移動)
+- 単語ドシエに frontmatter `related` と **`## 関連`** セクションを追加。孤立した問いを相互参照の網として可視化
+- `relatedWords()` をビュー/出力で共用(ASCII語は語境界一致で `gpu`⊄`webgpu` の誤検出を回避、CJKは部分一致で2字語に対応)
+
+#### 視点の転換 — 「探究は終わりなき蓄積でなく、判断に至るサイクルを持つ」(裁決 / 問い群)
+収集を続けるだけで判断に向かわない前提を覆す。問いはいつか答えに至らなければならない:
+- **Round 6 — 裁決 (Verdict)**: 各watchwordに verdict ライフサイクルフィールドを追加(open/converging/answered/suspended)。WORDSビューにステータスピルボタンを表示しワンタップでサイクル。ドシエに `verdict_status` / `verdict_note` frontmatterと `## 裁決` セクションを追加(open+メモなしは非表示)
+- **Round 7 — 問い群 (Questions)**: 各watchwordに未解決の問い配列を追加。WORDSビューで追加/削除UI。ドシエに `## 問い群` セクションを追加(ソクラテス的「無知の知」の記録)
+
+### Added
+- Round 6 — 裁決 (Verdict): verdict lifecycle field on each watchword (open/converging/answered/suspended), with pill button to cycle status and dossier export support
+- Round 7 — 問い群 (Questions): open questions array on each watchword, with add/remove UI and dossier export support
+
+#### Tests
+- `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
+- `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
+- `tests/word-collect-integration.test.mjs`(フィードXML→パース→word:タグ付与→ドシエ出力のE2Eをjsdomで検証)
+- `tests/word-verdict.test.mjs`(VERDICT_DEFS / verdictOf / nextVerdict / toDossier裁決セクション)
+- `tests/word-questions.test.mjs`(問い群セクション生成 + addq/delq UIワイヤリング確認)
+
 ## [v0.11.0] - 2026-05-30
 
 ### Maskable Icon Fix — Install Experience (Category 5)
