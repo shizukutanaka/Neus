@@ -2000,6 +2000,9 @@ const MarkdownExporter={
 // ===== WORD EXPORTER ====================================================
 // 1単語の収集結果(Wikipedia定義 + 収集アイテム)を1つの「単語ドシエ」にまとめて出力する。
 const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||'word';
+// 単語の正規化(重複登録防止のキー): NFKCで全角/半角・互換文字を統一、内部空白を畳み込み、小文字化。
+// 表示用の term は生のまま保持し、照合・タグ付けにのみ normalized を用いる。
+const normalizeTerm=(s)=>(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
 // 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
 const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
 // 裁決(探究の帰結): 問いは答えに向かわなければならない。探究の現在地を4段階で記録。
@@ -2343,7 +2346,7 @@ const WIKI_STALE_MS=7*24*60*60*1000;
 function rankWordSuggestions({watchPatterns=[],tagCounts={},existing=new Set(),limit=6}={}){
   const cand=new Map(); // normalized -> {term,score,reason}
   const add=(term,score,reason)=>{
-    const norm=(term||'').trim().toLowerCase();
+    const norm=normalizeTerm(term);
     if(norm.length<2||existing.has(norm))return;
     const cur=cand.get(norm);
     if(cur){cur.score+=score;if(reason==='keyword')cur.reason='keyword';}
@@ -2450,7 +2453,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='collectall'){btn.disabled=true;await WordCollector.collectAll();await refreshCounts();await renderView();return;}
   if(act==='suggest'){
     const term=(btn.dataset.term||'').trim();if(!term)return;
-    const normalized=term.toLowerCase();
+    const normalized=normalizeTerm(term);
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
@@ -2905,7 +2908,7 @@ $('#view').addEventListener('click',(e)=>{if(e.target.id==='empty-words')openWor
 async function addWord(){
   const term=$('#word-input').value.trim();
   if(!term){toast(currentLang==='ja'?'単語を入力':'enter a word','err');return;}
-  const normalized=term.toLowerCase();
+  const normalized=normalizeTerm(term);
   if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
   const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked};
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}

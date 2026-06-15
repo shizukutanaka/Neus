@@ -107,7 +107,14 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - **aria-label の付与**: 裁決ピル(現在の状態を読み上げ)/ 再検討バッジ(件数+理由)/ 関連チップ / 提案チップ / 問い入力欄 / 問い削除ボタンに `aria-label` を追加。アプリ他箇所(検索・キーワード入力等)の慣習に一致させた。これまで `title` のみでスクリーンリーダーに伝わりにくかった
 - **問い入力のEnter送信**: インラインの問い入力欄は「+ Q」ボタンのクリックでしか追加できずキーボードのみで完結しなかった。`#view` の keydown ハンドラで Enter 送信に対応し `enterkeyhint="done"` を付与
 
+#### 改良 — 語の正規化強化(重複登録防止)
+同じ語が表記揺れで二重登録される穴を塞いだ:
+- **`normalizeTerm()` を導入**: NFKC正規化(全角/半角・互換文字の統一)+ 内部空白の畳み込み + trim + 小文字化。「ＷｅｂＧＰＵ」「Web  GPU」「 WebGPU 」を同一キーに収束させ重複登録を防ぐ
+- 表示用 `term` は生のまま保持し、照合・タグ付けには `normalized` のみを使用(従来動作を維持)
+- 登録の全入口(addWord / 提案チップの登録 / 提案ランカー `rankWordSuggestions`)で共用。ASCII単語では従来と同一結果のため既存データは非破壊
+
 #### Tests
+- `tests/word-normalize.test.mjs`(NFKC全角畳み込み / 空白畳み込み / CJK保持 / 表記揺れ収束 / 別語の非衝突 / ワイヤリング)
 - `tests/word-a11y.test.mjs`(単語コントロールのaria-label + 問い入力のEnter送信・enterkeyhintワイヤリング)
 - `tests/word-collector-guard.test.mjs`(busyロックの直列化モデル + 例外時のロック解放 + ガード/件数/Undoワイヤリング)
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)

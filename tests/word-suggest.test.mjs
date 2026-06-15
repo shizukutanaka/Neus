@@ -12,11 +12,12 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
-// ===== Mirrored from rankWordSuggestions in index.html =====
+// ===== Mirrored from normalizeTerm / rankWordSuggestions in index.html =====
+const normalizeTerm = (s) => (s || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 function rankWordSuggestions({ watchPatterns = [], tagCounts = {}, existing = new Set(), limit = 6 } = {}) {
   const cand = new Map();
   const add = (term, score, reason) => {
-    const norm = (term || '').trim().toLowerCase();
+    const norm = normalizeTerm(term);
     if (norm.length < 2 || existing.has(norm)) return;
     const cur = cand.get(norm);
     if (cur) { cur.score += score; if (reason === 'keyword') cur.reason = 'keyword'; }
