@@ -79,10 +79,21 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - 単語ドシエに frontmatter `related` と **`## 関連`** セクションを追加。孤立した問いを相互参照の網として可視化
 - `relatedWords()` をビュー/出力で共用(ASCII語は語境界一致で `gpu`⊄`webgpu` の誤検出を回避、CJKは部分一致で2字語に対応)
 
+#### 視点の転換 — 「探究は終わりなき蓄積でなく、判断に至るサイクルを持つ」(裁決 / 問い群)
+収集を続けるだけで判断に向かわない前提を覆す。問いはいつか答えに至らなければならない:
+- **Round 6 — 裁決 (Verdict)**: 各watchwordに verdict ライフサイクルフィールドを追加(open/converging/answered/suspended)。WORDSビューにステータスピルボタンを表示しワンタップでサイクル。ドシエに `verdict_status` / `verdict_note` frontmatterと `## 裁決` セクションを追加(open+メモなしは非表示)
+- **Round 7 — 問い群 (Questions)**: 各watchwordに未解決の問い配列を追加。WORDSビューで追加/削除UI。ドシエに `## 問い群` セクションを追加(ソクラテス的「無知の知」の記録)
+
+### Added
+- Round 6 — 裁決 (Verdict): verdict lifecycle field on each watchword (open/converging/answered/suspended), with pill button to cycle status and dossier export support
+- Round 7 — 問い群 (Questions): open questions array on each watchword, with add/remove UI and dossier export support
+
 #### Tests
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
 - `tests/word-collect-integration.test.mjs`(フィードXML→パース→word:タグ付与→ドシエ出力のE2Eをjsdomで検証)
+- `tests/word-verdict.test.mjs`(VERDICT_DEFS / verdictOf / nextVerdict / toDossier裁決セクション)
+- `tests/word-questions.test.mjs`(問い群セクション生成 + addq/delq UIワイヤリング確認)
 
 ## [v0.11.0] - 2026-05-30
 

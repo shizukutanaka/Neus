@@ -111,6 +111,18 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-view-header h2{margin:0;font-size:14px;font-family:var(--font-mono);color:var(--fg-2);}
 .word-stale{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-left:8px;cursor:pointer;text-decoration:underline;}
 .word-stale:hover{color:var(--accent);}
+.word-verdict{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid;cursor:pointer;margin-left:6px;vertical-align:middle;transition:opacity .15s;}
+.word-verdict.v-open{color:var(--fg-3);border-color:var(--line);}
+.word-verdict.v-converging{color:#f5a623;border-color:#f5a623;}
+.word-verdict.v-answered{color:#4caf50;border-color:#4caf50;}
+.word-verdict.v-suspended{color:var(--fg-3);border-color:var(--line);opacity:0.55;}
+.word-q-list{margin:0 0 10px;padding:0;list-style:none;font-size:12px;color:var(--fg-2);}
+.word-q-list li{display:flex;align-items:center;gap:6px;padding:2px 0;font-family:var(--font-mono);}
+.word-q-list li::before{content:"?";color:var(--fg-3);flex-shrink:0;}
+.word-q-del{font-size:10px;padding:1px 5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;background:none;cursor:pointer;}
+.word-q-del:hover{color:var(--fg-1);border-color:var(--fg-2);}
+.word-q-add{display:flex;gap:6px;margin:4px 0 12px;}
+.word-q-add input{flex:1;font-size:12px;font-family:var(--font-mono);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);}
 .word-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);}
 .word-row-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
 .word-row-srcs{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--fg-3);font-family:var(--font-mono);}
@@ -720,6 +732,10 @@ const DICT={
     'word.note':'問い(任意)',
     'word.note.ph':'本番投入できる段階か?',
     'word.reviewed':'確認済み',
+    'word.verdict':'裁決',
+    'word.verdict.cycle':'裁決を変更',
+    'word.q.add':'問いを追加',
+    'word.q.ph':'未解決の問いを追加...',
     'hd.keywords':'キーワード管理',
     'hd.kw.watch':'WATCH(気になる)',
     'hd.kw.block':'BLOCK(ブロック)',
@@ -811,6 +827,10 @@ const DICT={
     'word.note':'Question (optional)',
     'word.note.ph':'Is it production-ready?',
     'word.reviewed':'REVIEWED',
+    'word.verdict':'Verdict',
+    'word.verdict.cycle':'Cycle verdict',
+    'word.q.add':'Add question',
+    'word.q.ph':'Add an open question...',
     'hd.keywords':'KEYWORD RULES',
     'hd.kw.watch':'WATCH (Highlight)',
     'hd.kw.block':'BLOCK (Hide)',
@@ -1965,6 +1985,15 @@ const MarkdownExporter={
 const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi,'-').replace(/^-+|-+$/g,'').slice(0,60)||'word';
 // 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
 const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
+// 裁決(探究の帰結): 問いは答えに向かわなければならない。探究の現在地を4段階で記録。
+const VERDICT_DEFS=[
+  {key:'open',      ja:'探究中',  en:'open'},
+  {key:'converging',ja:'収束中',  en:'converging'},
+  {key:'answered',  ja:'解決',    en:'answered'},
+  {key:'suspended', ja:'保留',    en:'suspended'},
+];
+function verdictOf(word){return word.verdict?.status||'open';}
+function nextVerdict(status){const keys=VERDICT_DEFS.map(d=>d.key);const i=keys.indexOf(status);return keys[(i+1)%keys.length];}
 // エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
 const TIER_DEFS=[
   {key:'research',ja:'一次(研究)',en:'research'},
@@ -2043,7 +2072,7 @@ const WordExporter={
     const gaps=signalGaps(word,events);
     const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
     const related=relatedWords(events,others);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,'---'].filter(Boolean).join('\n');
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     if(word.wiki?.extract){
@@ -2067,6 +2096,22 @@ const WordExporter={
         const d=ev.publishedAt?isoDate(ev.publishedAt).slice(0,10):'';
         parts.push(`- [${ev.content.title}](${ev.url||''})${d?` — ${d}`:''}`);
       }
+      parts.push('');
+    }
+    // 裁決(探究の帰結): open以外またはノートがある場合に表示。
+    const vd=verdictOf(word);
+    const vdefD=VERDICT_DEFS.find(d=>d.key===vd)||VERDICT_DEFS[0];
+    if(vd!=='open'||word.verdict?.note){
+      parts.push('## 裁決','');
+      parts.push(`${vdefD.ja} / ${vdefD.en} (${vd})`);
+      if(word.verdict?.note)parts.push(`> ${word.verdict.note}`);
+      parts.push('');
+    }
+    // 問い群(残余問題): まだ答えられていない問い。ソクラテス的無知の知。
+    const qs=(word.questions||[]);
+    if(qs.length){
+      parts.push('## 問い群','');
+      for(const q of qs)parts.push(`- ${q.text}`);
       parts.push('');
     }
     parts.push(`## 収集アイテム (${events.length})`,'');
@@ -2323,6 +2368,13 @@ async function renderWords(){
     const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
     const noteLine=w.note?`<p class="word-note">${escapeHtml(w.note)}</p>`:'';
+    const vdef=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
+    const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}">${currentLang==='ja'?vdef.ja:vdef.en}</button>`;
+    const verdictNote=w.verdict?.note?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(w.verdict.note)}</p>`:'';
+    // 問い群(残余問題): ユーザーが記録する未解決の問い。
+    const qs=(w.questions||[]);
+    const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${currentLang==='ja'?'削除':'remove'}">&times;</button></li>`).join('')}</ul>`:'';
+    const qAdd=`<div class="word-q-add"><input type="text" placeholder="${escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...')}" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
     const tiers=tierBreakdown(items);
     const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
     const gaps=signalGaps(w,items);
@@ -2332,11 +2384,13 @@ async function renderWords(){
     const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
     sections.push(`<section class="word-section" data-word="${w.id}">
-      <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
+      <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
+      ${verdictNote}
       ${provLine}
       ${gapLine}
       ${relLine}
+      ${qList}${qAdd}
       ${wiki}
       <div class="word-actions">
         <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
@@ -2365,7 +2419,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},questions:[]};
     await Store.putWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
@@ -2380,6 +2434,25 @@ $('#view').addEventListener('click',async(e)=>{
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
   if(act==='collect'){btn.disabled=true;await WordCollector.collectOne(word);await refreshCounts();await renderView();return;}
   if(act==='reviewed'){word.reviewedAt=Date.now();await Store.putWord(word);await renderView();return;}
+  if(act==='setverd'){
+    const cur=verdictOf(word);
+    if(!word.verdict)word.verdict={status:'open',note:''};
+    word.verdict.status=nextVerdict(cur);
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='addq'){
+    const input=$(`[data-wqinput="${word.id}"]`);
+    const text=(input?.value||'').trim();
+    if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
+    if(!word.questions)word.questions=[];
+    word.questions.push({id:uuid(),text,createdAt:Date.now()});
+    await Store.putWord(word);await renderView();return;
+  }
+  if(act==='delq'){
+    const qid=btn.dataset.qid;
+    word.questions=(word.questions||[]).filter(q=>q.id!==qid);
+    await Store.putWord(word);await renderView();return;
+  }
   if(act==='refreshwiki'){
     btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
     const wiki=await WordCollector.fetchWiki(word);
@@ -2776,7 +2849,7 @@ async function addWord(){
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   const note=$('#word-note').value.trim();
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastCount:0,wiki:null,verdict:{status:'open',note:''},questions:[]};
   await Store.putWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
