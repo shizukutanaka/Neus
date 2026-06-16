@@ -15,11 +15,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Changed
 - **取得失敗と沈黙の区別**: `signalGaps` は失敗したソースを「沈黙(0件)」に混ぜていたため、「空白: news」がニュースに記事が無いのか取得失敗なのか判別できなかった。死角を空白と混同するのは探究像を歪める — 沈黙は発見、取得失敗は発見の不在。`_collectOne` が失敗を `word.lastErrors`(label→code)に記録し、`signalGaps` が `{ active, silent, errored }` を返すよう変更。失敗ソースは silent から外れ、ドシエ `## 空白` と沈黙プロンプトが到達不能ソースを誤って空と報告しなくなった。WORDS ビューに赤い「取得失敗」行(`.word-err`)を追加 / Distinguish a failed fetch from genuine silence
 
+### Added (continued)
+- **Wikipedia 標準タイトル表示**: 記事タイトルが登録語と異なる場合(例 "GPT" → "Generative pre-trained transformer")、WORDSビューに `word-wiki-canon` バッジ、ドシエに `wiki_title:` frontmatter フィールドと `## 定義 (canonical)` セクションヘッダを表示 / Show canonical Wikipedia article title when it differs from the registered term
+- **検索から watchword 登録**: 検索結果ページに「+ 登録」バナー(`sr-word-banner`)を追加。未登録語を検索したとき1クリックで watchword として登録し、WORDSビューに即遷移。すでに登録済みなら WORDSビューのフィルタに飛ぶ / Register-as-watchword banner in search results
+- **ドシエのクリップボードコピー**: 単語カードに COPY MD ボタンを追加。`WordExporter.copyMd()` がドシエをクリップボードへ書き込む / Copy dossier to clipboard without downloading
+- **FTSIndex の単語インデックス**: 単語のノート・問答・裁決理由も FTS で検索可能に。検索結果ページに `word:` プレフィックス付きの単語ヒットカードを表示し、クリックで WORDSビュー + 名前フィルタへ遷移 / Words are indexed in FTS and appear in search results
+
+### Fixed
+- **名前フィルタ 0件時に空状態を表示**: テキスト入力で全セクションが非表示になっても「一致なし」メッセージが出なかった問題を修正。DOM操作で `#word-filter-empty` を挿入し、Escape 時にも非表示にする / Show no-match message when name filter returns zero results
+- **単語削除の Undo 対応**: 削除後 8秒間、UndoStack で元に戻せるように。収集済みイベントはDBに残るためロスレスなリストア / Undo word deletion via UndoStack within 8s
+- **モーダルの収集状態表示**: WORDSモーダルの単語リストに `· 最終収集 Xh前` または `· 未収集`(アクセント色)を表示 / Show last-collected time or "not collected" indicator in the modal word list
+
 ### Tests
 - `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
 - `tests/word-verdict-note.test.mjs`(`verdictNotePatch` + インライン理由エディタのワイヤリング)
 - `tests/word-signal-gaps.test.mjs` に errored 分類(失敗 vs 沈黙)を追加
-- 計 481 tests
+- `tests/word-fts.test.mjs` — FTSIndex 単語インデックス + 検索から watchword 登録バナーのワイヤリング
+- `tests/word-socratic.test.mjs` — `verdictStale` / `cognitiveShift` / `socraticPrompts` の直接ユニットテスト(39件) + wiki canonical title ワイヤリング
+- `tests/worker.test.mjs` に `/json` 許可リスト(22件: Wikipedia/Wikimedia サブドメイン・混同攻撃)を追加
+- 計 629 tests
 
 ## [v0.12.0] - 2026-06-14
 
