@@ -2903,6 +2903,13 @@ $('#view').addEventListener('input',(e)=>{
     sec.style.display=match?'':'none';if(match)vis++;
   }
   const h=$('#word-count');if(h)h.textContent=`${vis} ${currentLang==='ja'?'単語':'words'}`;
+  // 0件のとき空状態を表示(再描画せずDOMで挿入)
+  let noMatch=$('#word-filter-empty');
+  if(vis===0&&wordNameFilter){
+    if(!noMatch){noMatch=document.createElement('div');noMatch.id='word-filter-empty';noMatch.className='word-empty';$('#view').appendChild(noMatch);}
+    noMatch.textContent=currentLang==='ja'?`「${wordNameFilter}」に一致する単語がありません`:`no words match "${wordNameFilter}"`;
+    noMatch.style.display='';
+  }else if(noMatch){noMatch.style.display='none';}
 });
 
 async function renderView(){

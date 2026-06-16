@@ -126,6 +126,14 @@ describe('name filter wiring (index.html)', () => {
   it('updates the word count display on filter change', () => {
     expect(html).toContain("$('#word-count')");
   });
+  it('shows a zero-match message via DOM when filter matches nothing', () => {
+    expect(html).toContain("id='word-filter-empty'");
+    expect(html).toContain('no words match');
+    expect(html).toContain('に一致する単語がありません');
+  });
+  it('hides the zero-match message when results exist', () => {
+    expect(html).toContain("noMatch.style.display='none'");
+  });
 });
 
 describe('name filter clear controls (index.html)', () => {
