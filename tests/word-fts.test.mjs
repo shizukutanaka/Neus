@@ -159,6 +159,12 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain("act==='exportall'");
     expect(html).toContain('WordExporter.downloadAllMd()');
   });
+  it('downloadAllMd marks all words as reviewed after export', () => {
+    expect(html).toContain('const now=Date.now();for(const w of words){w.reviewedAt=now;await Store.putWord(w);}');
+  });
+  it('addq clears the input value before re-render', () => {
+    expect(html).toContain("if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();");
+  });
 });
 
 describe('FTS word search wiring (index.html)', () => {

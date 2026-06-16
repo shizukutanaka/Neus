@@ -2445,6 +2445,7 @@ const WordExporter={
     }
     downloadFile(`neus-words-${new Date().toISOString().slice(0,10)}.md`,docs.join('\n\n'),'text/markdown');
     toast(currentLang==='ja'?`${words.length}単語を書き出し`:`exported ${words.length} word(s)`,'ok');
+    const now=Date.now();for(const w of words){w.reviewedAt=now;await Store.putWord(w);}
   },
   // ドシエJSONを取込: 単語を復元し、付随アイテムも重複排除しつつ取り込む(往復可能)。
   async importJson(file){
@@ -2870,7 +2871,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
     if(!word.questions)word.questions=[];
     word.questions.push({id:uuid(),text,createdAt:Date.now()});
-    await Store.putWord(word);FTSIndex.addWord(word);await renderView();return;
+    if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();return;
   }
   if(act==='delq'){
     const qid=btn.dataset.qid;
