@@ -1246,27 +1246,31 @@ const VaultWriter=(()=>{
 
 // ===== FTS INDEX ========================================================
 const FTSIndex=(()=>{
-  const index=new Map();const eventGrams=new Map();
+  const index=new Map();const eventGrams=new Map();const wordGrams=new Map();
   function ngrams(text,n=CONFIG.ftsGram){
     const t=(text||'').toLowerCase().replace(/\s+/g,' ').trim();const grams=new Set();
     if(t.length<n){if(t)grams.add(t);return grams;}
     for(let i=0;i<=t.length-n;i++)grams.add(t.slice(i,i+n));return grams;
   }
   function eventText(ev){return[ev.content.title,ev.content.snippet,ev.content.summary,ev.user?.note,ev.user?.quote,...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])].filter(Boolean).join(' ');}
+  function wordText(w){return[w.term,w.normalized,w.note,...(w.questions||[]).map(q=>q.text),w.verdict?.note].filter(Boolean).join(' ');}
   function add(ev){remove(ev.id);const grams=ngrams(eventText(ev));eventGrams.set(ev.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add(ev.id);}}
   function remove(eid){const grams=eventGrams.get(eid);if(!grams)return;for(const g of grams){const s=index.get(g);if(s){s.delete(eid);if(s.size===0)index.delete(g);}}eventGrams.delete(eid);}
+  function addWord(w){removeWord(w.id);const grams=ngrams(wordText(w));wordGrams.set(w.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add('word:'+w.id);}}
+  function removeWord(wid){const gs=wordGrams.get(wid);if(!gs)return;wordGrams.delete(wid);for(const g of gs){const s=index.get(g);if(s){s.delete('word:'+wid);if(s.size===0)index.delete(g);}}}
   async function rebuild(){
-    index.clear();eventGrams.clear();
+    index.clear();eventGrams.clear();wordGrams.clear();
     const all=await Store.allEvents();
     // Yield to main thread every 100 events to keep INP < 200ms for large datasets
     for(let i=0;i<all.length;i++){
       add(all[i]);
       if(i>0&&i%100===0)await (('scheduler' in window&&window.scheduler.yield)?window.scheduler.yield():new Promise(r=>setTimeout(r,0)));
     }
+    const words=await Store.listWords();for(const w of words)addWord(w);
   }
   function search(query,limit=100){
     const qGrams=ngrams(query);if(qGrams.size===0)return[];
-    const N=eventGrams.size||1;
+    const N=(eventGrams.size+wordGrams.size)||1;
     // BM25のIDF概念: ありふれたgram(高DF)を下げ、稀少gram(低DF)を強調する。
     // 単純なヒット数だと "の"/"ing" のような頻出gramと "rust" が同価値になる問題を解消。
     // (BM25のTF項はNeusがgram有無のSetベースのため、文書間のIDF重み付けで近似)
@@ -1288,7 +1292,7 @@ const FTSIndex=(()=>{
       .sort((a,b)=>b.score-a.score)
       .slice(0,limit);
   }
-  return{add,remove,search,rebuild,stats:()=>({grams:index.size,events:eventGrams.size})};
+  return{add,remove,search,rebuild,stats:()=>({grams:index.size,events:eventGrams.size,words:wordGrams.size}),addWord,removeWord};
 })();
 
 // ===== VAULT MATCHER ====================================================
@@ -2435,7 +2439,7 @@ const WordExporter={
       if(!await confirmAsync(currentLang==='ja'?`「${word.term}」は登録済み。置き換えますか?`:`"${word.term}" exists. Replace?`))return;
       word.id=existing.id; // 既存IDを維持し word: タグの整合を保つ
     }
-    await Store.putWord(word);
+    await Store.putWord(word);FTSIndex.addWord(word);
     let imported=0;
     for(const ev of (Array.isArray(dump.items)?dump.items:[])){
       if(!ev||!ev.hash||!ev.id)continue;
@@ -2477,6 +2481,11 @@ function renderVaultLinks(ev){
   return`<div class="links">${vl.slice(0,3).map(l=>`<span class="link-chip">[[${escapeHtml(l.slice(6).split('/').pop().replace(/\.md$/,''))}]]</span>`).join('')}</div>`;
 }
 
+function wordResultHtml(w,score){
+  const scoreStr=score!==undefined?`match ${Math.round(score*100)}%`:'';
+  const noteEx=w.note?`<p style="font-size:13px;color:var(--fg-2);margin:4px 0 0;">${escapeHtml(w.note.length>120?w.note.slice(0,120)+'…':w.note)}</p>`:'';
+  return`<article class="card" style="border-left:3px solid var(--accent);" data-wres="${escapeAttr(w.normalized)}" role="article" aria-label="${escapeAttr(currentLang==='ja'?`単語: ${w.term}`:`Word: ${w.term}`)}"><div class="meta"><span class="source" style="color:var(--accent);">${currentLang==='ja'?'単語':'word'}</span>${scoreStr?`<span style="font-family:var(--font-mono);font-size:11px;">${scoreStr}</span>`:''}</div><h2 style="font-size:16px;">${escapeHtml(w.term)}</h2>${noteEx}</article>`;
+}
 function cardHtml(ev,scoreHit){
   const isShare=ev.source.type==='share';
   const hasWatch=ev.meta.keywordMatched?.watch?.length>0;
@@ -2795,7 +2804,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='saveq'){
     const input=$(`[data-rqinput="${word.id}"]`);
     const patch=refineQuestion(word,input?.value);
-    if(patch){Object.assign(word,patch);await Store.putWord(word);await renderView();}
+    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();}
     else{const row=$(`[data-refine="${word.id}"]`);if(row)row.style.display='none';}
     return;
   }
@@ -2807,7 +2816,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='savevn'){
     const input=$(`[data-vninput="${word.id}"]`);
     const patch=verdictNotePatch(word,input?.value);
-    if(patch){Object.assign(word,patch);await Store.putWord(word);await renderView();}
+    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();}
     else{const row=$(`[data-vnedit="${word.id}"]`);if(row)row.style.display='none';}
     return;
   }
@@ -2839,12 +2848,12 @@ $('#view').addEventListener('click',async(e)=>{
     if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
     if(!word.questions)word.questions=[];
     word.questions.push({id:uuid(),text,createdAt:Date.now()});
-    await Store.putWord(word);await renderView();return;
+    await Store.putWord(word);FTSIndex.addWord(word);await renderView();return;
   }
   if(act==='delq'){
     const qid=btn.dataset.qid;
     word.questions=(word.questions||[]).filter(q=>q.id!==qid);
-    await Store.putWord(word);await renderView();return;
+    await Store.putWord(word);FTSIndex.addWord(word);await renderView();return;
   }
   if(act==='refreshwiki'){
     btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
@@ -2900,9 +2909,13 @@ async function renderView(){
   }
   if(currentView==='search'){
     if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;return;}
-    const events=[];for(const r of searchResults){const ev=await Store.getEvent(r.id);if(ev&&matchesFilter(ev))events.push({ev,score:r.score});}
-    if(events.length===0){view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;return;}
-    view.innerHTML=events.map(({ev,score})=>cardHtml(ev,score)).join('');return;
+    const events=[];const wordHits=[];
+    for(const r of searchResults){
+      if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w)wordHits.push({w,score:r.score});}
+      else{const ev=await Store.getEvent(r.id);if(ev&&matchesFilter(ev))events.push({ev,score:r.score});}
+    }
+    if(events.length===0&&wordHits.length===0){view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;return;}
+    view.innerHTML=wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');return;
   }
   const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
   // applyFilter()で設定されたソース/タグフィルタ適用
@@ -2916,6 +2929,12 @@ async function renderView(){
   view.setAttribute('aria-busy','false');
 }
 
+// 検索結果に表示された単語カードをクリックすると WORDSビューに遷移してフィルタを適用する
+$('#view').addEventListener('click',async(e)=>{
+  if(e.target.closest('a'))return;
+  const wres=e.target.closest('[data-wres]');
+  if(wres){e.stopPropagation();wordNameFilter=wres.dataset.wres;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
+});
 $('#view').addEventListener('click',async(e)=>{
   if(e.target.closest('a'))return;
   // ソース名クリックでフィルタ適用
@@ -3259,8 +3278,8 @@ async function renderWordList(){
 }
 async function openWordsModal(){await renderWordList();$('#modal-words').classList.add('show');$('#word-input').focus();}
 $('#btn-words').addEventListener('click',openWordsModal);
-$('#word-cancel').addEventListener('click',()=>$('#modal-words').classList.remove('show'));
-$('#modal-words').addEventListener('click',(e)=>{if(e.target.id==='modal-words')$('#modal-words').classList.remove('show');});
+$('#word-cancel').addEventListener('click',()=>{$('#modal-words').classList.remove('show');if(currentView==='words')renderView();});
+$('#modal-words').addEventListener('click',(e)=>{if(e.target.id==='modal-words'){$('#modal-words').classList.remove('show');if(currentView==='words')renderView();}});
 $('#view').addEventListener('click',(e)=>{if(e.target.id==='empty-words')openWordsModal();});
 
 async function addWord(){
@@ -3274,7 +3293,7 @@ async function addWord(){
   const priorBelief=$('#word-prior').value||'curious';
   const now=Date.now();
   const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
-  await Store.putWord(word);
+  await Store.putWord(word);FTSIndex.addWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
   toast(currentLang==='ja'?'登録しました — 収集中...':'registered — collecting...','ok');
@@ -3299,7 +3318,7 @@ $('#word-list').addEventListener('click',async(e)=>{
   const act=btn.dataset.wmact;
   if(act==='toggle'){word.enabled=word.enabled===false;await Store.putWord(word);await renderWordList();await refreshCounts();}
   if(act==='collect'){btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await renderWordList();await refreshCounts();await renderView();}
-  if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();}}
+  if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){FTSIndex.removeWord(word.id);await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();}}
 });
 $('#word-list').addEventListener('change',async(e)=>{
   const cb=e.target.closest('input[data-wmsrc]');if(!cb)return;
@@ -3380,7 +3399,7 @@ async function openStatsModal(){
     <div class="stats-row"><span class="label">${t('stats.events.starred')}</span><span class="val">${fmtNum(counts.starred)}</span></div>
     <div class="stats-row"><span class="label">${t('stats.events.exported')}</span><span class="val">${fmtNum(exported)}</span></div>
     <div class="stats-row"><span class="label">${t('stats.sources')}</span><span class="val">${enabledSrc} / ${sources.length}</span></div>
-    <div class="stats-row"><span class="label">${t('stats.fts')}</span><span class="val">${fts.events} events / ${fts.grams} grams</span></div>
+    <div class="stats-row"><span class="label">${t('stats.fts')}</span><span class="val">${fts.events} events / ${fts.words||0} words / ${fts.grams} grams</span></div>
     <div class="stats-row"><span class="label">${t('stats.summary')}</span><span class="val">${Summarizer.getDailyCount()}</span></div>
     <div class="stats-row"><span class="label">${t('stats.vault')}</span><span class="val">${vault.name?escapeHtml(vault.name)+' ('+vault.files+' files)':'-'}</span></div>
     <div class="stats-row"><span class="label">${t('stats.words')}</span><span class="val">${wov.total} (${wov.answered} answered${wov.unreviewed>0?', '+wov.unreviewed+' unreviewed':''}${wov.reexamine>0?', '+wov.reexamine+' re-examine':''})</span></div>
@@ -3427,11 +3446,11 @@ $('#restore-file').addEventListener('change',async(e)=>{
   const existing=await Store.allEvents();
   for(const ev of existing){FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);}
   for(const s of await Store.listSources())await Store.deleteSource(s.id);
-  for(const w of await Store.listWords())await Store.deleteWord(w.id);
+  for(const w of await Store.listWords()){FTSIndex.removeWord(w.id);await Store.deleteWord(w.id);}
   // 復元
   for(const ev of dump.events){await Store.putEvent(ev);FTSIndex.add(ev);}
   for(const s of (dump.sources||[]))await Store.putSource(s);
-  for(const w of (dump.words||[]))await Store.putWord(w);
+  for(const w of (dump.words||[])){await Store.putWord(w);FTSIndex.addWord(w);}
   for(const[k,v]of Object.entries(dump.settings||{}))await Store.putSetting(k,v);
   await KeywordRules.load();
   await TagLearner.rebuild();
