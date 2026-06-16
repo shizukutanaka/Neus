@@ -6,6 +6,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+- **収集進捗インジケータ**: `WordCollector.getProgress()` が収集中の `{done,total}` を公開。COLLECT ALL ボタンが `N/M` を表示し、複数語収集中も無反応に見えない / Collection progress: COLLECT ALL button shows `N/M` while multiple words are fetched
+- **WORDS ビューの並び替え**: 日付 / 新着 / 裁決 の3モードをトグルボタンで切替(`wordSortKey`)。新着は未確認件数降順、裁決は answered を先頭に / WORDS view sort modes (date / new / verdict)
+- **STATS への単語サマリ統合**: 統計モーダルに総語数・解決数・未確認・要再検討を表示(`wordsOverview`)。ビュー切替なしで探究の健全性を把握 / Word summary in the STATS modal
+- **裁決の理由 (Verdict rationale)**: 裁決ピルは status を巡回できたが、**なぜその結論か** を記す手段が無かった(理由は import/復元でしか入らなかった)。非 open の裁決にインライン理由エディタ(`editverd`/`savevn`、`verdictNotePatch` 純粋関数、280字上限、Enter送信)を追加。理由は既存の MD ドシエ `verdict_note` / JSON 出力へそのまま流れる / Author *why* a verdict was reached; flows into the existing dossier export
+
+### Changed
+- **取得失敗と沈黙の区別**: `signalGaps` は失敗したソースを「沈黙(0件)」に混ぜていたため、「空白: news」がニュースに記事が無いのか取得失敗なのか判別できなかった。死角を空白と混同するのは探究像を歪める — 沈黙は発見、取得失敗は発見の不在。`_collectOne` が失敗を `word.lastErrors`(label→code)に記録し、`signalGaps` が `{ active, silent, errored }` を返すよう変更。失敗ソースは silent から外れ、ドシエ `## 空白` と沈黙プロンプトが到達不能ソースを誤って空と報告しなくなった。WORDS ビューに赤い「取得失敗」行(`.word-err`)を追加 / Distinguish a failed fetch from genuine silence
+
+### Tests
+- `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
+- `tests/word-verdict-note.test.mjs`(`verdictNotePatch` + インライン理由エディタのワイヤリング)
+- `tests/word-signal-gaps.test.mjs` に errored 分類(失敗 vs 沈黙)を追加
+- 計 481 tests
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)
