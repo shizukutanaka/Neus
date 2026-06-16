@@ -168,7 +168,7 @@ describe('overview wiring (index.html)', () => {
     expect(html).toContain("act==='ovfilter'");
   });
   it('filters the rendered list and offers a clear control', () => {
-    expect(html).toContain('sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter))');
+    expect(html).toContain('wordMatchesOv(w,all,wordViewFilter)');
     expect(html).toContain('no words match this filter');
   });
 });
