@@ -2800,7 +2800,7 @@ $('#view').addEventListener('click',async(e)=>{
     btn.disabled=true;
     const now=Date.now();
     const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
-    await Store.putWord(word);
+    await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
   }

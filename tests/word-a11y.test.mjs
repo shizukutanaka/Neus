@@ -35,6 +35,12 @@ describe('word controls expose accessible names', () => {
   });
 });
 
+describe('suggest action FTS indexing', () => {
+  it('calls FTSIndex.addWord immediately after Store.putWord in the suggest handler', () => {
+    expect(html).toContain("await Store.putWord(word);FTSIndex.addWord(word);\n    toast(currentLang==='ja'?`「${term}」を登録 — 収集中...");
+  });
+});
+
 describe('question input keyboard parity', () => {
   it('sets enterkeyhint on the inline question input', () => {
     expect(html).toMatch(/data-wqinput=[^>]*enterkeyhint="done"|enterkeyhint="done"[^>]*data-wqinput=/);
