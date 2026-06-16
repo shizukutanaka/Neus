@@ -2884,6 +2884,7 @@ $('#view').addEventListener('click',async(e)=>{
     const text=(input?.value||'').trim();
     if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
     if(!word.questions)word.questions=[];
+    if(word.questions.some(q=>q.text===text)){toast(currentLang==='ja'?'その問いは既に追加済み':'question already exists','err');return;}
     word.questions.push({id:uuid(),text,createdAt:Date.now()});
     if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;return;
   }

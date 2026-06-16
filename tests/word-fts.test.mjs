@@ -186,6 +186,11 @@ describe('WORDS view UX improvements (index.html)', () => {
   it('renders questions most-recent-first by reversing the array', () => {
     expect(html).toContain('[...(w.questions||[])].reverse()');
   });
+  it('addq rejects duplicate question text with an error toast', () => {
+    expect(html).toContain("word.questions.some(q=>q.text===text)");
+    expect(html).toContain("'その問いは既に追加済み'");
+    expect(html).toContain("'question already exists'");
+  });
   it('collectall button is disabled and shows ".." when WordCollector.isBusy()', () => {
     expect(html).toContain('const _busy=WordCollector.isBusy()');
     expect(html).toContain("data-wact=\"collectall\"${_busy?' disabled':''}");
