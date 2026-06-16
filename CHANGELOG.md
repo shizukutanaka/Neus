@@ -35,6 +35,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **`suggest` ハンドラに防御的 try-catch**: `collectOne` が例外を投げても `refreshCounts`/`renderView` が必ず実行されるよう保証 / Defensive try-catch around collectOne in suggest handler
 - **ドシエ YAML frontmatter のエスケープ**: `term`/`intent`/`wiki_title`/`verdict_note` を `ys()` ヘルパーでダブルクォート囲いにし、コロン・改行を含む用語でも YAML 破壊が起きないように / YAML-safe quoting of user-controlled frontmatter values in toDossier
 - **`wordFromImport` が `lastErrors` を保持**: JSON ドシエの往復で `lastErrors`(取得失敗記録)が失われていたのを修正。`signalGaps` がインポート後も正確に失敗ソースを表示 / Preserve lastErrors through import round-trip
+- **彫琢・裁決理由行に「取消」ボタンと Escape 対応を追加**: インライン編集行に Cancel ボタンを追加(`cancelq`/`cancelvn` アクション)。`data-rqinput` / `data-vninput` での Escape キーがキャンセルとして機能 / Cancel button + Escape key dismissal for refine and verdict-note inline rows
+- **モーダルの無効化単語を半透明表示**: `enabled:false` の単語の term を `opacity:.5` でグレーアウト。ON ボタン表記だけでなく視覚的にも判別可能に / Dim the term label in the word modal when the word is disabled
 
 ### Tests
 - `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
@@ -47,7 +49,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/word-a11y.test.mjs` に単語アクションボタン aria-label ワイヤリングテスト(4件)を追加
 - `tests/word-fts.test.mjs` に collect/collectall ボタン再活性化・suggest try-catch・delq Undo ワイヤリングテスト(4件)を追加
 - `tests/word-dossier.test.mjs` に YAML エスケープユニットテスト(2件)を追加、既存 frontmatter アサーション 4件を新形式に更新
-- `tests/word-import.test.mjs` に `lastErrors` 保持ユニットテスト(2件)＋ワイヤリング(1件)を追加、合計 648件
+- `tests/word-import.test.mjs` に `lastErrors` 保持ユニットテスト(2件)＋ワイヤリング(1件)を追加
+- `tests/word-a11y.test.mjs` に Cancel ボタン / Escape ハンドラ / modal 無効化表示のワイヤリングテスト(6件)を追加、合計 654件
 - 計 634 tests
 
 ## [v0.12.0] - 2026-06-14

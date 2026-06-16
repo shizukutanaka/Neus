@@ -69,3 +69,30 @@ describe('question input keyboard parity', () => {
     expect(html).toContain("querySelector('button[data-wact=\"addq\"]')?.click()");
   });
 });
+
+describe('refine/verdict-note row cancel and Escape (index.html)', () => {
+  it('refine row has a cancel button with cancelq action', () => {
+    expect(html).toContain('data-wact="cancelq"');
+  });
+  it('verdict note row has a cancel button with cancelvn action', () => {
+    expect(html).toContain('data-wact="cancelvn"');
+  });
+  it('cancelq handler hides the refine row without saving', () => {
+    expect(html).toContain("act==='cancelq'");
+    expect(html).toContain("row.style.display='none';return;}");
+  });
+  it('Escape in data-rqinput hides the refine row and blurs', () => {
+    expect(html).toContain("e.target.dataset.rqinput");
+    expect(html).toContain("e.target.closest('[data-refine]')");
+  });
+  it('Escape in data-vninput hides the verdict note row and blurs', () => {
+    expect(html).toContain("e.target.dataset.vninput");
+    expect(html).toContain("e.target.closest('[data-vnedit]')");
+  });
+});
+
+describe('modal disabled-word visual (index.html)', () => {
+  it('dims the word term in the modal when enabled is false', () => {
+    expect(html).toContain("w.enabled===false?' style=\"opacity:.5;\"':''");
+  });
+});

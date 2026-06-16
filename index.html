@@ -2714,7 +2714,7 @@ async function renderWords(){
     const noteText=w.note?escapeHtml(w.note):`<span class="word-note-empty">${currentLang==='ja'?'問い未設定':'no question yet'}</span>`;
     const refineBtn=`<button class="word-refine-btn" data-wact="refineq" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?'問いを彫琢':'refine question')}">${currentLang==='ja'?'彫琢':'refine'}</button>`;
     const noteLine=`<p class="word-note">${noteText}${revisedTag}${refineBtn}</p>`;
-    const refineRow=`<div class="word-refine" data-refine="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.note||'')}" data-rqinput="${escapeAttr(w.id)}" maxlength="200" enterkeyhint="done" aria-label="${escapeAttr(currentLang==='ja'?'問いを彫琢':'refine the question')}"><button data-wact="saveq" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button></div>`;
+    const refineRow=`<div class="word-refine" data-refine="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.note||'')}" data-rqinput="${escapeAttr(w.id)}" maxlength="200" enterkeyhint="done" aria-label="${escapeAttr(currentLang==='ja'?'問いを彫琢':'refine the question')}"><button data-wact="saveq" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wact="cancelq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'取消':'cancel')}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
     const vdef=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
     const vlabel=currentLang==='ja'?vdef.ja:vdef.en;
     const verdictPill=`<button class="word-verdict v-${verdictOf(w)}" data-wact="setverd" data-id="${w.id}" title="${currentLang==='ja'?'裁決サイクル':'cycle verdict'}" aria-label="${currentLang==='ja'?`裁決: ${vlabel}。クリックで変更`:`verdict: ${vlabel}. Click to cycle`}">${vlabel}</button>`;
@@ -2729,7 +2729,7 @@ async function renderWords(){
     const vnEditLabel=currentLang==='ja'?'理由を編集':'edit rationale';
     const vnBtn=vnEditable?`<button class="word-refine-btn" data-wact="editverd" data-id="${w.id}" aria-label="${escapeAttr(vnText?vnEditLabel:vnAddLabel)}">${vnText?(currentLang==='ja'?'編集':'edit'):(currentLang==='ja'?'+理由':'+ why')}</button>`:'';
     const verdictNote=vnText?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(vnText)}${vnBtn}</p>`:(vnEditable?`<p class="word-note"><span class="word-note-empty">${currentLang==='ja'?'裁決の理由 未記入':'no rationale yet'}</span>${vnBtn}</p>`:'');
-    const verdictNoteRow=`<div class="word-refine" data-vnedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.verdict?.note||'')}" data-vninput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'なぜこの裁決か...':'why this verdict...')}" aria-label="${escapeAttr(vnEditLabel)}"><button data-wact="savevn" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button></div>`;
+    const verdictNoteRow=`<div class="word-refine" data-vnedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.verdict?.note||'')}" data-vninput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'なぜこの裁決か...':'why this verdict...')}" aria-label="${escapeAttr(vnEditLabel)}"><button data-wact="savevn" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wact="cancelvn" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'取消':'cancel')}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
     // 問い群(残余問題): ユーザーが記録する未解決の問い。
     const qs=(w.questions||[]);
     const qDelLabel=currentLang==='ja'?'問いを削除':'remove question';
@@ -2821,6 +2821,8 @@ $('#view').addEventListener('click',async(e)=>{
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
   if(act==='collect'){const sv=$('#view').scrollTop;btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await refreshCounts();await renderView();$('#view').scrollTop=sv;return;}
   if(act==='reviewed'){const sv=$('#view').scrollTop;word.reviewedAt=Date.now();await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;}
+  if(act==='cancelq'){const row=$(`[data-refine="${word.id}"]`);if(row)row.style.display='none';return;}
+  if(act==='cancelvn'){const row=$(`[data-vnedit="${word.id}"]`);if(row)row.style.display='none';return;}
   if(act==='refineq'){
     const row=$(`[data-refine="${word.id}"]`);
     if(row){row.style.display='flex';row.querySelector('input')?.focus();}
@@ -3323,7 +3325,7 @@ async function renderWordList(){
     const notePreview=w.note?`<div class="word-row-note">${escapeHtml(w.note.length>80?w.note.slice(0,80)+'…':w.note)}</div>`:'';
     return `<div class="word-row" data-id="${w.id}">
       <div class="word-row-top">
-        <strong>${escapeHtml(w.term)}</strong>
+        <strong${w.enabled===false?' style="opacity:.5;"':''}>${escapeHtml(w.term)}</strong>
         <span style="color:var(--fg-3);">· ${countFor(w)} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${fmtTime(w.lastCollectedAt)}`:(` · <span style="color:var(--accent);">${currentLang==='ja'?'未収集':'not collected'}</span>`)}</span>
         <div class="word-row-actions">
           <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
@@ -3624,6 +3626,8 @@ document.addEventListener('keydown',async(e)=>{
         const wfe=$('#word-filter-empty');if(wfe)wfe.style.display='none';
         e.target.blur();return;
       }
+      if(e.target.dataset.rqinput){const row=e.target.closest('[data-refine]');if(row)row.style.display='none';e.target.blur();return;}
+      if(e.target.dataset.vninput){const row=e.target.closest('[data-vnedit]');if(row)row.style.display='none';e.target.blur();return;}
       // モーダル内フォーム要素からのEscはモーダルを閉じる
       if(anyModal){anyModal.classList.remove('show');return;}
     }
