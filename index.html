@@ -2788,7 +2788,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(!btn)return;
   e.stopPropagation();
   const act=btn.dataset.wact;
-  if(act==='collectall'){btn.disabled=true;const _t=setInterval(()=>{const p=WordCollector.getProgress();if(p.total>0)btn.textContent=`${p.done}/${p.total}`;},300);try{await WordCollector.collectAll();}finally{clearInterval(_t);}await refreshCounts();await renderView();return;}
+  if(act==='collectall'){btn.disabled=true;const _t=setInterval(()=>{const p=WordCollector.getProgress();if(p.total>0)btn.textContent=`${p.done}/${p.total}`;},300);try{await WordCollector.collectAll();}finally{clearInterval(_t);btn.disabled=false;}await refreshCounts();await renderView();return;}
   if(act==='exportall'){await WordExporter.downloadAllMd();return;}
   if(act==='ovfilter'){const f=btn.dataset.ov||null;wordViewFilter=(wordViewFilter===f)?null:f;await renderView();return;}
   if(act==='setsort'){wordSortKey=btn.dataset.sort||'date';await renderView();return;}
@@ -2802,7 +2802,7 @@ $('#view').addEventListener('click',async(e)=>{
     const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
-    await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
+    try{await WordCollector.collectOne(word);}catch(e){}finally{await refreshCounts();await renderView();}return;
   }
   if(act==='showmore'){
     const section=e.target.closest('section[data-word]');
@@ -2817,7 +2817,7 @@ $('#view').addEventListener('click',async(e)=>{
     applyFilter('tag','word:'+norm);return;
   }
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
-  if(act==='collect'){const sv=$('#view').scrollTop;btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;}await refreshCounts();await renderView();$('#view').scrollTop=sv;return;}
+  if(act==='collect'){const sv=$('#view').scrollTop;btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await refreshCounts();await renderView();$('#view').scrollTop=sv;return;}
   if(act==='reviewed'){const sv=$('#view').scrollTop;word.reviewedAt=Date.now();await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;}
   if(act==='refineq'){
     const row=$(`[data-refine="${word.id}"]`);
@@ -2881,8 +2881,11 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='delq'){
     const sv=$('#view').scrollTop;
     const qid=btn.dataset.qid;
+    const removed=(word.questions||[]).find(q=>q.id===qid);
     word.questions=(word.questions||[]).filter(q=>q.id!==qid);
-    await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;return;
+    await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;
+    if(removed)UndoStack.offer(currentLang==='ja'?`問い「${removed.text.slice(0,30)}」を削除`:`deleted question "${removed.text.slice(0,30)}"`,async()=>{const w=await Store.getWord(word.id);if(!w)return;if(!w.questions)w.questions=[];w.questions.push(removed);await Store.putWord(w);FTSIndex.addWord(w);await renderView();});
+    return;
   }
   if(act==='refreshwiki'){
     const sv=$('#view').scrollTop;

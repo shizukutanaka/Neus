@@ -30,6 +30,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **addq で入力値を明示クリア**: `renderView()` 前に `input.value=''` を明示呼び出し / Explicitly clear question input before re-render
 - **WORDS view ソートの安定化**: 同一ソート値を持つ単語を `createdAt` 降順で二次ソートし、並び順を決定的に / Stable sort tiebreaker by creation date
 - **単語アクションボタンに aria-label 追加**: 収集・確認済み・フィルタ・各エクスポートボタンに語名を含む `aria-label` を付与。スクリーンリーダの「ボタン一覧」モードで各ボタンがどの単語に作用するか判別可能に / Word action buttons now carry aria-labels including the word term
+- **問い削除に Undo 対応**: `delq` が `UndoStack.offer` で 8秒間取り消し可能に。単語削除と同じ安全性を個々の問いにも適用 / Question deletion now offers undo via UndoStack within 8s
+- **収集ボタンがエラー時に再活性化**: `collect` / `collectall` の `finally` ブロックで `btn.disabled=false` を明示。収集が失敗してもボタンが無効のままにならない / Collect buttons always re-enabled in finally block
+- **`suggest` ハンドラに防御的 try-catch**: `collectOne` が例外を投げても `refreshCounts`/`renderView` が必ず実行されるよう保証 / Defensive try-catch around collectOne in suggest handler
 
 ### Tests
 - `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
@@ -39,7 +42,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/word-socratic.test.mjs` — `verdictStale` / `cognitiveShift` / `socraticPrompts` の直接ユニットテスト(39件) + wiki canonical title ワイヤリング
 - `tests/worker.test.mjs` に `/json` 許可リスト(22件: Wikipedia/Wikimedia サブドメイン・混同攻撃)を追加
 - `tests/word-sort.test.mjs` に tiebreaker テスト(2件)を追加
-- `tests/word-a11y.test.mjs` に単語アクションボタン aria-label ワイヤリングテスト(4件)を追加、合計 639件
+- `tests/word-a11y.test.mjs` に単語アクションボタン aria-label ワイヤリングテスト(4件)を追加
+- `tests/word-fts.test.mjs` に collect/collectall ボタン再活性化・suggest try-catch・delq Undo ワイヤリングテスト(4件)を追加、合計 643件
 - 計 634 tests
 
 ## [v0.12.0] - 2026-06-14

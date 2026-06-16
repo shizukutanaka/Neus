@@ -165,6 +165,19 @@ describe('WORDS view UX improvements (index.html)', () => {
   it('addq clears the input value before re-render', () => {
     expect(html).toContain("if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();");
   });
+  it('collect button re-enables in finally block on error', () => {
+    expect(html).toContain("try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}");
+  });
+  it('collectall button re-enables in finally block on error', () => {
+    expect(html).toContain("try{await WordCollector.collectAll();}finally{clearInterval(_t);btn.disabled=false;}");
+  });
+  it('suggest handler wraps collectOne in try-catch so refreshCounts/renderView always run', () => {
+    expect(html).toContain("try{await WordCollector.collectOne(word);}catch(e){}finally{await refreshCounts();await renderView();}return;");
+  });
+  it('delq offers undo via UndoStack', () => {
+    expect(html).toContain("if(removed)UndoStack.offer(");
+    expect(html).toContain("w.questions.push(removed);await Store.putWord(w);FTSIndex.addWord(w);await renderView();");
+  });
 });
 
 describe('FTS word search wiring (index.html)', () => {
