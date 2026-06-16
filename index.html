@@ -2383,13 +2383,15 @@ const WordExporter={
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     try{await navigator.clipboard.writeText(this.toDossier(word,events,others));toast(currentLang==='ja'?'コピーしました':'copied','ok');}
-    catch{toast('clipboard denied','err');}
+    catch{toast('clipboard denied','err');return;}
+    word.reviewedAt=Date.now();await Store.putWord(word);
   },
   async downloadMd(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     downloadFile(`neus-word-${wordSlug(word.term)}.md`,this.toDossier(word,events,others),'text/markdown');
     toast(currentLang==='ja'?'Markdownを書き出し':'markdown exported','ok');
+    word.reviewedAt=Date.now();await Store.putWord(word);
   },
   // 完全な構造化レコード(機械可読・再取込/バックアップ用)。MDドシエと同じ探究状態を漏れなく含む。
   toWordJson(word,events,others=[]){
@@ -2424,12 +2426,13 @@ const WordExporter={
     const others=await this.othersOf(word);
     downloadFile(`neus-word-${wordSlug(word.term)}.json`,JSON.stringify(this.toWordJson(word,events,others),null,2),'application/json');
     toast(currentLang==='ja'?'JSONを書き出し':'json exported','ok');
+    word.reviewedAt=Date.now();await Store.putWord(word);
   },
   async toVault(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     const ok=await VaultWriter.exportWordDossier(word,this.toDossier(word,events,others));
-    if(ok)toast(currentLang==='ja'?'Vaultへ書き出し':'written to vault','ok');
+    if(ok){toast(currentLang==='ja'?'Vaultへ書き出し':'written to vault','ok');word.reviewedAt=Date.now();await Store.putWord(word);}
   },
   // 全watchwordを1つのMarkdownにまとめて出力(アウトプット一括)
   async downloadAllMd(){
