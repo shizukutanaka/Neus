@@ -204,6 +204,23 @@ describe('show-more wiring (index.html)', () => {
   });
 });
 
+describe('COPY MD button wiring (index.html)', () => {
+  it('renders a copy button with data-wact="copy" in the word card', () => {
+    expect(html).toContain('data-wact="copy"');
+  });
+  it('defines WordExporter.copyMd using navigator.clipboard', () => {
+    expect(html).toContain('async copyMd(word)');
+    expect(html).toContain('navigator.clipboard.writeText(this.toDossier(word');
+  });
+  it('routes act===copy to WordExporter.copyMd', () => {
+    expect(html).toContain("act==='copy')return WordExporter.copyMd(word)");
+  });
+  it('shows a copied toast on success', () => {
+    expect(html).toContain("'copied','ok'");
+    expect(html).toContain("'コピーしました'");
+  });
+});
+
 describe('modal note preview wiring (index.html)', () => {
   it('renders a word-row-note element with the note text', () => {
     expect(html).toContain('class="word-row-note"');

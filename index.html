@@ -2375,6 +2375,12 @@ const WordExporter={
     }
     return parts.join('\n');
   },
+  async copyMd(word){
+    const events=await this.gather(word);
+    const others=await this.othersOf(word);
+    try{await navigator.clipboard.writeText(this.toDossier(word,events,others));toast(currentLang==='ja'?'コピーしました':'copied','ok');}
+    catch{toast('clipboard denied','err');}
+  },
   async downloadMd(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
@@ -2757,6 +2763,7 @@ async function renderWords(){
         <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
         ${newCount>0?`<button data-wact="reviewed" data-id="${w.id}">${t('word.reviewed')}</button>`:''}
         <button data-wact="filter" data-id="${w.id}">${t('word.filter')}</button>
+        <button data-wact="copy" data-id="${w.id}">${currentLang==='ja'?'コピー':'COPY MD'}</button>
         <button data-wact="md" data-id="${w.id}">DOSSIER MD</button>
         <button data-wact="json" data-id="${w.id}">JSON</button>
         <button data-wact="vault" data-id="${w.id}">VAULT</button>
@@ -2875,6 +2882,7 @@ $('#view').addEventListener('click',async(e)=>{
     const ab=$('.nav button[data-view="all"]');if(ab){ab.classList.add('active');ab.setAttribute('aria-selected','true');}
     applyFilter('tag','word:'+word.normalized);return;
   }
+  if(act==='copy')return WordExporter.copyMd(word);
   if(act==='md')return WordExporter.downloadMd(word);
   if(act==='json')return WordExporter.downloadJson(word);
   if(act==='vault')return WordExporter.toVault(word);
