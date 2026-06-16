@@ -74,6 +74,7 @@ function aggregateTags(events) {
 }
 
 // Mirrored from WordExporter.toDossier
+const ys = s => '"' + String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 function toDossier(word, events, others = []) {
   const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
   const fresh = newSinceReview(events, word.reviewedAt);
@@ -82,7 +83,7 @@ function toDossier(word, events, others = []) {
   const showErrors = !!word.lastCollectedAt && gaps.errored.length > 0;
   const related = relatedWords(events, others);
   const wikiCanonTitle = word.wiki?.title && word.wiki.title.trim().toLowerCase() !== word.term.trim().toLowerCase() ? word.wiki.title : null;
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, wikiCanonTitle ? `wiki_title: ${wikiCanonTitle}` : null, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, showErrors ? `failed: ${gaps.errored.map(e => e.label).join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const fm = ['---', `term: ${ys(word.term)}`, `lang: ${word.lang || 'en'}`, wikiCanonTitle ? `wiki_title: ${ys(wikiCanonTitle)}` : null, word.note ? `intent: ${ys(word.note)}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, showErrors ? `failed: ${gaps.errored.map(e => e.label).join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
@@ -143,7 +144,7 @@ describe('WordExporter.toDossier', () => {
 
   it('emits YAML frontmatter with term/lang/item count', () => {
     const md = toDossier(word, events);
-    expect(md.startsWith('---\nterm: WebGPU\nlang: en')).toBe(true);
+    expect(md.startsWith('---\nterm: "WebGPU"\nlang: en')).toBe(true);
     expect(md).toContain('items: 2');
   });
 
@@ -168,7 +169,7 @@ describe('WordExporter.toDossier', () => {
   it('adds wiki_title to frontmatter when article title differs from registered term', () => {
     const w = { ...word, term: 'GPT', normalized: 'gpt', wiki: { ...word.wiki, title: 'Generative pre-trained transformer' } };
     const md = toDossier(w, events);
-    expect(md).toContain('wiki_title: Generative pre-trained transformer');
+    expect(md).toContain('wiki_title: "Generative pre-trained transformer"');
   });
 
   it('omits wiki_title from frontmatter when title matches term (case-insensitive)', () => {
@@ -213,6 +214,20 @@ describe('WordExporter.toDossier', () => {
     const w = { ...word, lastCollectedAt: Date.parse('2026-01-03T00:00:00Z') };
     expect(toDossier(w, events)).toContain('last_collected: 2026-01-03T00:00:00.000Z');
     expect(toDossier(word, events)).not.toContain('last_collected:');
+  });
+
+  it('quotes term containing a colon so YAML stays valid', () => {
+    const w = { term: 'Node.js: v18', lang: 'en', normalized: 'nodejs v18' };
+    const md = toDossier(w, []);
+    expect(md).toContain('term: "Node.js: v18"');
+    expect(md).not.toMatch(/^term: Node\.js: v18$/m);
+  });
+
+  it('quotes intent (note) containing a newline', () => {
+    const w = { ...word, note: 'line one\nline two' };
+    const md = toDossier(w, []);
+    expect(md).toContain('intent: "line one\\nline two"');
+    expect(md).not.toContain('intent: line one');
   });
 });
 
@@ -263,7 +278,7 @@ describe('WordExporter.toDossier — intent + delta', () => {
 
   it('records the intent (question) in frontmatter and as a blockquote', () => {
     const md = toDossier(word, events);
-    expect(md).toContain('intent: production-ready?');
+    expect(md).toContain('intent: "production-ready?"');
     expect(md).toContain('> production-ready?');
   });
 

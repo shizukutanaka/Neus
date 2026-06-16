@@ -33,6 +33,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **問い削除に Undo 対応**: `delq` が `UndoStack.offer` で 8秒間取り消し可能に。単語削除と同じ安全性を個々の問いにも適用 / Question deletion now offers undo via UndoStack within 8s
 - **収集ボタンがエラー時に再活性化**: `collect` / `collectall` の `finally` ブロックで `btn.disabled=false` を明示。収集が失敗してもボタンが無効のままにならない / Collect buttons always re-enabled in finally block
 - **`suggest` ハンドラに防御的 try-catch**: `collectOne` が例外を投げても `refreshCounts`/`renderView` が必ず実行されるよう保証 / Defensive try-catch around collectOne in suggest handler
+- **ドシエ YAML frontmatter のエスケープ**: `term`/`intent`/`wiki_title`/`verdict_note` を `ys()` ヘルパーでダブルクォート囲いにし、コロン・改行を含む用語でも YAML 破壊が起きないように / YAML-safe quoting of user-controlled frontmatter values in toDossier
+- **`wordFromImport` が `lastErrors` を保持**: JSON ドシエの往復で `lastErrors`(取得失敗記録)が失われていたのを修正。`signalGaps` がインポート後も正確に失敗ソースを表示 / Preserve lastErrors through import round-trip
 
 ### Tests
 - `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
@@ -43,7 +45,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/worker.test.mjs` に `/json` 許可リスト(22件: Wikipedia/Wikimedia サブドメイン・混同攻撃)を追加
 - `tests/word-sort.test.mjs` に tiebreaker テスト(2件)を追加
 - `tests/word-a11y.test.mjs` に単語アクションボタン aria-label ワイヤリングテスト(4件)を追加
-- `tests/word-fts.test.mjs` に collect/collectall ボタン再活性化・suggest try-catch・delq Undo ワイヤリングテスト(4件)を追加、合計 643件
+- `tests/word-fts.test.mjs` に collect/collectall ボタン再活性化・suggest try-catch・delq Undo ワイヤリングテスト(4件)を追加
+- `tests/word-dossier.test.mjs` に YAML エスケープユニットテスト(2件)を追加、既存 frontmatter アサーション 4件を新形式に更新
+- `tests/word-import.test.mjs` に `lastErrors` 保持ユニットテスト(2件)＋ワイヤリング(1件)を追加、合計 648件
 - 計 634 tests
 
 ## [v0.12.0] - 2026-06-14

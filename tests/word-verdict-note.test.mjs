@@ -85,6 +85,6 @@ describe('verdict-note wiring (index.html)', () => {
     expect(html).toContain('button[data-wact="savevn"]');
   });
   it('still carries verdict_note into the Markdown dossier', () => {
-    expect(html).toContain('verdict_note: ${word.verdict.note}');
+    expect(html).toContain('verdict_note: ${ys(word.verdict.note)}');
   });
 });

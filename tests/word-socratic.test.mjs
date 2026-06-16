@@ -298,7 +298,7 @@ describe('verdictStale / cognitiveShift / socraticPrompts wiring (index.html)', 
   });
 
   it('includes verdict_note in dossier frontmatter when present', () => {
-    expect(html).toContain("verdict_note: ${word.verdict.note}");
+    expect(html).toContain("verdict_note: ${ys(word.verdict.note)}");
   });
 
   it('includes reexamine count in frontmatter when verdict is stale', () => {
@@ -316,7 +316,7 @@ describe('wiki canonical title wiring (index.html)', () => {
   });
 
   it('adds wiki_title to dossier frontmatter when canonical differs', () => {
-    expect(html).toContain('`wiki_title: ${wikiCanonTitle}`');
+    expect(html).toContain('`wiki_title: ${ys(wikiCanonTitle)}`');
   });
 
   it('renders conditional definition header in toDossier', () => {

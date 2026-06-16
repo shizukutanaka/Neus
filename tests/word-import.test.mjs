@@ -32,7 +32,7 @@ function wordFromImport(dump) {
     questions: Array.isArray(w.questions) ? w.questions : [],
     createdAt: w.createdAt || now, reviewedAt: w.reviewedAt || now,
     lastCollectedAt: w.lastCollectedAt || null, lastFetched: w.lastFetched || 0,
-    wiki: w.wiki || null,
+    wiki: w.wiki || null, lastErrors: w.lastErrors || null,
   };
 }
 
@@ -92,6 +92,17 @@ describe('wordFromImport — reconstruction', () => {
     expect(wordFromImport(dossier({ term: 'x', enabled: false })).enabled).toBe(false);
   });
 
+  it('preserves lastErrors for signal-gap display after round-trip', () => {
+    const errors = { 'Google News': 'http_429', Wikipedia: 'fetch' };
+    const w = wordFromImport(dossier({ term: 'x', lastErrors: errors }));
+    expect(w.lastErrors).toEqual(errors);
+  });
+
+  it('defaults lastErrors to null when absent', () => {
+    const w = wordFromImport(dossier({ term: 'x' }));
+    expect(w.lastErrors).toBeNull();
+  });
+
   it('guards against malformed arrays', () => {
     const w = wordFromImport(dossier({ term: 'x', questions: 'nope', questionHistory: 5 }));
     expect(w.questions).toEqual([]);
@@ -121,5 +132,8 @@ describe('import wiring (index.html)', () => {
     expect(html).toContain('id="word-import"');
     expect(html).toContain('id="word-import-file"');
     expect(html).toContain("WordExporter.importJson(f)");
+  });
+  it('preserves lastErrors in the wordFromImport wiring', () => {
+    expect(html).toContain('lastErrors:w.lastErrors||null');
   });
 });

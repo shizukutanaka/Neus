@@ -2094,7 +2094,7 @@ function wordFromImport(dump){
     questions:Array.isArray(w.questions)?w.questions:[],
     createdAt:w.createdAt||now,reviewedAt:w.reviewedAt||now,
     lastCollectedAt:w.lastCollectedAt||null,lastFetched:w.lastFetched||0,
-    wiki:w.wiki||null,
+    wiki:w.wiki||null,lastErrors:w.lastErrors||null,
   };
 }
 // 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
@@ -2278,6 +2278,8 @@ const WordExporter={
     return [...counts.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20);
   },
   toDossier(word,events,others=[]){
+    // YAML scalar: wrap in double-quotes and escape backslash, quote, newline.
+    const ys=s=>'"'+String(s||'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
     const srcList=['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join(', ')||'-';
     const fresh=newSinceReview(events,word.reviewedAt);
     const gaps=signalGaps(word,events);
@@ -2287,7 +2289,7 @@ const WordExporter={
     const stale=verdictStale(word,events);
     const shift=cognitiveShift(word);
     const wikiCanonTitle=word.wiki?.title&&word.wiki.title.trim().toLowerCase()!==word.term.trim().toLowerCase()?word.wiki.title:null;
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${wikiCanonTitle}`:null,word.note?`intent: ${word.note}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const fm=['---',`term: ${ys(word.term)}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${ys(wikiCanonTitle)}`:null,word.note?`intent: ${ys(word.note)}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${ys(word.verdict.note)}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     // 問いの変遷(elenchus): 旧い定式化があれば、問いがどう彫琢されたかを記録。
