@@ -81,11 +81,12 @@ function toDossier(word, events, others = []) {
   const showGaps = !!word.lastCollectedAt && gaps.silent.length > 0;
   const showErrors = !!word.lastCollectedAt && gaps.errored.length > 0;
   const related = relatedWords(events, others);
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, showErrors ? `failed: ${gaps.errored.map(e => e.label).join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const wikiCanonTitle = word.wiki?.title && word.wiki.title.trim().toLowerCase() !== word.term.trim().toLowerCase() ? word.wiki.title : null;
+  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, wikiCanonTitle ? `wiki_title: ${wikiCanonTitle}` : null, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, showErrors ? `failed: ${gaps.errored.map(e => e.label).join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
-    parts.push('## 定義', '', word.wiki.extract, '');
+    parts.push(wikiCanonTitle ? `## 定義 (${wikiCanonTitle})` : '## 定義', '', word.wiki.extract, '');
     if (word.wiki.thumbnail) parts.push(`![thumbnail](${word.wiki.thumbnail})`);
     if (word.wiki.url) parts.push(`[Wikipedia](${word.wiki.url})`, '');
   }
@@ -162,6 +163,30 @@ describe('WordExporter.toDossier', () => {
   it('omits the thumbnail line when wiki.thumbnail is absent', () => {
     const md = toDossier(word, events);
     expect(md).not.toContain('![thumbnail]');
+  });
+
+  it('adds wiki_title to frontmatter when article title differs from registered term', () => {
+    const w = { ...word, term: 'GPT', normalized: 'gpt', wiki: { ...word.wiki, title: 'Generative pre-trained transformer' } };
+    const md = toDossier(w, events);
+    expect(md).toContain('wiki_title: Generative pre-trained transformer');
+  });
+
+  it('omits wiki_title from frontmatter when title matches term (case-insensitive)', () => {
+    const w = { ...word, wiki: { ...word.wiki, title: 'webgpu' } };
+    const md = toDossier(w, events);
+    expect(md).not.toContain('wiki_title:');
+  });
+
+  it('uses the canonical title in the definition section header when it differs', () => {
+    const w = { ...word, term: 'GPT', normalized: 'gpt', wiki: { ...word.wiki, title: 'Generative pre-trained transformer' } };
+    const md = toDossier(w, events);
+    expect(md).toContain('## 定義 (Generative pre-trained transformer)');
+    expect(md).not.toContain('## 定義\n');
+  });
+
+  it('uses plain ## 定義 when article title matches the registered term', () => {
+    const md = toDossier(word, events);
+    expect(md).toContain('## 定義\n');
   });
 
   it('groups items by source and links each item', () => {

@@ -107,6 +107,7 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-wiki p{margin:0 0 6px;}
 .word-wiki a{font-family:var(--font-mono);font-size:11px;}
 .word-wiki-inner{display:flex;gap:12px;align-items:flex-start;}
+.word-wiki-canon{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin-bottom:4px;}
 .word-wiki-thumb{width:72px;height:72px;object-fit:cover;border-radius:4px;flex-shrink:0;}
 .word-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px;}
 .word-actions button{font-family:var(--font-mono);font-size:11px;padding:6px 10px;}
@@ -2281,7 +2282,8 @@ const WordExporter={
     const related=relatedWords(events,others);
     const stale=verdictStale(word,events);
     const shift=cognitiveShift(word);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const wikiCanonTitle=word.wiki?.title&&word.wiki.title.trim().toLowerCase()!==word.term.trim().toLowerCase()?word.wiki.title:null;
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${wikiCanonTitle}`:null,word.note?`intent: ${word.note}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     // 問いの変遷(elenchus): 旧い定式化があれば、問いがどう彫琢されたかを記録。
@@ -2293,7 +2295,7 @@ const WordExporter={
       parts.push('');
     }
     if(word.wiki?.extract){
-      parts.push('## 定義','',word.wiki.extract,'');
+      parts.push(wikiCanonTitle?`## 定義 (${wikiCanonTitle})`:'## 定義','',word.wiki.extract,'');
       if(word.wiki.thumbnail)parts.push(`![thumbnail](${word.wiki.thumbnail})`);
       if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
     }
@@ -2687,7 +2689,8 @@ async function renderWords(){
     const wikiStale=w.wiki?.fetchedAt&&(Date.now()-w.wiki.fetchedAt>WIKI_STALE_MS);
     const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
     const wikiThumb=w.wiki?.thumbnail?`<img class="word-wiki-thumb" src="${escapeHtml(w.wiki.thumbnail)}" alt="" loading="lazy">`:''
-    const wiki=w.wiki?.extract?`<div class="word-wiki"><div class="word-wiki-inner">${wikiThumb}<div><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div></div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
+    const wikiCanon=w.wiki?.title&&w.wiki.title.trim().toLowerCase()!==w.term.trim().toLowerCase()?`<div class="word-wiki-canon">${currentLang==='ja'?'記事:':'article:'} <em>${escapeHtml(w.wiki.title)}</em></div>`:'';
+    const wiki=w.wiki?.extract?`<div class="word-wiki"><div class="word-wiki-inner">${wikiThumb}<div>${wikiCanon}<p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div></div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
     // 問いの彫琢: 問いは編集可能で、旧い定式化は履歴に残る。
     const revisions=(w.questionHistory||[]).length;
