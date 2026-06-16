@@ -178,6 +178,23 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain("if(removed)UndoStack.offer(");
     expect(html).toContain("w.questions.push(removed);await Store.putWord(w);FTSIndex.addWord(w);await renderView();");
   });
+  it('renders questions most-recent-first by reversing the array', () => {
+    expect(html).toContain('[...(w.questions||[])].reverse()');
+  });
+  it('collectall button is disabled and shows ".." when WordCollector.isBusy()', () => {
+    expect(html).toContain('const _busy=WordCollector.isBusy()');
+    expect(html).toContain("data-wact=\"collectall\"${_busy?' disabled':''}");
+    expect(html).toContain("${_busy?'..':t('word.collectall')}");
+  });
+  it('resets aria-busy to false in the digest view', () => {
+    expect(html).toContain("view.innerHTML=await renderDigest();\n    view.setAttribute('aria-busy','false');return;");
+  });
+  it('resets aria-busy to false in the search view (no query and with results paths)', () => {
+    // no-query path
+    expect(html).toContain("view.setAttribute('aria-busy','false');return;}\n    const events=[]");
+    // results path
+    expect(html).toContain("view.setAttribute('aria-busy','false');return;\n  }\n  const filter=VIEW_FILTERS");
+  });
 });
 
 describe('FTS word search wiring (index.html)', () => {

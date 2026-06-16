@@ -2681,7 +2681,8 @@ async function renderWords(){
   const clearWf=wordNameFilter?`<button class="word-sort-btn" data-wact="clearwf" aria-label="${escapeAttr(currentLang==='ja'?'名前フィルタをクリア':'clear name filter')}" title="${escapeAttr(wordNameFilter)}">&times;</button>`:'';
   const matchesWnf=(w)=>!wordNameFilter||w.normalized.includes(wordNameFilter)||(w.note||'').toLowerCase().includes(wordNameFilter)||(w.verdict?.note||'').toLowerCase().includes(wordNameFilter);
   const shownCount=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&matchesWnf(w)).length;
-  const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}${clearWf}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button><button data-wact="exportall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;" title="${escapeAttr(currentLang==='ja'?'全単語のMDドシエを一括書き出し':'export all words as one Markdown file')}">${currentLang==='ja'?'全書出':'EXPORT ALL'}</button></div>`;
+  const _busy=WordCollector.isBusy();
+  const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}${clearWf}<button data-wact="collectall"${_busy?' disabled':''} style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${_busy?'..':t('word.collectall')}</button><button data-wact="exportall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;" title="${escapeAttr(currentLang==='ja'?'全単語のMDドシエを一括書き出し':'export all words as one Markdown file')}">${currentLang==='ja'?'全書出':'EXPORT ALL'}</button></div>`;
   // 俯瞰サマリ: 蓄積した探究状態を一望(解決数・要再検討・問答保留・未確認・未収集)。各チップで絞り込み。
   const ov=wordsOverview(sorted,all);
   const ovChip=(key,label,alert)=>`<button class="word-ov-chip${alert?' ov-alert':''}${wordViewFilter===key?' ov-active':''}" data-wact="ovfilter" data-ov="${key}" aria-pressed="${wordViewFilter===key}">${label}</button>`;
@@ -2731,7 +2732,7 @@ async function renderWords(){
     const verdictNote=vnText?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(vnText)}${vnBtn}</p>`:(vnEditable?`<p class="word-note"><span class="word-note-empty">${currentLang==='ja'?'裁決の理由 未記入':'no rationale yet'}</span>${vnBtn}</p>`:'');
     const verdictNoteRow=`<div class="word-refine" data-vnedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.verdict?.note||'')}" data-vninput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'なぜこの裁決か...':'why this verdict...')}" aria-label="${escapeAttr(vnEditLabel)}"><button data-wact="savevn" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wact="cancelvn" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'取消':'cancel')}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
     // 問い群(残余問題): ユーザーが記録する未解決の問い。
-    const qs=(w.questions||[]);
+    const qs=[...(w.questions||[])].reverse(); // most-recent question first
     const qDelLabel=currentLang==='ja'?'問いを削除':'remove question';
     const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`).join('')}</ul>`:'';
     const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
@@ -2946,7 +2947,7 @@ async function renderView(){
   const view=$('#view');view.setAttribute('aria-busy','true');
   if(currentView==='digest'){
     view.innerHTML=await renderDigest();
-    return;
+    view.setAttribute('aria-busy','false');return;
   }
   if(currentView==='words'){
     view.scrollTop=0;
@@ -2954,7 +2955,7 @@ async function renderView(){
     view.setAttribute('aria-busy','false');return;
   }
   if(currentView==='search'){
-    if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;return;}
+    if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;view.setAttribute('aria-busy','false');return;}
     const events=[];const wordHits=[];
     for(const r of searchResults){
       if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w)wordHits.push({w,score:r.score});}
@@ -2964,8 +2965,8 @@ async function renderView(){
     const srNorm=normalizeTerm(searchQuery);
     const alreadyWord=wordHits.some(({w})=>w.normalized===srNorm)||(await Store.findWordByTerm(srNorm))!=null;
     const srBanner=alreadyWord?'':`<div class="sr-word-banner"><span class="sr-word-label">${currentLang==='ja'?`「${escapeHtml(searchQuery)}」を探究登録`:`Register "${escapeHtml(searchQuery)}" as a watchword`}</span><button class="sr-word-btn" data-wact="regword" data-term="${escapeAttr(searchQuery)}">${currentLang==='ja'?'+ 登録':'+ Register'}</button></div>`;
-    if(events.length===0&&wordHits.length===0){view.innerHTML=srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;return;}
-    view.innerHTML=srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');return;
+    if(events.length===0&&wordHits.length===0){view.innerHTML=srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;view.setAttribute('aria-busy','false');return;}
+    view.innerHTML=srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');view.setAttribute('aria-busy','false');return;
   }
   const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
   // applyFilter()で設定されたソース/タグフィルタ適用
