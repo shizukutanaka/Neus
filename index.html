@@ -2266,10 +2266,11 @@ const WordExporter={
     const fresh=newSinceReview(events,word.reviewedAt);
     const gaps=signalGaps(word,events);
     const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
+    const showErrors=!!word.lastCollectedAt&&gaps.errored.length>0; // 収集後のみ死角を語る
     const related=relatedWords(events,others);
     const stale=verdictStale(word,events);
     const shift=cognitiveShift(word);
-    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const fm=['---',`term: ${word.term}`,`lang: ${word.lang||'en'}`,word.note?`intent: ${word.note}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${word.verdict.note}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     // 問いの変遷(elenchus): 旧い定式化があれば、問いがどう彫琢されたかを記録。
@@ -2293,6 +2294,8 @@ const WordExporter={
     }
     // 空白(無知の知): 有効なのに0件だったソース。探究の境界。
     if(showGaps)parts.push('## 空白','',`有効だが0件: ${gaps.silent.join(', ')}`,'');
+    // 死角(盲点): 取得失敗したソース。沈黙ではなく到達不能 = 探究の外部。
+    if(showErrors)parts.push('## 死角','',`取得失敗: ${gaps.errored.map(e=>`${e.label} (${e.error})`).join(', ')}`,'_(沈黙ではなく取得不能。別経路で確認が必要)_','');
     // 関連(弁証法): 収集テキストに現れた他の登録語。問いの連環。
     if(related.length)parts.push('## 関連','',related.map(r=>`- ${r.term} (${r.count})`).join('\n'),'');
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決の対比。探究が自己認識を変えたかを記録。
@@ -2640,8 +2643,9 @@ async function renderWords(){
   const srtBtn=(k,l)=>`<button class="word-sort-btn${wordSortKey===k?' sort-active':''}" data-wact="setsort" data-sort="${k}">${l}</button>`;
   const sortBar=`<div class="word-sort" aria-label="${escapeAttr(currentLang==='ja'?'並び順':'sort')}">${srtBtn('date',currentLang==='ja'?'日付':'date')}${srtBtn('new',currentLang==='ja'?'新着':'new')}${srtBtn('verdict',currentLang==='ja'?'裁決':'verdict')}</div>`;
   const filterInput=`<input type="search" class="word-name-filter" id="word-name-filter" value="${escapeAttr(wordNameFilter)}" placeholder="${escapeAttr(currentLang==='ja'?'名前で絞り込む...':'filter by name...')}" aria-label="${escapeAttr(currentLang==='ja'?'単語名で絞り込む':'filter words by name')}">`;
+  const clearWf=wordNameFilter?`<button class="word-sort-btn" data-wact="clearwf" aria-label="${escapeAttr(currentLang==='ja'?'名前フィルタをクリア':'clear name filter')}" title="${escapeAttr(wordNameFilter)}">&times;</button>`:'';
   const shownCount=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&(!wordNameFilter||w.normalized.includes(wordNameFilter))).length;
-  const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
+  const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}${clearWf}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
   // 俯瞰サマリ: 蓄積した探究状態を一望(解決数・要再検討・問答保留・未確認・未収集)。各チップで絞り込み。
   const ov=wordsOverview(sorted,all);
   const ovChip=(key,label,alert)=>`<button class="word-ov-chip${alert?' ov-alert':''}${wordViewFilter===key?' ov-active':''}" data-wact="ovfilter" data-ov="${key}" aria-pressed="${wordViewFilter===key}">${label}</button>`;
@@ -2747,6 +2751,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='collectall'){btn.disabled=true;const _t=setInterval(()=>{const p=WordCollector.getProgress();if(p.total>0)btn.textContent=`${p.done}/${p.total}`;},300);try{await WordCollector.collectAll();}finally{clearInterval(_t);}await refreshCounts();await renderView();return;}
   if(act==='ovfilter'){const f=btn.dataset.ov||null;wordViewFilter=(wordViewFilter===f)?null:f;await renderView();return;}
   if(act==='setsort'){wordSortKey=btn.dataset.sort||'date';await renderView();return;}
+  if(act==='clearwf'){wordNameFilter='';await renderView();return;}
   if(act==='suggest'){
     const term=(btn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
@@ -3483,6 +3488,7 @@ const SHORTCUTS=[
   {keys:['g i'],label:'Go INBOX',desc:{ja:'INBOXへ',en:'Go to INBOX'}},
   {keys:['g a'],label:'Go ALL',desc:{ja:'ALLへ',en:'Go to ALL'}},
   {keys:['g s'],label:'Go STARRED',desc:{ja:'STARREDへ',en:'Go to STARRED'}},
+  {keys:['g w'],label:'Go WORDS',desc:{ja:'WORDSへ',en:'Go to WORDS'}},
   {keys:['?'],label:'Show shortcuts',desc:{ja:'ショートカット表示',en:'Show this dialog'}},
 ];
 
@@ -3511,6 +3517,13 @@ document.addEventListener('keydown',async(e)=>{
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'){
     if(e.key==='Escape'){
       if(e.target.id==='search-input'){e.target.value='';e.target.dispatchEvent(new Event('input'));e.target.blur();return;}
+      if(e.target.id==='word-name-filter'){
+        wordNameFilter='';e.target.value='';
+        const secs=[...($$('#view .word-section[data-wnorm]')||[])];
+        for(const s of secs)s.style.display='';
+        const h=$('#word-count');if(h)h.textContent=`${secs.length} ${currentLang==='ja'?'単語':'words'}`;
+        e.target.blur();return;
+      }
       // モーダル内フォーム要素からのEscはモーダルを閉じる
       if(anyModal){anyModal.classList.remove('show');return;}
     }
@@ -3525,7 +3538,7 @@ document.addEventListener('keydown',async(e)=>{
   // g prefix(g i / g a / g s)
   if(kbGoPrefix){
     kbGoPrefix=false;
-    const goMap={i:'inbox',a:'all',s:'starred'};
+    const goMap={i:'inbox',a:'all',s:'starred',w:'words'};
     if(goMap[k]){const btn=$(`.nav button[data-view="${goMap[k]}"]`);btn?.click();}
     return;
   }

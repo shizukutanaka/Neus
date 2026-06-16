@@ -13,13 +13,15 @@ const newSinceReview = (events, reviewedAt) => events.filter(e => (e.timestamp |
 const feedLabelOf = (name) => ((name || '').split('·').pop() || '').trim();
 function signalGaps(word, events) {
   const present = new Set(events.map(e => feedLabelOf(e.source?.name)));
-  const active = [], silent = [];
-  if (word.sources?.wikipedia) (word.wiki?.extract ? active : silent).push('Wikipedia');
+  const errs = word.lastErrors || {};
+  const active = [], silent = [], errored = [];
+  const classify = (label, has) => { if (errs[label]) errored.push({ label, error: errs[label] }); else if (has) active.push(label); else silent.push(label); };
+  if (word.sources?.wikipedia) classify('Wikipedia', !!word.wiki?.extract);
   for (const key of Object.keys(WORD_FEEDS)) {
     if (!word.sources?.[key]) continue;
-    (present.has(WORD_FEEDS[key].label) ? active : silent).push(WORD_FEEDS[key].label);
+    classify(WORD_FEEDS[key].label, present.has(WORD_FEEDS[key].label));
   }
-  return { active, silent };
+  return { active, silent, errored };
 }
 
 // Mirrored from relatedWords in index.html
@@ -77,8 +79,9 @@ function toDossier(word, events, others = []) {
   const fresh = newSinceReview(events, word.reviewedAt);
   const gaps = signalGaps(word, events);
   const showGaps = !!word.lastCollectedAt && gaps.silent.length > 0;
+  const showErrors = !!word.lastCollectedAt && gaps.errored.length > 0;
   const related = relatedWords(events, others);
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, showErrors ? `failed: ${gaps.errored.map(e => e.label).join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
@@ -92,6 +95,7 @@ function toDossier(word, events, others = []) {
     parts.push('');
   }
   if (showGaps) parts.push('## 空白', '', `有効だが0件: ${gaps.silent.join(', ')}`, '');
+  if (showErrors) parts.push('## 死角', '', `取得失敗: ${gaps.errored.map(e => `${e.label} (${e.error})`).join(', ')}`, '_(沈黙ではなく取得不能。別経路で確認が必要)_', '');
   if (related.length) parts.push('## 関連', '', related.map(r => `- ${r.term} (${r.count})`).join('\n'), '');
   if (fresh.length) {
     parts.push(`## 新着 (${fresh.length})`, '');
@@ -343,5 +347,40 @@ describe('WordExporter.toDossier — related words', () => {
 
   it('defaults to no relatedness when others is not supplied', () => {
     expect(toDossier(word, events)).not.toContain('## 関連');
+  });
+});
+
+describe('toDossier — 死角 (fetch failures as blind spots)', () => {
+  const baseWord = { term: 'X', normalized: 'x', lang: 'en', sources: { news: true, reddit: true }, wiki: null, lastCollectedAt: Date.now() };
+
+  it('adds a failed: line to frontmatter when a source errored', () => {
+    const w = { ...baseWord, lastErrors: { 'Google News': 'http_503' } };
+    const md = toDossier(w, []);
+    expect(md).toContain('failed: Google News');
+  });
+
+  it('renders ## 死角 section with error codes', () => {
+    const w = { ...baseWord, lastErrors: { 'Reddit': 'network' } };
+    const md = toDossier(w, []);
+    expect(md).toContain('## 死角');
+    expect(md).toContain('Reddit (network)');
+    expect(md).toContain('沈黙ではなく取得不能');
+  });
+
+  it('omits 死角 when no errors occurred', () => {
+    expect(toDossier(baseWord, [])).not.toContain('## 死角');
+    expect(toDossier(baseWord, [])).not.toContain('failed:');
+  });
+
+  it('omits 死角 when lastCollectedAt is not set (no collection yet)', () => {
+    const w = { ...baseWord, lastCollectedAt: null, lastErrors: { 'Reddit': 'network' } };
+    expect(toDossier(w, [])).not.toContain('## 死角');
+  });
+
+  it('lists multiple failed sources', () => {
+    const w = { ...baseWord, lastErrors: { 'Google News': 'parse', 'Reddit': 'http_404' } };
+    const md = toDossier(w, []);
+    expect(md).toContain('Google News (parse)');
+    expect(md).toContain('Reddit (http_404)');
   });
 });

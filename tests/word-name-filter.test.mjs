@@ -92,6 +92,30 @@ describe('name filter wiring (index.html)', () => {
   });
 });
 
+describe('name filter clear controls (index.html)', () => {
+  it('renders a × clear button when wordNameFilter is non-empty', () => {
+    expect(html).toContain('data-wact="clearwf"');
+  });
+  it('handles clearwf by resetting wordNameFilter and re-rendering', () => {
+    expect(html).toContain("act==='clearwf'");
+    expect(html).toContain("wordNameFilter='';await renderView()");
+  });
+  it('clears the name filter on Escape when the input is focused', () => {
+    expect(html).toContain("e.target.id==='word-name-filter'");
+    expect(html).toContain("wordNameFilter='';e.target.value=''");
+  });
+});
+
+describe('g w keyboard shortcut (index.html)', () => {
+  it('maps w to the words view in the goMap', () => {
+    expect(html).toContain("w:'words'");
+  });
+  it('lists g w in the shortcuts table', () => {
+    expect(html).toContain("keys:['g w']");
+    expect(html).toContain("label:'Go WORDS'");
+  });
+});
+
 describe('collect button feedback wiring (index.html)', () => {
   it('sets button text to ... during per-word collection', () => {
     expect(html).toContain("btn.textContent='...'");
