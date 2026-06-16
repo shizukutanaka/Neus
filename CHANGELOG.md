@@ -40,6 +40,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **問いを最新順に表示**: 追加したばかりの問い(作業中)が先頭に来るよう、`w.questions` を逆順表示 / Questions displayed newest-first in the word card
 - **COLLECT ALL ボタンが収集中をリアルタイム表示**: WORDS ビューへ遷移した際に `WordCollector.isBusy()` を参照し、収集中なら `..` と disabled を表示 / COLLECT ALL button reflects busy state when navigating to WORDS view during background collection
 - **`renderView` の `aria-busy` リセット漏れを修正**: digest ビューと search ビューの全 `return` パスで `aria-busy='false'` を設定。スクリーンリーダがローディング中のまま固まらないように / Fix aria-busy never reset in digest and search view paths
+- **検索結果の単語カードに裁決バッジと件数を追加**: `wordResultHtml` が裁決ステータス(open/converging/answered/suspended)と収集件数を表示。検索画面だけで探究状況を把握可能に / Word search result cards now show verdict badge and item count
 
 ### Tests
 - `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
@@ -54,7 +55,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/word-dossier.test.mjs` に YAML エスケープユニットテスト(2件)を追加、既存 frontmatter アサーション 4件を新形式に更新
 - `tests/word-import.test.mjs` に `lastErrors` 保持ユニットテスト(2件)＋ワイヤリング(1件)を追加
 - `tests/word-a11y.test.mjs` に Cancel ボタン / Escape ハンドラ / modal 無効化表示のワイヤリングテスト(6件)を追加
-- `tests/word-fts.test.mjs` に問い逆順 / isBusy / aria-busy ワイヤリングテスト(4件)を追加、合計 658件
+- `tests/word-fts.test.mjs` に問い逆順 / isBusy / aria-busy / 裁決バッジ ワイヤリングテスト(5件)を追加、合計 659件
 - 計 634 tests
 
 ## [v0.12.0] - 2026-06-14

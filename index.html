@@ -2505,7 +2505,11 @@ function renderVaultLinks(ev){
 function wordResultHtml(w,score){
   const scoreStr=score!==undefined?`match ${Math.round(score*100)}%`:'';
   const noteEx=w.note?`<p style="font-size:13px;color:var(--fg-2);margin:4px 0 0;">${escapeHtml(w.note.length>120?w.note.slice(0,120)+'…':w.note)}</p>`:'';
-  return`<article class="card" style="border-left:3px solid var(--accent);" role="article" aria-label="${escapeAttr(currentLang==='ja'?`単語: ${w.term}`:`Word: ${w.term}`)}"><div class="meta"><span class="source" style="color:var(--accent);">${currentLang==='ja'?'単語':'word'}</span>${scoreStr?`<span style="font-family:var(--font-mono);font-size:11px;">${scoreStr}</span>`:''}</div><h2 style="font-size:16px;margin:0;"><button class="word-res-link" data-wres="${escapeAttr(w.normalized)}">${escapeHtml(w.term)}</button></h2>${noteEx}</article>`;
+  const vd=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0];
+  const vlabel=currentLang==='ja'?vd.ja:vd.en;
+  const vBadge=`<span class="word-verdict v-${verdictOf(w)}" style="font-size:11px;padding:2px 6px;">${vlabel}</span>`;
+  const cntBadge=w.lastFetched?`<span style="color:var(--fg-3);font-family:var(--font-mono);font-size:11px;">${w.lastFetched}</span>`:'';
+  return`<article class="card" style="border-left:3px solid var(--accent);" role="article" aria-label="${escapeAttr(currentLang==='ja'?`単語: ${w.term}`:`Word: ${w.term}`)}"><div class="meta"><span class="source" style="color:var(--accent);">${currentLang==='ja'?'単語':'word'}</span>${vBadge}${cntBadge}${scoreStr?`<span style="font-family:var(--font-mono);font-size:11px;">${scoreStr}</span>`:''}</div><h2 style="font-size:16px;margin:0;"><button class="word-res-link" data-wres="${escapeAttr(w.normalized)}">${escapeHtml(w.term)}</button></h2>${noteEx}</article>`;
 }
 function cardHtml(ev,scoreHit){
   const isShare=ev.source.type==='share';

@@ -139,6 +139,11 @@ describe('word result card accessibility (index.html)', () => {
     expect(html).toContain('.word-res-link:hover');
     expect(html).toContain('.word-res-link:focus-visible');
   });
+  it('shows verdict badge and item count in the word search result card', () => {
+    expect(html).toContain('const vd=VERDICT_DEFS.find(d=>d.key===verdictOf(w))||VERDICT_DEFS[0]');
+    expect(html).toContain('class="word-verdict v-${verdictOf(w)}"');
+    expect(html).toContain('w.lastFetched?');
+  });
 });
 
 describe('collectAll busy feedback (index.html)', () => {
