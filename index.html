@@ -119,6 +119,10 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-suggest-label{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;color:var(--fg-3);}
 .word-suggest{font-family:var(--font-mono);font-size:11px;padding:4px 10px;border:1px dashed var(--line);border-radius:14px;color:var(--fg-2);}
 .word-suggest:hover{border-color:var(--accent-line);color:var(--accent);}
+.sr-word-banner{display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:12px;background:var(--bg-2);border:1px dashed var(--accent-line);border-radius:var(--radius);}
+.sr-word-label{font-family:var(--font-mono);font-size:11px;color:var(--fg-2);flex:1;}
+.sr-word-btn{font-family:var(--font-mono);font-size:11px;padding:3px 10px;border:1px solid var(--accent-line);border-radius:12px;color:var(--accent);background:none;cursor:pointer;}
+.sr-word-btn:hover{background:var(--accent);color:var(--bg-1);}
 .word-view-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
 .word-view-header h2{margin:0;font-size:14px;font-family:var(--font-mono);color:var(--fg-2);}
 .word-overview{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 16px;}
@@ -2938,8 +2942,12 @@ async function renderView(){
       if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w)wordHits.push({w,score:r.score});}
       else{const ev=await Store.getEvent(r.id);if(ev&&matchesFilter(ev))events.push({ev,score:r.score});}
     }
-    if(events.length===0&&wordHits.length===0){view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;return;}
-    view.innerHTML=wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');return;
+    // 単語探究バナー: 検索語を watchword として登録するショートカット
+    const srNorm=normalizeTerm(searchQuery);
+    const alreadyWord=wordHits.some(({w})=>w.normalized===srNorm)||(await Store.findWordByTerm(srNorm))!=null;
+    const srBanner=alreadyWord?'':`<div class="sr-word-banner"><span class="sr-word-label">${currentLang==='ja'?`「${escapeHtml(searchQuery)}」を探究登録`:`Register "${escapeHtml(searchQuery)}" as a watchword`}</span><button class="sr-word-btn" data-wact="regword" data-term="${escapeAttr(searchQuery)}">${currentLang==='ja'?'+ 登録':'+ Register'}</button></div>`;
+    if(events.length===0&&wordHits.length===0){view.innerHTML=srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;return;}
+    view.innerHTML=srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');return;
   }
   const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
   // applyFilter()で設定されたソース/タグフィルタ適用
@@ -2958,6 +2966,18 @@ $('#view').addEventListener('click',async(e)=>{
   if(e.target.closest('a'))return;
   const wres=e.target.closest('[data-wres]');
   if(wres){e.stopPropagation();wordNameFilter=wres.dataset.wres;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
+  // 検索バナーから watchword 登録(探究への参入口)
+  const rwBtn=e.target.closest('[data-wact="regword"]');
+  if(rwBtn){e.stopPropagation();
+    const term=(rwBtn.dataset.term||'').trim();if(!term)return;
+    const normalized=normalizeTerm(term);
+    if(await Store.findWordByTerm(normalized)){wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
+    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
+    await Store.putWord(word);FTSIndex.addWord(word);await refreshCounts();
+    toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
+    wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
+    await WordCollector.collectOne(word);await refreshCounts();await renderView();
+    return;}
 });
 $('#view').addEventListener('click',async(e)=>{
   if(e.target.closest('a'))return;

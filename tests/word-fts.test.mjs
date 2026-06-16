@@ -200,3 +200,28 @@ describe('FTS word search wiring (index.html)', () => {
     expect(html).toContain('FTSIndex.removeWord(word.id)');
   });
 });
+
+describe('search-to-watchword registration banner (index.html)', () => {
+  it('renders sr-word-banner when query is not yet a watchword', () => {
+    expect(html).toContain('class="sr-word-banner"');
+    expect(html).toContain('data-wact="regword"');
+  });
+  it('omits the banner when the term is already a watchword (alreadyWord)', () => {
+    expect(html).toContain('alreadyWord');
+    expect(html).toContain("alreadyWord?'':");
+  });
+  it('register handler adds the word to Store and FTS then navigates to WORDS view', () => {
+    expect(html).toContain("data-wact=\"regword\"");
+    expect(html).toContain("await Store.putWord(word);FTSIndex.addWord(word)");
+    expect(html).toContain("wordNameFilter=normalized;currentView='words'");
+  });
+  it('if already registered the banner navigates to WORDS view instead of re-registering', () => {
+    expect(html).toContain('await Store.findWordByTerm(normalized)');
+    expect(html).toContain("wordNameFilter=normalized");
+  });
+  it('sr-word-banner and sr-word-btn CSS rules are defined', () => {
+    expect(html).toContain('.sr-word-banner{');
+    expect(html).toContain('.sr-word-btn{');
+    expect(html).toContain('.sr-word-btn:hover{');
+  });
+});
