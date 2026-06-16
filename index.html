@@ -2672,7 +2672,7 @@ async function renderWords(){
     if(wordSortKey==='verdict'){const ord={answered:0,converging:1,open:2,suspended:3};return ord[verdictOf(w)]??2;}
     return -(w.createdAt||0);
   }
-  const sorted=words.slice().sort((a,b)=>_wSortVal(a)-_wSortVal(b));
+  const sorted=words.slice().sort((a,b)=>{const d=_wSortVal(a)-_wSortVal(b);return d!==0?d:-(a.createdAt||0)+(b.createdAt||0);});
   const srtBtn=(k,l)=>`<button class="word-sort-btn${wordSortKey===k?' sort-active':''}" data-wact="setsort" data-sort="${k}">${l}</button>`;
   const sortBar=`<div class="word-sort" aria-label="${escapeAttr(currentLang==='ja'?'並び順':'sort')}">${srtBtn('date',currentLang==='ja'?'日付':'date')}${srtBtn('new',currentLang==='ja'?'新着':'new')}${srtBtn('verdict',currentLang==='ja'?'裁決':'verdict')}</div>`;
   const filterInput=`<input type="search" class="word-name-filter" id="word-name-filter" value="${escapeAttr(wordNameFilter)}" placeholder="${escapeAttr(currentLang==='ja'?'名前・問い・裁決で絞り込む...':'filter by name, note, or rationale...')}" aria-label="${escapeAttr(currentLang==='ja'?'単語名・問い・裁決で絞り込む':'filter words by name, note or rationale')}">`;

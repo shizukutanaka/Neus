@@ -25,15 +25,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **名前フィルタ 0件時に空状態を表示**: テキスト入力で全セクションが非表示になっても「一致なし」メッセージが出なかった問題を修正。DOM操作で `#word-filter-empty` を挿入し、Escape 時にも非表示にする / Show no-match message when name filter returns zero results
 - **単語削除の Undo 対応**: 削除後 8秒間、UndoStack で元に戻せるように。収集済みイベントはDBに残るためロスレスなリストア / Undo word deletion via UndoStack within 8s
 - **モーダルの収集状態表示**: WORDSモーダルの単語リストに `· 最終収集 Xh前` または `· 未収集`(アクセント色)を表示 / Show last-collected time or "not collected" indicator in the modal word list
+- **エクスポート後 reviewedAt を更新**: `copyMd` / `downloadMd` / `downloadJson` / `toVault` の各エクスポートが成功後に `word.reviewedAt=Date.now()` を記録。エクスポートをもってレビュー完了とみなし「新着」バッジが即時リセットされる / Mark word as reviewed after any dossier export
+- **downloadAllMd も reviewedAt を一括更新**: 全単語一括出力(`EXPORT ALL`)後に全 watchword の `reviewedAt` を更新 / downloadAllMd marks all words reviewed
+- **addq で入力値を明示クリア**: `renderView()` 前に `input.value=''` を明示呼び出し / Explicitly clear question input before re-render
+- **WORDS view ソートの安定化**: 同一ソート値を持つ単語を `createdAt` 降順で二次ソートし、並び順を決定的に / Stable sort tiebreaker by creation date
 
 ### Tests
 - `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
 - `tests/word-verdict-note.test.mjs`(`verdictNotePatch` + インライン理由エディタのワイヤリング)
 - `tests/word-signal-gaps.test.mjs` に errored 分類(失敗 vs 沈黙)を追加
-- `tests/word-fts.test.mjs` — FTSIndex 単語インデックス + 検索から watchword 登録バナーのワイヤリング
+- `tests/word-fts.test.mjs` — FTSIndex 単語インデックス + 検索から watchword 登録バナーのワイヤリング + downloadAllMd reviewedAt + addq input clear のワイヤリング
 - `tests/word-socratic.test.mjs` — `verdictStale` / `cognitiveShift` / `socraticPrompts` の直接ユニットテスト(39件) + wiki canonical title ワイヤリング
 - `tests/worker.test.mjs` に `/json` 許可リスト(22件: Wikipedia/Wikimedia サブドメイン・混同攻撃)を追加
-- 計 629 tests
+- `tests/word-sort.test.mjs` に tiebreaker テスト(2件)を追加
+- 計 634 tests
 
 ## [v0.12.0] - 2026-06-14
 

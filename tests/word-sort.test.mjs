@@ -83,6 +83,34 @@ describe('sort wiring (index.html)', () => {
     expect(html).toContain("wordSortKey==='new'");
     expect(html).toContain("wordSortKey==='verdict'");
   });
+  it('applies createdAt tiebreaker when primary sort values tie', () => {
+    expect(html).toContain('const d=_wSortVal(a)-_wSortVal(b);return d!==0?d:-(a.createdAt||0)+(b.createdAt||0);');
+  });
+});
+
+describe('word sort — tiebreaker', () => {
+  // When two words have the same primary sort value, newer createdAt wins.
+  function sortedByWithTiebreak(key) {
+    return words.slice().sort((a, b) => {
+      const d = wSortVal(a, all, key) - wSortVal(b, all, key);
+      return d !== 0 ? d : -(a.createdAt || 0) + (b.createdAt || 0);
+    }).map(w => w.normalized);
+  }
+  it('date sort is already stable by createdAt so tiebreaker has no effect', () => {
+    expect(sortedByWithTiebreak('date')).toEqual(['b', 'a', 'c']);
+  });
+  it('new sort uses createdAt as tiebreaker when unreviewed counts tie', () => {
+    const tied = [
+      { normalized: 'x', createdAt: 10, reviewedAt: 0, verdict: { status: 'open' } },
+      { normalized: 'y', createdAt: 20, reviewedAt: 0, verdict: { status: 'open' } },
+    ];
+    // both have 0 new items — y was created later so it should appear first
+    const sorted = tied.slice().sort((a, b) => {
+      const d = wSortVal(a, [], 'new') - wSortVal(b, [], 'new');
+      return d !== 0 ? d : -(a.createdAt || 0) + (b.createdAt || 0);
+    }).map(w => w.normalized);
+    expect(sorted).toEqual(['y', 'x']);
+  });
 });
 
 describe('progress indicator wiring (index.html)', () => {
