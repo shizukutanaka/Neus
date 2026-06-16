@@ -41,6 +41,24 @@ describe('suggest action FTS indexing', () => {
   });
 });
 
+describe('word action buttons expose accessible names (index.html)', () => {
+  it('labels the collect button with the word term', () => {
+    expect(html).toContain("data-wact=\"collect\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} を収集`:`collect ${w.term}`)}\"");
+  });
+  it('labels the reviewed button with the word term', () => {
+    expect(html).toContain("data-wact=\"reviewed\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} を確認済みにする`:`mark ${w.term} as reviewed`)}\"");
+  });
+  it('labels the filter button with the word term', () => {
+    expect(html).toContain("data-wact=\"filter\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} で絞り込む`:`filter by ${w.term}`)}\"");
+  });
+  it('labels the copy/md/json/vault export buttons with the word term', () => {
+    expect(html).toContain("data-wact=\"copy\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} のドシエをコピー`:`copy dossier for ${w.term}`)}\"");
+    expect(html).toContain("data-wact=\"md\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} をMarkdown出力`:`export ${w.term} as Markdown`)}\"");
+    expect(html).toContain("data-wact=\"json\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} をJSON出力`:`export ${w.term} as JSON`)}\"");
+    expect(html).toContain("data-wact=\"vault\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} をVaultへ書き出し`:`export ${w.term} to vault`)}\"");
+  });
+});
+
 describe('question input keyboard parity', () => {
   it('sets enterkeyhint on the inline question input', () => {
     expect(html).toMatch(/data-wqinput=[^>]*enterkeyhint="done"|enterkeyhint="done"[^>]*data-wqinput=/);

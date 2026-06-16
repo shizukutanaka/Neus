@@ -2768,13 +2768,13 @@ async function renderWords(){
       ${elenchusBlock}
       ${wiki}
       <div class="word-actions">
-        <button data-wact="collect" data-id="${w.id}">${t('word.collect')}</button>
-        ${newCount>0?`<button data-wact="reviewed" data-id="${w.id}">${t('word.reviewed')}</button>`:''}
-        <button data-wact="filter" data-id="${w.id}">${t('word.filter')}</button>
-        <button data-wact="copy" data-id="${w.id}">${currentLang==='ja'?'コピー':'COPY MD'}</button>
-        <button data-wact="md" data-id="${w.id}">DOSSIER MD</button>
-        <button data-wact="json" data-id="${w.id}">JSON</button>
-        <button data-wact="vault" data-id="${w.id}">VAULT</button>
+        <button data-wact="collect" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} を収集`:`collect ${w.term}`)}">${t('word.collect')}</button>
+        ${newCount>0?`<button data-wact="reviewed" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} を確認済みにする`:`mark ${w.term} as reviewed`)}">${t('word.reviewed')}</button>`:''}
+        <button data-wact="filter" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} で絞り込む`:`filter by ${w.term}`)}">${t('word.filter')}</button>
+        <button data-wact="copy" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} のドシエをコピー`:`copy dossier for ${w.term}`)}">${currentLang==='ja'?'コピー':'COPY MD'}</button>
+        <button data-wact="md" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} をMarkdown出力`:`export ${w.term} as Markdown`)}">DOSSIER MD</button>
+        <button data-wact="json" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} をJSON出力`:`export ${w.term} as JSON`)}">JSON</button>
+        <button data-wact="vault" data-id="${w.id}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} をVaultへ書き出し`:`export ${w.term} to vault`)}">VAULT</button>
       </div>
       ${items.length?allItemCards+showMoreBtn:`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
     </section>`);
