@@ -2114,6 +2114,14 @@ function verdictStale(word,events){
   if(!since)return 0;
   return events.filter(e=>(e.timestamp||0)>since).length;
 }
+// 裁決の理由(なぜその結論か)を記録。空入力は変更なし、既存と同一も変更なし。
+// 裁決ステータスは別操作(setverd)で巡回するため、ここでは note のみ更新する。
+function verdictNotePatch(word,newText){
+  const text=(newText||'').trim().slice(0,280);
+  const cur=(word.verdict?.note||'').trim();
+  if(text===cur)return null;
+  return{verdict:{status:verdictOf(word),note:text}};
+}
 // エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
 const TIER_DEFS=[
   {key:'research',ja:'一次(研究)',en:'research'},
@@ -2654,7 +2662,14 @@ async function renderWords(){
     const stale=verdictStale(w,items);
     const reexamineLabel=currentLang==='ja'?`裁決後に到来した新証拠。結論を問い直す`:`new evidence since your verdict — re-open the inquiry`;
     const reexamineBadge=stale>0?`<button class="word-reexamine" data-wact="reexamine" data-id="${w.id}" title="${reexamineLabel}" aria-label="${currentLang==='ja'?`再検討 ${stale}件: ${reexamineLabel}`:`re-examine ${stale}: ${reexamineLabel}`}">${currentLang==='ja'?'再検討':'re-examine'} ${stale}</button>`:'';
-    const verdictNote=w.verdict?.note?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(w.verdict.note)}</p>`:'';
+    // 裁決の理由: なぜその結論かを author できる。open のうちは出さない(まだ結論がない)。
+    const vnEditable=verdictOf(w)!=='open';
+    const vnText=w.verdict?.note;
+    const vnAddLabel=currentLang==='ja'?'理由を記す':'add rationale';
+    const vnEditLabel=currentLang==='ja'?'理由を編集':'edit rationale';
+    const vnBtn=vnEditable?`<button class="word-refine-btn" data-wact="editverd" data-id="${w.id}" aria-label="${escapeAttr(vnText?vnEditLabel:vnAddLabel)}">${vnText?(currentLang==='ja'?'編集':'edit'):(currentLang==='ja'?'+理由':'+ why')}</button>`:'';
+    const verdictNote=vnText?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(vnText)}${vnBtn}</p>`:(vnEditable?`<p class="word-note"><span class="word-note-empty">${currentLang==='ja'?'裁決の理由 未記入':'no rationale yet'}</span>${vnBtn}</p>`:'');
+    const verdictNoteRow=`<div class="word-refine" data-vnedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.verdict?.note||'')}" data-vninput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'なぜこの裁決か...':'why this verdict...')}" aria-label="${escapeAttr(vnEditLabel)}"><button data-wact="savevn" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button></div>`;
     // 問い群(残余問題): ユーザーが記録する未解決の問い。
     const qs=(w.questions||[]);
     const qDelLabel=currentLang==='ja'?'問いを削除':'remove question';
@@ -2683,6 +2698,7 @@ async function renderWords(){
       ${refineRow}
       ${shiftLine}
       ${verdictNote}
+      ${verdictNoteRow}
       ${provLine}
       ${gapLine}
       ${relLine}
@@ -2745,6 +2761,18 @@ $('#view').addEventListener('click',async(e)=>{
     else{const row=$(`[data-refine="${word.id}"]`);if(row)row.style.display='none';}
     return;
   }
+  if(act==='editverd'){
+    const row=$(`[data-vnedit="${word.id}"]`);
+    if(row){row.style.display='flex';row.querySelector('input')?.focus();}
+    return;
+  }
+  if(act==='savevn'){
+    const input=$(`[data-vninput="${word.id}"]`);
+    const patch=verdictNotePatch(word,input?.value);
+    if(patch){Object.assign(word,patch);await Store.putWord(word);await renderView();}
+    else{const row=$(`[data-vnedit="${word.id}"]`);if(row)row.style.display='none';}
+    return;
+  }
   if(act==='setverd'){
     const cur=verdictOf(word);
     if(!word.verdict)word.verdict={status:'open',note:''};
@@ -2804,7 +2832,9 @@ $('#view').addEventListener('keydown',(e)=>{
   const qi=e.target.closest('input[data-wqinput]');
   if(qi){e.preventDefault();qi.parentElement?.querySelector('button[data-wact="addq"]')?.click();return;}
   const ri=e.target.closest('input[data-rqinput]');
-  if(ri){e.preventDefault();ri.parentElement?.querySelector('button[data-wact="saveq"]')?.click();}
+  if(ri){e.preventDefault();ri.parentElement?.querySelector('button[data-wact="saveq"]')?.click();return;}
+  const vi=e.target.closest('input[data-vninput]');
+  if(vi){e.preventDefault();vi.parentElement?.querySelector('button[data-wact="savevn"]')?.click();}
 });
 
 async function renderView(){
