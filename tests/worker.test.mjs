@@ -1,5 +1,6 @@
 // Neus — _worker.js unit tests
-// Covers SSRF prevention, content-type validation, routing, error handling.
+// Covers SSRF prevention, content-type validation, routing, error handling,
+// and the /json endpoint allowlist (Wikipedia-only proxy security boundary).
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -178,6 +179,60 @@ describe('Worker security invariants', () => {
     h1['test'] = 'mutated';
     expect(h2['test']).toBeUndefined();
   });
+});
+
+describe('JSON_HOST_ALLOW — /json endpoint host allowlist', () => {
+  // Mirror of _worker.js JSON_HOST_ALLOW regex
+  const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org)$/i;
+
+  const allowed = [
+    'en.wikipedia.org',
+    'ja.wikipedia.org',
+    'wikipedia.org',
+    'commons.wikimedia.org',
+    'wikimedia.org',
+    'upload.wikimedia.org',
+  ];
+
+  allowed.forEach(host => {
+    it(`allows ${host}`, () => {
+      expect(JSON_HOST_ALLOW.test(host)).toBe(true);
+    });
+  });
+
+  const blocked = [
+    'evil.com',
+    'notwikipedia.org',
+    'en.wikipedia.org.evil.com',
+    'fakewikipedia.org',
+    'wikipedia.org.attacker.com',
+    'api.openai.com',
+    'api.anthropic.com',
+    'localhost',
+    '127.0.0.1',
+    '',
+  ];
+
+  blocked.forEach(host => {
+    it(`blocks "${host}"`, () => {
+      expect(JSON_HOST_ALLOW.test(host)).toBe(false);
+    });
+  });
+
+  it('is case-insensitive (Wikipedia.ORG)', () => {
+    expect(JSON_HOST_ALLOW.test('en.Wikipedia.ORG')).toBe(true);
+  });
+});
+
+describe('JSON_CONTENT_RE — /json content-type validation', () => {
+  // Mirror of worker check: !/json/i.test(ct)
+  const jsonRe = /json/i;
+
+  it('accepts application/json', () => expect(jsonRe.test('application/json')).toBe(true));
+  it('accepts application/json; charset=utf-8', () => expect(jsonRe.test('application/json; charset=utf-8')).toBe(true));
+  it('rejects text/html', () => expect(jsonRe.test('text/html')).toBe(false));
+  it('rejects text/xml', () => expect(jsonRe.test('text/xml')).toBe(false));
+  it('rejects empty string', () => expect(jsonRe.test('')).toBe(false));
 });
 
 describe('Conditional GET (ETag / Last-Modified)', () => {
