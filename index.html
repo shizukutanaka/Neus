@@ -106,6 +106,8 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-wiki{margin:8px 0;font-size:13px;color:var(--fg-2);line-height:1.6;}
 .word-wiki p{margin:0 0 6px;}
 .word-wiki a{font-family:var(--font-mono);font-size:11px;}
+.word-wiki-inner{display:flex;gap:12px;align-items:flex-start;}
+.word-wiki-thumb{width:72px;height:72px;object-fit:cover;border-radius:4px;flex-shrink:0;}
 .word-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px;}
 .word-actions button{font-family:var(--font-mono);font-size:11px;padding:6px 10px;}
 .word-empty{color:var(--fg-3);font-family:var(--font-mono);font-size:12px;padding:8px 0;}
@@ -2642,9 +2644,10 @@ async function renderWords(){
   const sorted=words.slice().sort((a,b)=>_wSortVal(a)-_wSortVal(b));
   const srtBtn=(k,l)=>`<button class="word-sort-btn${wordSortKey===k?' sort-active':''}" data-wact="setsort" data-sort="${k}">${l}</button>`;
   const sortBar=`<div class="word-sort" aria-label="${escapeAttr(currentLang==='ja'?'並び順':'sort')}">${srtBtn('date',currentLang==='ja'?'日付':'date')}${srtBtn('new',currentLang==='ja'?'新着':'new')}${srtBtn('verdict',currentLang==='ja'?'裁決':'verdict')}</div>`;
-  const filterInput=`<input type="search" class="word-name-filter" id="word-name-filter" value="${escapeAttr(wordNameFilter)}" placeholder="${escapeAttr(currentLang==='ja'?'名前で絞り込む...':'filter by name...')}" aria-label="${escapeAttr(currentLang==='ja'?'単語名で絞り込む':'filter words by name')}">`;
+  const filterInput=`<input type="search" class="word-name-filter" id="word-name-filter" value="${escapeAttr(wordNameFilter)}" placeholder="${escapeAttr(currentLang==='ja'?'名前・問い・裁決で絞り込む...':'filter by name, note, or rationale...')}" aria-label="${escapeAttr(currentLang==='ja'?'単語名・問い・裁決で絞り込む':'filter words by name, note or rationale')}">`;
   const clearWf=wordNameFilter?`<button class="word-sort-btn" data-wact="clearwf" aria-label="${escapeAttr(currentLang==='ja'?'名前フィルタをクリア':'clear name filter')}" title="${escapeAttr(wordNameFilter)}">&times;</button>`:'';
-  const shownCount=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&(!wordNameFilter||w.normalized.includes(wordNameFilter))).length;
+  const matchesWnf=(w)=>!wordNameFilter||w.normalized.includes(wordNameFilter)||(w.note||'').toLowerCase().includes(wordNameFilter)||(w.verdict?.note||'').toLowerCase().includes(wordNameFilter);
+  const shownCount=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&matchesWnf(w)).length;
   const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}${clearWf}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
   // 俯瞰サマリ: 蓄積した探究状態を一望(解決数・要再検討・問答保留・未確認・未収集)。各チップで絞り込み。
   const ov=wordsOverview(sorted,all);
@@ -2656,7 +2659,7 @@ async function renderWords(){
   if(ov.uncollected>0)ovChips.push(ovChip('uncollected',`${currentLang==='ja'?'未収集':'uncollected'} ${ov.uncollected}`,false));
   if(wordViewFilter)ovChips.push(`<button class="word-ov-chip" data-wact="ovfilter" data-ov="">${currentLang==='ja'?'解除':'clear'}</button>`);
   const overview=`<div class="word-overview" aria-label="${escapeAttr(currentLang==='ja'?'探究の俯瞰':'inquiry overview')}">${ovChips.join('')}</div>`;
-  const shown=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&(!wordNameFilter||w.normalized.includes(wordNameFilter)));
+  const shown=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&matchesWnf(w));
   const sections=[];
   if(shown.length===0)sections.push(`<div class="word-empty">${currentLang==='ja'?'該当する単語がありません':'no words match this filter'}</div>`);
   for(const w of shown){
@@ -2666,7 +2669,8 @@ async function renderWords(){
     const newCount=newSinceReview(items,w.reviewedAt).length;
     const wikiStale=w.wiki?.fetchedAt&&(Date.now()-w.wiki.fetchedAt>WIKI_STALE_MS);
     const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
-    const wiki=w.wiki?.extract?`<div class="word-wiki"><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
+    const wikiThumb=w.wiki?.thumbnail?`<img class="word-wiki-thumb" src="${escapeHtml(w.wiki.thumbnail)}" alt="" loading="lazy">`:''
+    const wiki=w.wiki?.extract?`<div class="word-wiki"><div class="word-wiki-inner">${wikiThumb}<div><p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div></div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
     // 問いの彫琢: 問いは編集可能で、旧い定式化は履歴に残る。
     const revisions=(w.questionHistory||[]).length;
@@ -2714,7 +2718,7 @@ async function renderWords(){
     const related=relatedWords(items,others);
     const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}" aria-label="${escapeAttr(currentLang==='ja'?`関連語 ${r.term} で絞り込む(${r.count}件)`:`filter by related word ${r.term} (${r.count})`)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
     const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
-    sections.push(`<section class="word-section" data-word="${w.id}" data-wnorm="${escapeAttr(w.normalized)}">
+    sections.push(`<section class="word-section" data-word="${w.id}" data-wnorm="${escapeAttr(w.normalized)}" data-wsearch="${escapeAttr([w.normalized,(w.note||''),(w.verdict?.note||'')].join(' ').toLowerCase())}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${reexamineBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
       ${refineRow}
@@ -2868,7 +2872,7 @@ $('#view').addEventListener('input',(e)=>{
   const sections=[...($$('#view .word-section[data-wnorm]')||[])];
   let vis=0;
   for(const sec of sections){
-    const match=!wordNameFilter||sec.dataset.wnorm.includes(wordNameFilter);
+    const match=!wordNameFilter||sec.dataset.wsearch.includes(wordNameFilter);
     sec.style.display=match?'':'none';if(match)vis++;
   }
   const h=$('#word-count');if(h)h.textContent=`${vis} ${currentLang==='ja'?'単語':'words'}`;

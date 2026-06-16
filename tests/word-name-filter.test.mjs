@@ -1,6 +1,9 @@
 // Neus — Watchword name-filter tests
 // With many words, the overview chips filter by inquiry state but give no way
-// to find a specific term. The name filter narrows the WORDS view by word.normalized
+// to find a specific term. The name filter narrows the WORDS view by:
+//   - word.normalized (the word itself)
+//   - word.note (the inquiry question)
+//   - word.verdict.note (the rationale for the verdict)
 // via DOM manipulation (no re-render), so the input stays focused on every keystroke.
 // It stacks with the overview-chip filter (AND semantics).
 
@@ -22,20 +25,29 @@ const wordMatchesOv = (w, all, filter) => {
   return true;
 };
 
+// Mirror of matchesWnf in renderWords() — name filter checks normalized, note, and verdict rationale.
+function matchesWnf(w, nameFilter) {
+  if (!nameFilter) return true;
+  const q = nameFilter.toLowerCase();
+  return w.normalized.includes(q) ||
+    (w.note || '').toLowerCase().includes(q) ||
+    (w.verdict?.note || '').toLowerCase().includes(q);
+}
+
 // The combined filter applied by renderWords():
-// shown = sorted.filter(w => wordMatchesOv(w,all,filter) && (!nameFilter || w.normalized.includes(nameFilter)))
+// shown = sorted.filter(w => wordMatchesOv(w,all,filter) && matchesWnf(w))
 function applyFilters(words, all, ovFilter, nameFilter) {
   return words.filter(w =>
     wordMatchesOv(w, all, ovFilter) &&
-    (!nameFilter || w.normalized.includes(nameFilter.toLowerCase()))
+    matchesWnf(w, nameFilter)
   );
 }
 
 const words = [
-  { normalized: 'webgpu', verdict: { status: 'open' } },
-  { normalized: 'rust', verdict: { status: 'answered' } },
-  { normalized: 'webassembly', verdict: { status: 'open' } },
-  { normalized: 'graphics', verdict: { status: 'open' } },
+  { normalized: 'webgpu', note: 'GPU programming in the browser', verdict: { status: 'open' } },
+  { normalized: 'rust', note: 'systems language', verdict: { status: 'answered', note: 'memory safe by design' } },
+  { normalized: 'webassembly', note: 'compile target for the web', verdict: { status: 'open' } },
+  { normalized: 'graphics', note: '', verdict: { status: 'open' } },
 ];
 
 describe('name filter logic', () => {
@@ -51,6 +63,24 @@ describe('name filter logic', () => {
   it('is case-insensitive (normalized is already lowercase)', () => {
     expect(applyFilters(words, [], null, 'GPU')).toHaveLength(1);
     expect(applyFilters(words, [], null, 'gpu').map(w => w.normalized)).toEqual(['webgpu']);
+  });
+
+  it('filters by note content', () => {
+    const result = applyFilters(words, [], null, 'systems');
+    expect(result).toHaveLength(1);
+    expect(result[0].normalized).toBe('rust');
+  });
+
+  it('filters by verdict rationale', () => {
+    const result = applyFilters(words, [], null, 'memory safe');
+    expect(result).toHaveLength(1);
+    expect(result[0].normalized).toBe('rust');
+  });
+
+  it('note match is also case-insensitive', () => {
+    const result = applyFilters(words, [], null, 'GPU PROGRAMMING');
+    expect(result).toHaveLength(1);
+    expect(result[0].normalized).toBe('webgpu');
   });
 
   it('ANDs with the overview chip filter', () => {
@@ -76,15 +106,21 @@ describe('name filter wiring (index.html)', () => {
     expect(html).toContain('id="word-name-filter"');
     expect(html).toContain('class="word-name-filter"');
   });
-  it('folds the name filter into the shown array', () => {
-    expect(html).toContain('!wordNameFilter||w.normalized.includes(wordNameFilter)');
+  it('defines matchesWnf helper that checks note and verdict rationale', () => {
+    expect(html).toContain('const matchesWnf=');
+    expect(html).toContain("(w.note||'').toLowerCase().includes(wordNameFilter)");
+    expect(html).toContain("(w.verdict?.note||'').toLowerCase().includes(wordNameFilter)");
   });
-  it('adds data-wnorm to each word section for DOM manipulation', () => {
+  it('folds the name filter into the shown array via matchesWnf', () => {
+    expect(html).toContain('matchesWnf(w)');
+  });
+  it('adds data-wnorm and data-wsearch to each word section for DOM manipulation', () => {
     expect(html).toContain('data-wnorm="${escapeAttr(w.normalized)}"');
+    expect(html).toContain('data-wsearch="${escapeAttr(');
   });
   it('handles input events and manipulates display without re-render', () => {
     expect(html).toContain("e.target.closest('#word-name-filter')");
-    expect(html).toContain("sec.dataset.wnorm.includes(wordNameFilter)");
+    expect(html).toContain("sec.dataset.wsearch.includes(wordNameFilter)");
     expect(html).toContain("sec.style.display=match?'':'none'");
   });
   it('updates the word count display on filter change', () => {
@@ -129,5 +165,18 @@ describe('collect button feedback wiring (index.html)', () => {
   });
   it('modal COLLECT ALL restores button text after completion', () => {
     expect(html).toContain("btn.textContent=_o;btn.disabled=false");
+  });
+});
+
+describe('wikipedia thumbnail wiring (index.html)', () => {
+  it('renders word-wiki-thumb img when thumbnail is present', () => {
+    expect(html).toContain('class="word-wiki-thumb"');
+    expect(html).toContain('w.wiki?.thumbnail');
+  });
+  it('wraps wiki card in word-wiki-inner flex container', () => {
+    expect(html).toContain('class="word-wiki-inner"');
+  });
+  it('uses lazy loading for thumbnail', () => {
+    expect(html).toContain('loading="lazy"');
   });
 });
