@@ -89,3 +89,24 @@ describe('collector guard wiring (index.html)', () => {
     expect(html).toMatch(/UndoStack\.offer[\s\S]*w\.verdict\.status=prevStatus/);
   });
 });
+
+describe('word deletion undo (index.html)', () => {
+  it('captures a snapshot of the word before deletion', () => {
+    expect(html).toContain('const snap={...word}');
+  });
+  it('calls UndoStack.offer after successful word deletion', () => {
+    expect(html).toMatch(/Store\.deleteWord\(word\.id\)[\s\S]{0,300}UndoStack\.offer/);
+  });
+  it('undo restores the word to Store and FTS', () => {
+    expect(html).toContain('await Store.putWord(snap);FTSIndex.addWord(snap)');
+  });
+});
+
+describe('modal word list collection status (index.html)', () => {
+  it('shows last collected time when a word has been collected', () => {
+    expect(html).toContain('w.lastCollectedAt?` · ${fmtTime(w.lastCollectedAt)}`');
+  });
+  it('shows a not-collected indicator when lastCollectedAt is absent', () => {
+    expect(html).toContain("currentLang==='ja'?'未収集':'not collected'");
+  });
+});

@@ -3308,7 +3308,7 @@ async function renderWordList(){
     return `<div class="word-row" data-id="${w.id}">
       <div class="word-row-top">
         <strong>${escapeHtml(w.term)}</strong>
-        <span style="color:var(--fg-3);">· ${countFor(w)} ${currentLang==='ja'?'件':'items'}</span>
+        <span style="color:var(--fg-3);">· ${countFor(w)} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${fmtTime(w.lastCollectedAt)}`:(` · <span style="color:var(--accent);">${currentLang==='ja'?'未収集':'not collected'}</span>`)}</span>
         <div class="word-row-actions">
           <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
           <button data-wmact="collect" data-id="${w.id}">COLLECT</button>
@@ -3362,7 +3362,10 @@ $('#word-list').addEventListener('click',async(e)=>{
   const act=btn.dataset.wmact;
   if(act==='toggle'){word.enabled=word.enabled===false;await Store.putWord(word);await renderWordList();await refreshCounts();}
   if(act==='collect'){btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await renderWordList();await refreshCounts();await renderView();}
-  if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){FTSIndex.removeWord(word.id);await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();}}
+  if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){
+    const snap={...word};FTSIndex.removeWord(word.id);await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();
+    UndoStack.offer(currentLang==='ja'?`「${word.term}」を削除しました`:`deleted "${word.term}"`,async()=>{await Store.putWord(snap);FTSIndex.addWord(snap);await renderWordList();await refreshCounts();await renderView();});
+  }}
 });
 $('#word-list').addEventListener('change',async(e)=>{
   const cb=e.target.closest('input[data-wmsrc]');if(!cb)return;
