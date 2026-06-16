@@ -14,13 +14,15 @@ const WORD_FEEDS = { news: { label: 'Google News' }, reddit: { label: 'Reddit' }
 const feedLabelOf = (name) => ((name || '').split('·').pop() || '').trim();
 function signalGaps(word, events) {
   const present = new Set(events.map(e => feedLabelOf(e.source?.name)));
-  const active = [], silent = [];
-  if (word.sources?.wikipedia) (word.wiki?.extract ? active : silent).push('Wikipedia');
+  const errs = word.lastErrors || {};
+  const active = [], silent = [], errored = [];
+  const classify = (label, has) => { if (errs[label]) errored.push({ label, error: errs[label] }); else if (has) active.push(label); else silent.push(label); };
+  if (word.sources?.wikipedia) classify('Wikipedia', !!word.wiki?.extract);
   for (const key of Object.keys(WORD_FEEDS)) {
     if (!word.sources?.[key]) continue;
-    (present.has(WORD_FEEDS[key].label) ? active : silent).push(WORD_FEEDS[key].label);
+    classify(WORD_FEEDS[key].label, present.has(WORD_FEEDS[key].label));
   }
-  return { active, silent };
+  return { active, silent, errored };
 }
 
 const ev = (label) => ({ source: { name: `WebGPU · ${label}` } });
@@ -70,6 +72,35 @@ describe('signalGaps', () => {
   });
 });
 
+describe('signalGaps — fetch errors vs silence (a blind spot is not a void)', () => {
+  it('classifies a failed source as errored, not silent', () => {
+    const w = { sources: { news: true, arxiv: true }, wiki: null, lastErrors: { 'Google News': 'http_503' } };
+    const { active, silent, errored } = signalGaps(w, [ev('arXiv')]);
+    expect(active).toEqual(['arXiv']);
+    expect(silent).toEqual([]); // News did NOT produce items, but it errored — not silence
+    expect(errored).toEqual([{ label: 'Google News', error: 'http_503' }]);
+  });
+
+  it('keeps a genuinely-empty source in silent while a failed one moves to errored', () => {
+    const w = { sources: { news: true, reddit: true }, wiki: null, lastErrors: { 'Reddit': 'network' } };
+    const { silent, errored } = signalGaps(w, []);
+    expect(silent).toEqual(['Google News']);          // enabled, no items, no error
+    expect(errored).toEqual([{ label: 'Reddit', error: 'network' }]); // enabled, failed
+  });
+
+  it('reports a Wikipedia fetch failure distinctly from an un-fetched extract', () => {
+    const w = { sources: { wikipedia: true }, wiki: null, lastErrors: { 'Wikipedia': 'fetch' } };
+    const { silent, errored } = signalGaps(w, []);
+    expect(silent).toEqual([]);
+    expect(errored).toEqual([{ label: 'Wikipedia', error: 'fetch' }]);
+  });
+
+  it('returns an empty errored array when lastErrors is absent', () => {
+    const w = { sources: { news: true }, wiki: null };
+    expect(signalGaps(w, []).errored).toEqual([]);
+  });
+});
+
 describe('signal-gap wiring (index.html)', () => {
   it('declares signalGaps and gates it on a prior collection', () => {
     expect(html).toContain('function signalGaps');
@@ -78,5 +109,19 @@ describe('signal-gap wiring (index.html)', () => {
   it('surfaces the gap in both the WORDS view and the dossier', () => {
     expect(html).toContain('class="word-gap"');
     expect(html).toContain('## 空白');
+  });
+  it('classifies sources into active / silent / errored', () => {
+    expect(html).toContain('const active=[],silent=[],errored=[]');
+    expect(html).toContain('const errs=word.lastErrors||{}');
+  });
+  it('records per-source errors on the word during collection', () => {
+    expect(html).toContain("word.lastErrors=Object.keys(errors).length?errors:null");
+    expect(html).toContain("errors[label]='network'");
+    expect(html).toContain("errors[label]=`http_${res.status}`");
+    expect(html).toContain("errors[label]='parse'");
+  });
+  it('renders a distinct fetch-failed line in the WORDS view', () => {
+    expect(html).toContain('class="word-err"');
+    expect(html).toContain('gaps.errored.length');
   });
 });

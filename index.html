@@ -97,6 +97,8 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-prov-tier.tier-research{color:var(--accent);border-color:var(--accent-line);}
 .word-gap{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 10px;}
 .word-gap::before{content:"\2014  ";color:var(--fg-3);}
+.word-err{font-family:var(--font-mono);font-size:10px;color:var(--err);margin:0 0 10px;}
+.word-err::before{content:"\2014  ";color:var(--err);}
 .word-rel{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 10px;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);}
 .word-rel-chip{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border:1px solid var(--line);border-radius:10px;color:var(--fg-2);}
 .word-rel-chip:hover{border-color:var(--accent-line);color:var(--accent);}
@@ -1790,16 +1792,21 @@ const WordCollector=(()=>{
   // 1単語を収集(ロックなし内部実装): Wikipedia要約 + 有効な各検索フィードを取得し event パイプラインへ流す。
   async function _collectOne(word){
     let total=0;
+    // 今回の収集で失敗したソースを記録。ソース種別(label)→エラーコード。
+    // これにより「沈黙(0件)」と「取得失敗」を区別できる(アポリアの誠実さ)。
+    const errors={};
     if(word.sources?.wikipedia){
       const wiki=await fetchWiki(word);
       if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
+      else if(!word.wiki?.extract)errors['Wikipedia']='fetch';
     }
     const q=encodeURIComponent((word.term||'').trim());
     for(const key of Object.keys(WORD_FEEDS)){
       if(!word.sources?.[key])continue;
+      const label=WORD_FEEDS[key].label;
       const feedUrl=WORD_FEEDS[key].build(q,word.lang||'en');
       // wordTerm を付与すると正規化ハンドラが word: タグを付け、source.type を 'word' にする
-      const source={id:'word:'+word.id,type:'word',name:`${word.term} · ${WORD_FEEDS[key].label}`,url:feedUrl,wordTerm:word.normalized};
+      const source={id:'word:'+word.id,type:'word',name:`${word.term} · ${label}`,url:feedUrl,wordTerm:word.normalized};
       const proxyUrl=`${CONFIG.proxy}/rss?url=${encodeURIComponent(feedUrl)}`;
       // 一時的ネットワーク障害には1回だけリトライ(POLLの簡易版)
       let res,netErr;
@@ -1807,15 +1814,16 @@ const WordCollector=(()=>{
         if(attempt>0)await new Promise(r=>setTimeout(r,400));
         try{res=await fetch(proxyUrl);netErr=null;break;}catch(e){netErr=e;}
       }
-      if(netErr){Bus.publish('inbound.error',{source,error:'network'});continue;}
-      if(!res.ok){Bus.publish('inbound.error',{source,error:`http_${res.status}`});continue;}
+      if(netErr){errors[label]='network';Bus.publish('inbound.error',{source,error:'network'});continue;}
+      if(!res.ok){errors[label]=`http_${res.status}`;Bus.publish('inbound.error',{source,error:`http_${res.status}`});continue;}
       let items;
-      try{items=RSSPoller.parseFeed(await res.text(),source);}catch{Bus.publish('inbound.error',{source,error:'parse'});continue;}
+      try{items=RSSPoller.parseFeed(await res.text(),source);}catch{errors[label]='parse';Bus.publish('inbound.error',{source,error:'parse'});continue;}
       for(const raw of items)Bus.publish('inbound.fetched',raw);
       total+=items.length;
     }
     // total は取得した生件数(重複排除・ブロック前)。fetched としてのみ意味を持つ。
     word.lastCollectedAt=Date.now();word.lastFetched=total;
+    word.lastErrors=Object.keys(errors).length?errors:null;
     await Store.putWord(word);
     return total;
   }
@@ -2146,13 +2154,16 @@ function tierBreakdown(events){
 const feedLabelOf=(name)=>((name||'').split('·').pop()||'').trim();
 function signalGaps(word,events){
   const present=new Set(events.map(e=>feedLabelOf(e.source?.name)));
-  const active=[],silent=[];
-  if(word.sources?.wikipedia)(word.wiki?.extract?active:silent).push('Wikipedia');
+  const errs=word.lastErrors||{};
+  const active=[],silent=[],errored=[];
+  // 取得失敗(errored)は沈黙(silent)と区別する。失敗は「空白」ではなく「未知」。
+  const classify=(label,has)=>{if(errs[label])errored.push({label,error:errs[label]});else if(has)active.push(label);else silent.push(label);};
+  if(word.sources?.wikipedia)classify('Wikipedia',!!word.wiki?.extract);
   for(const key of Object.keys(WORD_FEEDS)){
     if(!word.sources?.[key])continue;
-    (present.has(WORD_FEEDS[key].label)?active:silent).push(WORD_FEEDS[key].label);
+    classify(WORD_FEEDS[key].label,present.has(WORD_FEEDS[key].label));
   }
-  return {active,silent};
+  return {active,silent,errored};
 }
 // 問答(elenchus): 探究の構造そのものから、システムが探究者へ問いを投げ返す。
 // ソクラテスの助産術 — 答えを与えず、矛盾と空白を問いとして突きつける。純粋関数。
@@ -2688,6 +2699,8 @@ async function renderWords(){
     const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
     const gaps=signalGaps(w,items);
     const gapLine=(w.lastCollectedAt&&gaps.silent.length)?`<div class="word-gap" title="${currentLang==='ja'?'有効だが今回0件':'enabled but returned nothing'}">${currentLang==='ja'?'空白':'no signal'}: ${gaps.silent.map(escapeHtml).join(', ')}</div>`:'';
+    // 取得失敗は別表示: 沈黙(0件)と異なり、ソースが応答しなかった = 探究の死角。
+    const errLine=gaps.errored.length?`<div class="word-err" title="${currentLang==='ja'?'取得失敗 — 沈黙ではなく死角':'fetch failed — a blind spot, not silence'}">${currentLang==='ja'?'取得失敗':'fetch failed'}: ${gaps.errored.map(e=>escapeHtml(e.label)).join(', ')}</div>`:'';
     const others=sorted.filter(x=>x.id!==w.id).map(x=>({term:x.term,normalized:x.normalized}));
     const related=relatedWords(items,others);
     const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}" aria-label="${escapeAttr(currentLang==='ja'?`関連語 ${r.term} で絞り込む(${r.count}件)`:`filter by related word ${r.term} (${r.count})`)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
@@ -2701,6 +2714,7 @@ async function renderWords(){
       ${verdictNoteRow}
       ${provLine}
       ${gapLine}
+      ${errLine}
       ${relLine}
       ${qList}${qAdd}
       ${elenchusBlock}
