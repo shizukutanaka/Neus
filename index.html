@@ -3574,6 +3574,7 @@ document.addEventListener('keydown',async(e)=>{
         const secs=[...($$('#view .word-section[data-wnorm]')||[])];
         for(const s of secs)s.style.display='';
         const h=$('#word-count');if(h)h.textContent=`${secs.length} ${currentLang==='ja'?'単語':'words'}`;
+        const wfe=$('#word-filter-empty');if(wfe)wfe.style.display='none';
         e.target.blur();return;
       }
       // モーダル内フォーム要素からのEscはモーダルを閉じる
