@@ -2817,17 +2817,18 @@ $('#view').addEventListener('click',async(e)=>{
     applyFilter('tag','word:'+norm);return;
   }
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
-  if(act==='collect'){btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;}await refreshCounts();await renderView();return;}
-  if(act==='reviewed'){word.reviewedAt=Date.now();await Store.putWord(word);await renderView();return;}
+  if(act==='collect'){const sv=$('#view').scrollTop;btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;}await refreshCounts();await renderView();$('#view').scrollTop=sv;return;}
+  if(act==='reviewed'){const sv=$('#view').scrollTop;word.reviewedAt=Date.now();await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;}
   if(act==='refineq'){
     const row=$(`[data-refine="${word.id}"]`);
     if(row){row.style.display='flex';row.querySelector('input')?.focus();}
     return;
   }
   if(act==='saveq'){
+    const sv=$('#view').scrollTop;
     const input=$(`[data-rqinput="${word.id}"]`);
     const patch=refineQuestion(word,input?.value);
-    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();}
+    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;}
     else{const row=$(`[data-refine="${word.id}"]`);if(row)row.style.display='none';}
     return;
   }
@@ -2837,26 +2838,29 @@ $('#view').addEventListener('click',async(e)=>{
     return;
   }
   if(act==='savevn'){
+    const sv=$('#view').scrollTop;
     const input=$(`[data-vninput="${word.id}"]`);
     const patch=verdictNotePatch(word,input?.value);
-    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();}
+    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;}
     else{const row=$(`[data-vnedit="${word.id}"]`);if(row)row.style.display='none';}
     return;
   }
   if(act==='setverd'){
+    const sv=$('#view').scrollTop;
     const cur=verdictOf(word);
     if(!word.verdict)word.verdict={status:'open',note:''};
     word.verdict.status=nextVerdict(cur);
     word.verdictAt=Date.now();
-    await Store.putWord(word);await renderView();return;
+    await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;
   }
   if(act==='reexamine'){
     // 裁決を白紙へ戻す: 新証拠の到来は結論を再び問いに開く。誤操作に備え取り消し可能に。
+    const sv=$('#view').scrollTop;
     const prevStatus=verdictOf(word),prevAt=word.verdictAt||null;
     if(!word.verdict)word.verdict={status:'open',note:''};
     word.verdict.status='open';
     word.verdictAt=Date.now();
-    await Store.putWord(word);await renderView();
+    await Store.putWord(word);await renderView();$('#view').scrollTop=sv;
     UndoStack.offer(currentLang==='ja'?'裁決を再検討に戻しました':'Verdict re-opened',async()=>{
       const w=await Store.getWord(word.id);if(!w)return;
       if(!w.verdict)w.verdict={status:'open',note:''};
@@ -2866,23 +2870,26 @@ $('#view').addEventListener('click',async(e)=>{
     return;
   }
   if(act==='addq'){
+    const sv=$('#view').scrollTop;
     const input=$(`[data-wqinput="${word.id}"]`);
     const text=(input?.value||'').trim();
     if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
     if(!word.questions)word.questions=[];
     word.questions.push({id:uuid(),text,createdAt:Date.now()});
-    if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();return;
+    if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;return;
   }
   if(act==='delq'){
+    const sv=$('#view').scrollTop;
     const qid=btn.dataset.qid;
     word.questions=(word.questions||[]).filter(q=>q.id!==qid);
-    await Store.putWord(word);FTSIndex.addWord(word);await renderView();return;
+    await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;return;
   }
   if(act==='refreshwiki'){
+    const sv=$('#view').scrollTop;
     btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
     const wiki=await WordCollector.fetchWiki(word);
     if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
-    await Store.putWord(word);await renderView();return;
+    await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;
   }
   if(act==='filter'){
     currentView='all';
