@@ -120,6 +120,10 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-ov-chip:hover{color:var(--fg-1);border-color:var(--fg-2);}
 .word-ov-chip.ov-alert{color:var(--accent);border-color:var(--accent-line);}
 .word-ov-chip.ov-active{background:var(--accent);color:var(--bg-1);border-color:var(--accent);}
+.word-sort{display:flex;gap:4px;}
+.word-sort-btn{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;padding:2px 8px;background:none;cursor:pointer;}
+.word-sort-btn:hover{color:var(--fg-1);}
+.word-sort-btn.sort-active{background:var(--fg-3);color:var(--bg-1);}
 .word-stale{font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-left:8px;cursor:pointer;text-decoration:underline;}
 .word-stale:hover{color:var(--accent);}
 .word-verdict{font-family:var(--font-mono);font-size:10px;padding:1px 8px;border-radius:10px;border:1px solid;cursor:pointer;margin-left:6px;vertical-align:middle;transition:opacity .15s;}
@@ -820,6 +824,7 @@ const DICT={
     'stats.interest.like':'好み(自動学習)',
     'stats.interest.dislike':'除外(自動学習)',
     'stats.storage':'ストレージ',
+    'stats.words':'単語',
     'filter.tag':'タグ',
     'filter.source':'ソース',
     'filter.clear':'クリア',
@@ -919,6 +924,7 @@ const DICT={
     'stats.interest.like':'Liked (auto-learned)',
     'stats.interest.dislike':'Filtered (auto-learned)',
     'stats.storage':'Storage',
+    'stats.words':'Words',
     'filter.tag':'tag',
     'filter.source':'source',
     'filter.clear':'clear',
@@ -1759,8 +1765,9 @@ const WORD_FEEDS={
 const WordCollector=(()=>{
   // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを
   // 二重取得して帯域を浪費し件数表示が崩れる。単一の busy フラグで直列化する。
-  let busy=false;
+  let busy=false,progress={done:0,total:0};
   const isBusy=()=>busy;
+  const getProgress=()=>({done:progress.done,total:progress.total});
   // Wikipedia REST summary(JSON)をワーカー経由で取得。失敗時はnull。
   async function fetchWikiLang(term,lang){
     const title=encodeURIComponent((term||'').trim().replace(/\s+/g,'_'));
@@ -1823,15 +1830,15 @@ const WordCollector=(()=>{
     if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return 0;}
     const words=(await Store.listWords()).filter(w=>w.enabled!==false);
     if(words.length===0)return 0;
-    busy=true;
+    busy=true;progress={done:0,total:words.length};
     try{
       toast(currentLang==='ja'?`${words.length}単語を収集中...`:`collecting ${words.length} word(s)...`);
-      let total=0;for(const w of words)total+=await _collectOne(w);
+      let total=0;for(const w of words){total+=await _collectOne(w);progress.done++;}
       toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
       return total;
-    }finally{busy=false;}
+    }finally{busy=false;progress={done:0,total:0};}
   }
-  return{collectOne,collectAll,fetchWiki,isBusy};
+  return{collectOne,collectAll,fetchWiki,isBusy,getProgress};
 })();
 
 // ===== PROCESSORS =======================================================
@@ -2414,6 +2421,7 @@ const WordExporter={
 // ===== VIEWS ============================================================
 let currentView='inbox';let searchQuery='';let searchResults=[];
 let wordViewFilter=null; // WORDS俯瞰チップによる絞り込み(null=全件)
+let wordSortKey='date'; // WORDS view sort: 'date'|'new'|'verdict'
 const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starred:{starred:true},archived:{archived:true},later:{later:true,archived:false}};
 
 async function refreshCounts(){
@@ -2601,8 +2609,15 @@ async function renderWords(){
   if(words.length===0){
     return `${suggestHtml}<div class="empty"><div class="icon">+</div><div>${currentLang==='ja'?'登録された単語がありません':'no words registered'}</div><div class="hint">${currentLang==='ja'?'単語を登録すると関連情報を自動収集します':'register a word to auto-collect its information'}</div><button id="empty-words" type="button">${t('word.manage')}</button></div>`;
   }
-  const sorted=words.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  const header=`<div class="word-view-header"><h2>${sorted.length} ${currentLang==='ja'?'単語':'words'}</h2><button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
+  function _wSortVal(w){
+    if(wordSortKey==='new'){const tag='word:'+w.normalized;const it=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived);return -newSinceReview(it,w.reviewedAt).length;}
+    if(wordSortKey==='verdict'){const ord={answered:0,converging:1,open:2,suspended:3};return ord[verdictOf(w)]??2;}
+    return -(w.createdAt||0);
+  }
+  const sorted=words.slice().sort((a,b)=>_wSortVal(a)-_wSortVal(b));
+  const srtBtn=(k,l)=>`<button class="word-sort-btn${wordSortKey===k?' sort-active':''}" data-wact="setsort" data-sort="${k}">${l}</button>`;
+  const sortBar=`<div class="word-sort" aria-label="${escapeAttr(currentLang==='ja'?'並び順':'sort')}">${srtBtn('date',currentLang==='ja'?'日付':'date')}${srtBtn('new',currentLang==='ja'?'新着':'new')}${srtBtn('verdict',currentLang==='ja'?'裁決':'verdict')}</div>`;
+  const header=`<div class="word-view-header"><h2>${sorted.length} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
   // 俯瞰サマリ: 蓄積した探究状態を一望(解決数・要再検討・問答保留・未確認・未収集)。各チップで絞り込み。
   const ov=wordsOverview(sorted,all);
   const ovChip=(key,label,alert)=>`<button class="word-ov-chip${alert?' ov-alert':''}${wordViewFilter===key?' ov-active':''}" data-wact="ovfilter" data-ov="${key}" aria-pressed="${wordViewFilter===key}">${label}</button>`;
@@ -2694,8 +2709,9 @@ $('#view').addEventListener('click',async(e)=>{
   if(!btn)return;
   e.stopPropagation();
   const act=btn.dataset.wact;
-  if(act==='collectall'){btn.disabled=true;await WordCollector.collectAll();await refreshCounts();await renderView();return;}
+  if(act==='collectall'){btn.disabled=true;const _t=setInterval(()=>{const p=WordCollector.getProgress();if(p.total>0)btn.textContent=`${p.done}/${p.total}`;},300);try{await WordCollector.collectAll();}finally{clearInterval(_t);}await refreshCounts();await renderView();return;}
   if(act==='ovfilter'){const f=btn.dataset.ov||null;wordViewFilter=(wordViewFilter===f)?null:f;await renderView();return;}
+  if(act==='setsort'){wordSortKey=btn.dataset.sort||'date';await renderView();return;}
   if(act==='suggest'){
     const term=(btn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
@@ -3263,6 +3279,7 @@ async function openStatsModal(){
   const fts=FTSIndex.stats();
   const vault=VaultMatcher.stats();
   const kw=KeywordRules.getRules();
+  const wds=await Store.listWords();const wov=wordsOverview(wds,all);
   const ip=InterestProfile.stats();
   const ipPos=InterestProfile.topWords('pos',6);
   const ipNeg=InterestProfile.topWords('neg',6);
@@ -3277,6 +3294,7 @@ async function openStatsModal(){
     <div class="stats-row"><span class="label">${t('stats.fts')}</span><span class="val">${fts.events} events / ${fts.grams} grams</span></div>
     <div class="stats-row"><span class="label">${t('stats.summary')}</span><span class="val">${Summarizer.getDailyCount()}</span></div>
     <div class="stats-row"><span class="label">${t('stats.vault')}</span><span class="val">${vault.name?escapeHtml(vault.name)+' ('+vault.files+' files)':'-'}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.words')}</span><span class="val">${wov.total} (${wov.answered} answered${wov.unreviewed>0?', '+wov.unreviewed+' unreviewed':''}${wov.reexamine>0?', '+wov.reexamine+' re-examine':''})</span></div>
     <div class="stats-row"><span class="label">${t('stats.keywords')}</span><span class="val">watch ${kw.watch.length} / block ${kw.block.length}</span></div>
     <div class="stats-row"><span class="label">${t('stats.interest')}</span><span class="val">${ip.vocab} ${t('stats.interest.words')}</span></div>
     ${ipPos.length>0?`<div class="stats-row"><span class="label">${t('stats.interest.like')}</span><span class="val" style="color:var(--warn);font-size:11px;text-align:right;">${ipPos.map(escapeHtml).join(', ')}</span></div>`:''}

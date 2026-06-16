@@ -64,7 +64,7 @@ describe('collector guard wiring (index.html)', () => {
   it('keeps a busy flag and exposes isBusy', () => {
     expect(html).toContain('let busy=false');
     expect(html).toContain('isBusy');
-    expect(html).toMatch(/return\{collectOne,collectAll,fetchWiki,isBusy\}/);
+    expect(html).toMatch(/return\{collectOne,collectAll,fetchWiki,isBusy,getProgress\}/);
   });
   it('guards both collectOne and collectAll on the busy flag', () => {
     expect(html).toContain('if(busy)return 0;');
