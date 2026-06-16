@@ -110,6 +110,7 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-wiki-thumb{width:72px;height:72px;object-fit:cover;border-radius:4px;flex-shrink:0;}
 .word-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px;}
 .word-actions button{font-family:var(--font-mono);font-size:11px;padding:6px 10px;}
+.word-item-hidden{display:none;}
 .word-empty{color:var(--fg-3);font-family:var(--font-mono);font-size:12px;padding:8px 0;}
 .word-src-toggles{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 10px;font-size:13px;}
 .word-src-toggles label{display:flex;align-items:center;gap:6px;}
@@ -158,6 +159,7 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-q-add input{flex:1;font-size:12px;font-family:var(--font-mono);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);}
 .word-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);}
 .word-row-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+.word-row-note{font-size:12px;color:var(--fg-3);margin:-2px 0 2px;}
 .word-row-srcs{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--fg-3);font-family:var(--font-mono);}
 .word-row-srcs label{display:flex;align-items:center;gap:4px;cursor:pointer;}
 .word-row-actions{display:flex;gap:6px;}
@@ -2285,6 +2287,7 @@ const WordExporter={
     }
     if(word.wiki?.extract){
       parts.push('## 定義','',word.wiki.extract,'');
+      if(word.wiki.thumbnail)parts.push(`![thumbnail](${word.wiki.thumbnail})`);
       if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
     }
     // 出所(知の階層): 研究 > 報道 > 議論。何を「知り」何を「聞いた」かを区別する。
@@ -2665,6 +2668,8 @@ async function renderWords(){
   for(const w of shown){
     const tag='word:'+w.normalized;
     const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).sort((a,b)=>(b.publishedAt||b.timestamp)-(a.publishedAt||a.timestamp));
+    const allItemCards=items.map((ev,i)=>i<5?cardHtml(ev):`<div class="word-item-hidden">${cardHtml(ev)}</div>`).join('');
+    const showMoreBtn=items.length>5?`<button class="word-sort-btn" data-wact="showmore" data-id="${w.id}" style="margin:4px 0;">${currentLang==='ja'?`${items.length-5} 件さらに表示`:`show ${items.length-5} more`}</button>`:'';
     const recent=items.slice(0,5);
     const newCount=newSinceReview(items,w.reviewedAt).length;
     const wikiStale=w.wiki?.fetchedAt&&(Date.now()-w.wiki.fetchedAt>WIKI_STALE_MS);
@@ -2740,7 +2745,7 @@ async function renderWords(){
         <button data-wact="json" data-id="${w.id}">JSON</button>
         <button data-wact="vault" data-id="${w.id}">VAULT</button>
       </div>
-      ${recent.length?recent.map(ev=>cardHtml(ev)).join(''):`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
+      ${items.length?allItemCards+showMoreBtn:`<div class="word-empty">${currentLang==='ja'?'まだ収集なし — COLLECTを実行':'nothing collected yet — run COLLECT'}</div>`}
     </section>`);
   }
   return suggestHtml+header+overview+sections.join('');
@@ -2766,6 +2771,11 @@ $('#view').addEventListener('click',async(e)=>{
     await Store.putWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     await WordCollector.collectOne(word);await refreshCounts();await renderView();return;
+  }
+  if(act==='showmore'){
+    const section=e.target.closest('section[data-word]');
+    if(section)section.querySelectorAll('.word-item-hidden').forEach(el=>{const a=el.firstElementChild;if(a)el.replaceWith(a);});
+    btn.remove();return;
   }
   if(act==='relfilter'){
     const norm=btn.dataset.norm;if(!norm)return;
@@ -3231,6 +3241,7 @@ async function renderWordList(){
   const countFor=(w)=>{const tag='word:'+w.normalized;return all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).length;};
   $('#word-list').innerHTML=words.map(w=>{
     const srcToggles=srcDefs.map(s=>`<label><input type="checkbox" data-wmsrc="${s.key}" data-id="${w.id}"${w.sources?.[s.key]?' checked':''}> ${s.label}</label>`).join('');
+    const notePreview=w.note?`<div class="word-row-note">${escapeHtml(w.note.length>80?w.note.slice(0,80)+'…':w.note)}</div>`:'';
     return `<div class="word-row" data-id="${w.id}">
       <div class="word-row-top">
         <strong>${escapeHtml(w.term)}</strong>
@@ -3241,6 +3252,7 @@ async function renderWordList(){
           <button data-wmact="delete" data-id="${w.id}">DEL</button>
         </div>
       </div>
+      ${notePreview}
       <div class="word-row-srcs">${srcToggles}</div>
     </div>`;
   }).join('');

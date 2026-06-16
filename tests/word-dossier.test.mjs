@@ -86,6 +86,7 @@ function toDossier(word, events, others = []) {
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
     parts.push('## 定義', '', word.wiki.extract, '');
+    if (word.wiki.thumbnail) parts.push(`![thumbnail](${word.wiki.thumbnail})`);
     if (word.wiki.url) parts.push(`[Wikipedia](${word.wiki.url})`, '');
   }
   const tiers = tierBreakdown(events);
@@ -150,6 +151,17 @@ describe('WordExporter.toDossier', () => {
     expect(md).toContain('## 定義');
     expect(md).toContain('WebGPU is a web graphics API.');
     expect(md).toContain('[Wikipedia](https://en.wikipedia.org/wiki/WebGPU)');
+  });
+
+  it('includes a thumbnail image line when wiki.thumbnail is set', () => {
+    const w = { ...word, wiki: { ...word.wiki, thumbnail: 'https://upload.wikimedia.org/thumb/x.png' } };
+    const md = toDossier(w, events);
+    expect(md).toContain('![thumbnail](https://upload.wikimedia.org/thumb/x.png)');
+  });
+
+  it('omits the thumbnail line when wiki.thumbnail is absent', () => {
+    const md = toDossier(word, events);
+    expect(md).not.toContain('![thumbnail]');
   });
 
   it('groups items by source and links each item', () => {

@@ -180,3 +180,28 @@ describe('wikipedia thumbnail wiring (index.html)', () => {
     expect(html).toContain('loading="lazy"');
   });
 });
+
+describe('show-more wiring (index.html)', () => {
+  it('renders items beyond limit with word-item-hidden wrapper', () => {
+    expect(html).toContain('word-item-hidden');
+    expect(html).toContain('i<5?cardHtml(ev)');
+  });
+  it('renders a showmore button when there are more than 5 items', () => {
+    expect(html).toContain('data-wact="showmore"');
+    expect(html).toContain('items.length>5');
+  });
+  it('showmore handler reveals hidden items via DOM manipulation', () => {
+    expect(html).toContain("act==='showmore'");
+    expect(html).toContain("querySelectorAll('.word-item-hidden')");
+  });
+});
+
+describe('modal note preview wiring (index.html)', () => {
+  it('renders a word-row-note element with the note text', () => {
+    expect(html).toContain('class="word-row-note"');
+    expect(html).toContain('notePreview');
+  });
+  it('truncates the note to 80 characters in the modal list', () => {
+    expect(html).toContain('w.note.length>80?w.note.slice(0,80)');
+  });
+});
