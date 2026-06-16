@@ -111,6 +111,21 @@ describe('FTSIndex word indexing — logic', () => {
   });
 });
 
+describe('word lang badge and n shortcut (index.html)', () => {
+  it('shows lang badge when word.lang differs from currentLang', () => {
+    expect(html).toContain('langNote=w.lang&&w.lang!==currentLang');
+    expect(html).toContain('` · [${w.lang}]`');
+  });
+  it('n shortcut opens words modal when on WORDS view', () => {
+    expect(html).toContain("k==='n'&&currentView==='words'");
+    expect(html).toContain('openWordsModal()');
+  });
+  it('n shortcut is listed in the shortcuts table', () => {
+    expect(html).toContain("keys:['n']");
+    expect(html).toContain("label:'New Word'");
+  });
+});
+
 describe('FTS word search wiring (index.html)', () => {
   it('declares wordGrams in FTSIndex', () => {
     expect(html).toContain('const wordGrams=new Map()');

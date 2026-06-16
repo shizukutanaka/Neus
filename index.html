@@ -2731,7 +2731,8 @@ async function renderWords(){
     const others=sorted.filter(x=>x.id!==w.id).map(x=>({term:x.term,normalized:x.normalized}));
     const related=relatedWords(items,others);
     const relLine=related.length?`<div class="word-rel" title="${currentLang==='ja'?'関連する登録語':'related watchwords'}">${currentLang==='ja'?'関連':'related'}: ${related.map(r=>`<button class="word-rel-chip" data-wact="relfilter" data-norm="${escapeAttr(r.normalized)}" aria-label="${escapeAttr(currentLang==='ja'?`関連語 ${r.term} で絞り込む(${r.count}件)`:`filter by related word ${r.term} (${r.count})`)}">${escapeHtml(r.term)} ${r.count}</button>`).join('')}</div>`:'';
-    const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}`;
+    const langNote=w.lang&&w.lang!==currentLang?` · [${w.lang}]`:'';
+    const meta=`${items.length} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${currentLang==='ja'?'最終収集':'last'} ${fmtTime(w.lastCollectedAt)}`:''}${langNote}`;
     sections.push(`<section class="word-section" data-word="${w.id}" data-wnorm="${escapeAttr(w.normalized)}" data-wsearch="${escapeAttr([w.normalized,(w.note||''),(w.verdict?.note||'')].join(' ').toLowerCase())}">
       <div class="word-head"><h2>${escapeHtml(w.term)}${newBadge}${verdictPill}${reexamineBadge}${w.enabled===false?` <span class="word-off">(${currentLang==='ja'?'無効':'off'})</span>`:''}</h2><span class="word-meta">${meta}</span></div>
       ${noteLine}
@@ -3524,6 +3525,7 @@ const SHORTCUTS=[
   {keys:['g a'],label:'Go ALL',desc:{ja:'ALLへ',en:'Go to ALL'}},
   {keys:['g s'],label:'Go STARRED',desc:{ja:'STARREDへ',en:'Go to STARRED'}},
   {keys:['g w'],label:'Go WORDS',desc:{ja:'WORDSへ',en:'Go to WORDS'}},
+  {keys:['n'],label:'New Word',desc:{ja:'単語を登録 (WORDSビューのみ)',en:'Register word (WORDS view only)'}},
   {keys:['?'],label:'Show shortcuts',desc:{ja:'ショートカット表示',en:'Show this dialog'}},
 ];
 
@@ -3578,6 +3580,8 @@ document.addEventListener('keydown',async(e)=>{
     return;
   }
   if(k==='g'){kbGoPrefix=true;setTimeout(()=>{kbGoPrefix=false;},800);return;}
+  // n = new word (WORDS view only)
+  if(k==='n'&&currentView==='words'){e.preventDefault();openWordsModal();return;}
   // ?
   if(k==='?'){e.preventDefault();openShortcutsModal();return;}
   // / or f
