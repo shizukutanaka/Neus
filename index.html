@@ -127,6 +127,9 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-ov-chip.ov-active{background:var(--accent);color:var(--bg-1);border-color:var(--accent);}
 .word-sort{display:flex;gap:4px;}
 .word-sort-btn{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;padding:2px 8px;background:none;cursor:pointer;}
+.word-res-link{background:none;border:none;color:inherit;font:inherit;cursor:pointer;padding:0;text-align:left;}
+.word-res-link:hover{color:var(--accent);}
+.word-res-link:focus-visible{outline:2px solid var(--accent);border-radius:2px;}
 .word-sort-btn:hover{color:var(--fg-1);}
 .word-sort-btn.sort-active{background:var(--fg-3);color:var(--bg-1);}
 .word-name-filter{font-family:var(--font-mono);font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);min-width:120px;max-width:180px;}
@@ -1844,7 +1847,7 @@ const WordCollector=(()=>{
     try{return await _collectOne(word);}finally{busy=false;}
   }
   async function collectAll(){
-    if(busy)return 0;
+    if(busy){toast(currentLang==='ja'?'収集中 — しばらくお待ちください':'collection in progress — please wait','err');return 0;}
     if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return 0;}
     const words=(await Store.listWords()).filter(w=>w.enabled!==false);
     if(words.length===0)return 0;
@@ -2484,7 +2487,7 @@ function renderVaultLinks(ev){
 function wordResultHtml(w,score){
   const scoreStr=score!==undefined?`match ${Math.round(score*100)}%`:'';
   const noteEx=w.note?`<p style="font-size:13px;color:var(--fg-2);margin:4px 0 0;">${escapeHtml(w.note.length>120?w.note.slice(0,120)+'…':w.note)}</p>`:'';
-  return`<article class="card" style="border-left:3px solid var(--accent);" data-wres="${escapeAttr(w.normalized)}" role="article" aria-label="${escapeAttr(currentLang==='ja'?`単語: ${w.term}`:`Word: ${w.term}`)}"><div class="meta"><span class="source" style="color:var(--accent);">${currentLang==='ja'?'単語':'word'}</span>${scoreStr?`<span style="font-family:var(--font-mono);font-size:11px;">${scoreStr}</span>`:''}</div><h2 style="font-size:16px;">${escapeHtml(w.term)}</h2>${noteEx}</article>`;
+  return`<article class="card" style="border-left:3px solid var(--accent);" role="article" aria-label="${escapeAttr(currentLang==='ja'?`単語: ${w.term}`:`Word: ${w.term}`)}"><div class="meta"><span class="source" style="color:var(--accent);">${currentLang==='ja'?'単語':'word'}</span>${scoreStr?`<span style="font-family:var(--font-mono);font-size:11px;">${scoreStr}</span>`:''}</div><h2 style="font-size:16px;margin:0;"><button class="word-res-link" data-wres="${escapeAttr(w.normalized)}">${escapeHtml(w.term)}</button></h2>${noteEx}</article>`;
 }
 function cardHtml(ev,scoreHit){
   const isShare=ev.source.type==='share';
@@ -2660,7 +2663,7 @@ async function renderWords(){
   const clearWf=wordNameFilter?`<button class="word-sort-btn" data-wact="clearwf" aria-label="${escapeAttr(currentLang==='ja'?'名前フィルタをクリア':'clear name filter')}" title="${escapeAttr(wordNameFilter)}">&times;</button>`:'';
   const matchesWnf=(w)=>!wordNameFilter||w.normalized.includes(wordNameFilter)||(w.note||'').toLowerCase().includes(wordNameFilter)||(w.verdict?.note||'').toLowerCase().includes(wordNameFilter);
   const shownCount=sorted.filter(w=>wordMatchesOv(w,all,wordViewFilter)&&matchesWnf(w)).length;
-  const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}${clearWf}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button></div>`;
+  const header=`<div class="word-view-header"><h2 id="word-count">${shownCount} ${currentLang==='ja'?'単語':'words'}</h2>${sortBar}${filterInput}${clearWf}<button data-wact="collectall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;">${t('word.collectall')}</button><button data-wact="exportall" style="font-family:var(--font-mono);font-size:11px;padding:6px 12px;" title="${escapeAttr(currentLang==='ja'?'全単語のMDドシエを一括書き出し':'export all words as one Markdown file')}">${currentLang==='ja'?'全書出':'EXPORT ALL'}</button></div>`;
   // 俯瞰サマリ: 蓄積した探究状態を一望(解決数・要再検討・問答保留・未確認・未収集)。各チップで絞り込み。
   const ov=wordsOverview(sorted,all);
   const ovChip=(key,label,alert)=>`<button class="word-ov-chip${alert?' ov-alert':''}${wordViewFilter===key?' ov-active':''}" data-wact="ovfilter" data-ov="${key}" aria-pressed="${wordViewFilter===key}">${label}</button>`;
@@ -2768,6 +2771,7 @@ $('#view').addEventListener('click',async(e)=>{
   e.stopPropagation();
   const act=btn.dataset.wact;
   if(act==='collectall'){btn.disabled=true;const _t=setInterval(()=>{const p=WordCollector.getProgress();if(p.total>0)btn.textContent=`${p.done}/${p.total}`;},300);try{await WordCollector.collectAll();}finally{clearInterval(_t);}await refreshCounts();await renderView();return;}
+  if(act==='exportall'){await WordExporter.downloadAllMd();return;}
   if(act==='ovfilter'){const f=btn.dataset.ov||null;wordViewFilter=(wordViewFilter===f)?null:f;await renderView();return;}
   if(act==='setsort'){wordSortKey=btn.dataset.sort||'date';await renderView();return;}
   if(act==='clearwf'){wordNameFilter='';await renderView();return;}
@@ -2905,6 +2909,7 @@ async function renderView(){
     return;
   }
   if(currentView==='words'){
+    view.scrollTop=0;
     view.innerHTML=await renderWords();
     view.setAttribute('aria-busy','false');return;
   }

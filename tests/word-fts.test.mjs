@@ -126,6 +126,41 @@ describe('word lang badge and n shortcut (index.html)', () => {
   });
 });
 
+describe('word result card accessibility (index.html)', () => {
+  it('renders word result term as a .word-res-link button', () => {
+    expect(html).toContain('class="word-res-link"');
+    expect(html).toContain('data-wres=');
+  });
+  it('does not put data-wres on the article itself (moved to button)', () => {
+    // article should not carry data-wres; the button inside h2 carries it
+    expect(html).toContain('<button class="word-res-link" data-wres=');
+  });
+  it('word-res-link has hover and focus-visible CSS rules', () => {
+    expect(html).toContain('.word-res-link:hover');
+    expect(html).toContain('.word-res-link:focus-visible');
+  });
+});
+
+describe('collectAll busy feedback (index.html)', () => {
+  it('shows a toast when collectAll is called while busy', () => {
+    expect(html).toContain('collection in progress');
+    expect(html).toContain('収集中 — しばらくお待ちください');
+  });
+});
+
+describe('WORDS view UX improvements (index.html)', () => {
+  it('scrolls to top on WORDS view re-render', () => {
+    expect(html).toContain('view.scrollTop=0');
+  });
+  it('renders an EXPORT ALL button in the WORDS view header', () => {
+    expect(html).toContain('data-wact="exportall"');
+  });
+  it('exportall handler calls WordExporter.downloadAllMd()', () => {
+    expect(html).toContain("act==='exportall'");
+    expect(html).toContain('WordExporter.downloadAllMd()');
+  });
+});
+
 describe('FTS word search wiring (index.html)', () => {
   it('declares wordGrams in FTSIndex', () => {
     expect(html).toContain('const wordGrams=new Map()');
