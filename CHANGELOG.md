@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **WORDS ビューの並び替え**: 日付 / 新着 / 裁決 の3モードをトグルボタンで切替(`wordSortKey`)。新着は未確認件数降順、裁決は answered を先頭に / WORDS view sort modes (date / new / verdict)
 - **STATS への単語サマリ統合**: 統計モーダルに総語数・解決数・未確認・要再検討を表示(`wordsOverview`)。ビュー切替なしで探究の健全性を把握 / Word summary in the STATS modal
 - **裁決の理由 (Verdict rationale)**: 裁決ピルは status を巡回できたが、**なぜその結論か** を記す手段が無かった(理由は import/復元でしか入らなかった)。非 open の裁決にインライン理由エディタ(`editverd`/`savevn`、`verdictNotePatch` 純粋関数、280字上限、Enter送信)を追加。理由は既存の MD ドシエ `verdict_note` / JSON 出力へそのまま流れる / Author *why* a verdict was reached; flows into the existing dossier export
+- **単語の改名 (Rename watchword)**: 用語のスペルミス(例 "WebPGU"→"WebGPU")を修正する手段が無く、削除+再作成で探究履歴(問い・裁決・wiki・収集アイテム)を失っていた。WORDSモーダルに「改名」ボタンを追加。`renameWordPlan` 純粋関数が変更を判定し、normalized が変わる場合は収集済みイベントの `word:` タグを自動で付け替えてアイテムの関連を維持。大文字小文字のみの変更は再タグ付け不要。衝突検出・二重送信防止・Enter/Escape 対応 / Rename a watchword in place, preserving all inquiry history and re-tagging collected items when the normalized form changes
 
 ### Changed
 - **取得失敗と沈黙の区別**: `signalGaps` は失敗したソースを「沈黙(0件)」に混ぜていたため、「空白: news」がニュースに記事が無いのか取得失敗なのか判別できなかった。死角を空白と混同するのは探究像を歪める — 沈黙は発見、取得失敗は発見の不在。`_collectOne` が失敗を `word.lastErrors`(label→code)に記録し、`signalGaps` が `{ active, silent, errored }` を返すよう変更。失敗ソースは silent から外れ、ドシエ `## 空白` と沈黙プロンプトが到達不能ソースを誤って空と報告しなくなった。WORDS ビューに赤い「取得失敗」行(`.word-err`)を追加 / Distinguish a failed fetch from genuine silence
@@ -56,7 +57,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/word-dossier.test.mjs` に YAML エスケープユニットテスト(2件)を追加、既存 frontmatter アサーション 4件を新形式に更新
 - `tests/word-import.test.mjs` に `lastErrors` 保持ユニットテスト(2件)＋ワイヤリング(1件)を追加
 - `tests/word-a11y.test.mjs` に Cancel ボタン / Escape ハンドラ / modal 無効化表示のワイヤリングテスト(6件)を追加
-- `tests/word-fts.test.mjs` に問い逆順 / isBusy / aria-busy / 裁決バッジ / 重複防止 ワイヤリングテスト(6件)を追加、合計 660件
+- `tests/word-fts.test.mjs` に問い逆順 / isBusy / aria-busy / 裁決バッジ / 重複防止 ワイヤリングテスト(6件)を追加
+- `tests/word-rename.test.mjs` を新規追加: `renameWordPlan` ユニットテスト(7件)＋改名ワイヤリング(6件)、合計 673件
 - 計 634 tests
 
 ## [v0.12.0] - 2026-06-14

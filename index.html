@@ -2077,6 +2077,18 @@ const wordSlug=(s)=>(s||'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ
 // 単語の正規化(重複登録防止のキー): NFKCで全角/半角・互換文字を統一、内部空白を畳み込み、小文字化。
 // 表示用の term は生のまま保持し、照合・タグ付けにのみ normalized を用いる。
 const normalizeTerm=(s)=>(s||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+// 改名計画(純粋関数): 用語変更の結果を判定する。collected events の word: タグは
+// normalized で参照されるため、normalized が変わるなら再タグ付けが必要(retag=true)。
+// existingNormalized は別単語が既にその normalized を占有しているかの判定に使う(衝突回避)。
+function renameWordPlan(word,newTerm,existingTaken){
+  const term=(newTerm||'').trim();
+  if(!term)return{error:'empty'};
+  const normalized=normalizeTerm(term);
+  if(term===word.term&&normalized===word.normalized)return{noop:true};
+  const retag=normalized!==word.normalized;
+  if(retag&&existingTaken)return{error:'conflict'};
+  return{patch:{term,normalized},retag};
+}
 // インポート用: ドシエJSON(schema 1/2)から word オブジェクトを安全に再構成。無効なら null。
 function wordFromImport(dump){
   if(!dump||dump.kind!=='word-dossier'||!dump.word)return null;
@@ -3329,16 +3341,20 @@ async function renderWordList(){
   $('#word-list').innerHTML=words.map(w=>{
     const srcToggles=srcDefs.map(s=>`<label><input type="checkbox" data-wmsrc="${s.key}" data-id="${w.id}"${w.sources?.[s.key]?' checked':''}> ${s.label}</label>`).join('');
     const notePreview=w.note?`<div class="word-row-note">${escapeHtml(w.note.length>80?w.note.slice(0,80)+'…':w.note)}</div>`:'';
+    const renameLabel=currentLang==='ja'?'用語を変更':'rename term';
+    const renameRow=`<div class="word-refine" data-wrename="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.term)}" data-wrinput="${escapeAttr(w.id)}" maxlength="120" enterkeyhint="done" aria-label="${escapeAttr(renameLabel)}"><button data-wmact="saverename" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wmact="cancelrename" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
     return `<div class="word-row" data-id="${w.id}">
       <div class="word-row-top">
         <strong${w.enabled===false?' style="opacity:.5;"':''}>${escapeHtml(w.term)}</strong>
         <span style="color:var(--fg-3);">· ${countFor(w)} ${currentLang==='ja'?'件':'items'}${w.lastCollectedAt?` · ${fmtTime(w.lastCollectedAt)}`:(` · <span style="color:var(--accent);">${currentLang==='ja'?'未収集':'not collected'}</span>`)}</span>
         <div class="word-row-actions">
+          <button data-wmact="rename" data-id="${w.id}" aria-label="${escapeAttr(renameLabel)}">${currentLang==='ja'?'改名':'RENAME'}</button>
           <button data-wmact="toggle" data-id="${w.id}">${w.enabled===false?'ON':'OFF'}</button>
           <button data-wmact="collect" data-id="${w.id}">COLLECT</button>
           <button data-wmact="delete" data-id="${w.id}">DEL</button>
         </div>
       </div>
+      ${renameRow}
       ${notePreview}
       <div class="word-row-srcs">${srcToggles}</div>
     </div>`;
@@ -3385,6 +3401,33 @@ $('#word-list').addEventListener('click',async(e)=>{
   const word=await Store.getWord(btn.dataset.id);if(!word)return;
   const act=btn.dataset.wmact;
   if(act==='toggle'){word.enabled=word.enabled===false;await Store.putWord(word);await renderWordList();await refreshCounts();}
+  if(act==='rename'){const row=$(`[data-wrename="${word.id}"]`);if(row){row.style.display='flex';const inp=row.querySelector('input');inp?.focus();inp?.select();}return;}
+  if(act==='cancelrename'){const row=$(`[data-wrename="${word.id}"]`);if(row)row.style.display='none';return;}
+  if(act==='saverename'){
+    if(btn.disabled)return;
+    const input=$(`[data-wrinput="${word.id}"]`);
+    const newTerm=input?.value||'';
+    const taken=normalizeTerm(newTerm)!==word.normalized&&!!(await Store.findWordByTerm(normalizeTerm(newTerm)));
+    const plan=renameWordPlan(word,newTerm,taken);
+    if(plan.error==='empty'){toast(currentLang==='ja'?'用語を入力':'enter a term','err');return;}
+    if(plan.error==='conflict'){toast(currentLang==='ja'?'その用語は既に登録済み':'that term already exists','err');return;}
+    if(plan.noop){const row=$(`[data-wrename="${word.id}"]`);if(row)row.style.display='none';return;}
+    btn.disabled=true;
+    const oldNorm=word.normalized;
+    Object.assign(word,plan.patch);
+    if(plan.retag){
+      const oldTag='word:'+oldNorm,newTag='word:'+word.normalized;
+      const events=await Store.allEvents();
+      for(const ev of events){
+        const tags=ev.meta?.autoTags||[];const i=tags.indexOf(oldTag);
+        if(i>=0){tags[i]=newTag;await Store.putEvent(ev);FTSIndex.add(ev);}
+      }
+    }
+    await Store.putWord(word);FTSIndex.addWord(word);
+    await renderWordList();await refreshCounts();await renderView();
+    toast(currentLang==='ja'?'用語を変更しました':'term renamed','ok');
+    return;
+  }
   if(act==='collect'){btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await renderWordList();await refreshCounts();await renderView();}
   if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){
     const snap={...word};FTSIndex.removeWord(word.id);await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();
@@ -3397,6 +3440,12 @@ $('#word-list').addEventListener('change',async(e)=>{
   if(!word.sources)word.sources={};
   word.sources[cb.dataset.wmsrc]=cb.checked;
   await Store.putWord(word);
+});
+// 改名入力欄: Enterで保存、Escapeでキャンセル(キーボードのみで完結)
+$('#word-list').addEventListener('keydown',(e)=>{
+  const inp=e.target.closest('input[data-wrinput]');if(!inp)return;
+  if(e.key==='Enter'){e.preventDefault();inp.parentElement?.querySelector('button[data-wmact="saverename"]')?.click();}
+  else if(e.key==='Escape'){e.preventDefault();const row=inp.closest('[data-wrename]');if(row)row.style.display='none';}
 });
 
 $('#kw-save').addEventListener('click',async()=>{
