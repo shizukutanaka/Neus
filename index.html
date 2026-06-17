@@ -3672,6 +3672,8 @@ document.addEventListener('keydown',async(e)=>{
   const tag=e.target.tagName;
   if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'){
     if(e.key==='Escape'){
+      // モーダル内フォーム要素からのEscはモーダルを閉じる(ビュー入力欄はモーダル非表示時のみ到達)
+      if(anyModal){anyModal.classList.remove('show');return;}
       if(e.target.id==='search-input'){e.target.value='';e.target.dispatchEvent(new Event('input'));e.target.blur();return;}
       if(e.target.id==='word-name-filter'){
         wordNameFilter='';e.target.value='';
@@ -3683,8 +3685,6 @@ document.addEventListener('keydown',async(e)=>{
       }
       if(e.target.dataset.rqinput){const row=e.target.closest('[data-refine]');if(row)row.style.display='none';e.target.blur();return;}
       if(e.target.dataset.vninput){const row=e.target.closest('[data-vnedit]');if(row)row.style.display='none';e.target.blur();return;}
-      // モーダル内フォーム要素からのEscはモーダルを閉じる
-      if(anyModal){anyModal.classList.remove('show');return;}
     }
     return;
   }
