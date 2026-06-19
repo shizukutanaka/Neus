@@ -154,6 +154,7 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-shift-verdict{color:var(--accent);}
 .word-vtrail{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 8px;}
 .word-vtrail-arrow{color:var(--line);}
+.word-falsifier{font-size:12px;color:var(--fg-2);margin:0 0 8px;border-left:2px solid var(--line);padding-left:8px;}
 #word-prior{font-family:var(--font-mono);font-size:13px;margin-bottom:8px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);width:100%;}
 .word-elenchus{margin:0 0 12px;padding:8px 12px;border-left:2px solid var(--accent-line);background:var(--bg-2);border-radius:0 var(--radius) var(--radius) 0;}
 .word-elenchus-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--fg-3);display:block;margin-bottom:4px;}
@@ -1263,7 +1264,7 @@ const FTSIndex=(()=>{
     for(let i=0;i<=t.length-n;i++)grams.add(t.slice(i,i+n));return grams;
   }
   function eventText(ev){return[ev.content.title,ev.content.snippet,ev.content.summary,ev.user?.note,ev.user?.quote,...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])].filter(Boolean).join(' ');}
-  function wordText(w){return[w.term,w.normalized,w.note,...(w.questions||[]).map(q=>q.text),w.verdict?.note].filter(Boolean).join(' ');}
+  function wordText(w){return[w.term,w.normalized,w.note,...(w.questions||[]).map(q=>q.text),w.verdict?.note,w.falsifier].filter(Boolean).join(' ');}
   function add(ev){remove(ev.id);const grams=ngrams(eventText(ev));eventGrams.set(ev.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add(ev.id);}}
   function remove(eid){const grams=eventGrams.get(eid);if(!grams)return;for(const g of grams){const s=index.get(g);if(s){s.delete(eid);if(s.size===0)index.delete(g);}}eventGrams.delete(eid);}
   function addWord(w){removeWord(w.id);const grams=ngrams(wordText(w));wordGrams.set(w.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add('word:'+w.id);}}
@@ -2105,7 +2106,7 @@ function wordFromImport(dump){
     sources:(w.sources&&typeof w.sources==='object')?w.sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},
     enabled:w.enabled!==false,
     verdict:{status:w.verdict?.status||'open',note:w.verdict?.note||''},verdictAt:w.verdictAt||null,
-    verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[],
+    verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[],falsifier:typeof w.falsifier==='string'?w.falsifier:'',
     questions:Array.isArray(w.questions)?w.questions:[],
     createdAt:w.createdAt||now,reviewedAt:w.reviewedAt||now,
     lastCollectedAt:w.lastCollectedAt||null,lastFetched:w.lastFetched||0,
@@ -2162,6 +2163,14 @@ function verdictNotePatch(word,newText){
   const cur=(word.verdict?.note||'').trim();
   if(text===cur)return null;
   return{verdict:{status:verdictOf(word),note:text}};
+}
+// 反証条件(可謬性): 「何があれば結論を覆すか」を予め定める。反証条件を述べられない
+// 結論は知ではなく独断(ポパー/エレンコスの自己適用)。空入力・同一は変更なし。純粋関数。
+function falsifierPatch(word,newText){
+  const text=(newText||'').trim().slice(0,280);
+  const cur=(word.falsifier||'').trim();
+  if(text===cur)return null;
+  return{falsifier:text};
 }
 // 裁決の変遷(弁証法): 結論はしばしば覆る。status が変わるたび、去りゆく裁決を
 // {status,note,at} として履歴に刻む。意見を変えた事実そのものが探究の証。純粋関数。
@@ -2222,8 +2231,14 @@ function socraticPrompts(word,events){
   const prior=priorBeliefOf(word);
   const unreviewed=newSinceReview(events,word.reviewedAt).length;
   const qs=(word.questions||[]);
-  // 優先順: 結論の妥当性 > 証拠の質 > 自己矛盾 > 探究の怠り
-  if(verdict==='answered'&&stale>0)out.push({key:'stale',ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
+  // 優先順: 結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り
+  if(verdict==='answered'&&stale>0){
+    // 反証条件があれば、漠然と「妥当か?」ではなく「その条件は現れたか?」と問える(鋭い論駁)。
+    if(word.falsifier)out.push({key:'stale-falsifier',ja:`裁決後に${stale}件。あなたは「${word.falsifier}」なら覆ると述べた — それは現れたか?`,en:`${stale} new since your verdict. You said it changes if: "${word.falsifier}" — has it?`});
+    else out.push({key:'stale',ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
+  }
+  // 反証条件を述べられない結論は知ではなく独断(可謬性の自己適用)。
+  if(SETTLED_VERDICTS.has(verdict)&&!word.falsifier)out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
   if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
   if(verdict==='answered'&&qs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
   if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
@@ -2314,7 +2329,7 @@ const WordExporter={
     const stale=verdictStale(word,events);
     const shift=cognitiveShift(word);
     const wikiCanonTitle=word.wiki?.title&&word.wiki.title.trim().toLowerCase()!==word.term.trim().toLowerCase()?word.wiki.title:null;
-    const fm=['---',`term: ${ys(word.term)}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${ys(wikiCanonTitle)}`:null,word.note?`intent: ${ys(word.note)}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,(word.verdictHistory||[]).length?`verdict_revisions: ${(word.verdictHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${ys(word.verdict.note)}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const fm=['---',`term: ${ys(word.term)}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${ys(wikiCanonTitle)}`:null,word.note?`intent: ${ys(word.note)}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,(word.verdictHistory||[]).length?`verdict_revisions: ${(word.verdictHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${ys(word.verdict.note)}`:null,word.falsifier?`falsifier: ${ys(word.falsifier)}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     // 問いの変遷(elenchus): 旧い定式化があれば、問いがどう彫琢されたかを記録。
@@ -2356,6 +2371,8 @@ const WordExporter={
       }
       parts.push('');
     }
+    // 反証条件(可謬性): 何があれば結論を覆すか。知と独断を分かつ境界。
+    if(word.falsifier)parts.push('## 反証条件','',`覆る条件 / changes if: ${word.falsifier}`,'');
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決の対比。探究が自己認識を変えたかを記録。
     {
       const pd=PRIOR_BELIEF_DEFS.find(d=>d.key===priorBeliefOf(word))||PRIOR_BELIEF_DEFS[0];
@@ -2443,7 +2460,7 @@ const WordExporter={
         note:word.note||'',questionHistory:word.questionHistory||[],
         priorBelief:priorBeliefOf(word),
         verdict:{status:verdictOf(word),note:word.verdict?.note||''},verdictAt:word.verdictAt||null,
-        verdictHistory:word.verdictHistory||[],
+        verdictHistory:word.verdictHistory||[],falsifier:word.falsifier||'',
         questions:word.questions||[],
         sources:word.sources||{},enabled:word.enabled!==false,
         createdAt:word.createdAt||null,reviewedAt:word.reviewedAt||null,
@@ -2774,6 +2791,14 @@ async function renderWords(){
     const vnBtn=vnEditable?`<button class="word-refine-btn" data-wact="editverd" data-id="${w.id}" aria-label="${escapeAttr(vnText?vnEditLabel:vnAddLabel)}">${vnText?(currentLang==='ja'?'編集':'edit'):(currentLang==='ja'?'+理由':'+ why')}</button>`:'';
     const verdictNote=vnText?`<p class="word-note" style="color:var(--fg-2);">${escapeHtml(vnText)}${vnBtn}</p>`:(vnEditable?`<p class="word-note"><span class="word-note-empty">${currentLang==='ja'?'裁決の理由 未記入':'no rationale yet'}</span>${vnBtn}</p>`:'');
     const verdictNoteRow=`<div class="word-refine" data-vnedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.verdict?.note||'')}" data-vninput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'なぜこの裁決か...':'why this verdict...')}" aria-label="${escapeAttr(vnEditLabel)}"><button data-wact="savevn" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wact="cancelvn" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'取消':'cancel')}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
+    // 反証条件(可謬性): 「何があれば覆るか」を予め述べる。非 open の裁決でのみ author 可能。
+    const fsText=w.falsifier;
+    const fsAddLabel=currentLang==='ja'?'反証条件を記す':'add falsifier';
+    const fsEditLabel=currentLang==='ja'?'反証条件を編集':'edit falsifier';
+    const fsBtn=vnEditable?`<button class="word-refine-btn" data-wact="editfals" data-id="${w.id}" aria-label="${escapeAttr(fsText?fsEditLabel:fsAddLabel)}">${fsText?(currentLang==='ja'?'編集':'edit'):(currentLang==='ja'?'+反証':'+ falsifier')}</button>`:'';
+    const fsPrefix=currentLang==='ja'?'覆る条件: ':'changes if: ';
+    const falsifierLine=fsText?`<p class="word-falsifier" title="${escapeAttr(currentLang==='ja'?'反証条件(可謬性)':'falsification condition')}">${escapeHtml(fsPrefix)}${escapeHtml(fsText)}${fsBtn}</p>`:(vnEditable?`<p class="word-note"><span class="word-note-empty">${currentLang==='ja'?'反証条件 未記入 — 何があれば覆るか?':'no falsifier — what would change your mind?'}</span>${fsBtn}</p>`:'');
+    const falsifierRow=`<div class="word-refine" data-fsedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.falsifier||'')}" data-fsinput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'何があれば結論を覆すか...':'what would change your mind...')}" aria-label="${escapeAttr(fsEditLabel)}"><button data-wact="savefals" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wact="cancelfals" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'取消':'cancel')}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
     // 問い群(残余問題): ユーザーが記録する未解決の問い。
     const qs=[...(w.questions||[])].reverse(); // most-recent question first
     const qDelLabel=currentLang==='ja'?'問いを削除':'remove question';
@@ -2811,6 +2836,8 @@ async function renderWords(){
       ${verdictTrail}
       ${verdictNote}
       ${verdictNoteRow}
+      ${falsifierLine}
+      ${falsifierRow}
       ${provLine}
       ${gapLine}
       ${errLine}
@@ -2850,7 +2877,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],questions:[],questionHistory:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     try{await WordCollector.collectOne(word);}catch(e){}finally{await refreshCounts();await renderView();}return;
@@ -2896,6 +2923,20 @@ $('#view').addEventListener('click',async(e)=>{
     const patch=verdictNotePatch(word,input?.value);
     if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;}
     else{const row=$(`[data-vnedit="${word.id}"]`);if(row)row.style.display='none';}
+    return;
+  }
+  if(act==='editfals'){
+    const row=$(`[data-fsedit="${word.id}"]`);
+    if(row){row.style.display='flex';row.querySelector('input')?.focus();}
+    return;
+  }
+  if(act==='cancelfals'){const row=$(`[data-fsedit="${word.id}"]`);if(row)row.style.display='none';return;}
+  if(act==='savefals'){
+    const sv=$('#view').scrollTop;
+    const input=$(`[data-fsinput="${word.id}"]`);
+    const patch=falsifierPatch(word,input?.value);
+    if(patch){Object.assign(word,patch);await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;}
+    else{const row=$(`[data-fsedit="${word.id}"]`);if(row)row.style.display='none';}
     return;
   }
   if(act==='setverd'){
@@ -2968,7 +3009,9 @@ $('#view').addEventListener('keydown',(e)=>{
   const ri=e.target.closest('input[data-rqinput]');
   if(ri){e.preventDefault();ri.parentElement?.querySelector('button[data-wact="saveq"]')?.click();return;}
   const vi=e.target.closest('input[data-vninput]');
-  if(vi){e.preventDefault();vi.parentElement?.querySelector('button[data-wact="savevn"]')?.click();}
+  if(vi){e.preventDefault();vi.parentElement?.querySelector('button[data-wact="savevn"]')?.click();return;}
+  const fi=e.target.closest('input[data-fsinput]');
+  if(fi){e.preventDefault();fi.parentElement?.querySelector('button[data-wact="savefals"]')?.click();}
 });
 // 単語名のライブ絞り込み: DOM操作のみ(再描画なし)でフォーカスを維持する。
 // 概観チップ絞り込みは再描画ベース。単語名フィルタはその上にDOMレイヤーで重なる。
@@ -3039,7 +3082,7 @@ $('#view').addEventListener('click',async(e)=>{
     const term=(rwBtn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
     if(await Store.findWordByTerm(normalized)){wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
-    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],questions:[],questionHistory:[]};
+    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);await refreshCounts();
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
@@ -3407,7 +3450,7 @@ async function addWord(){
   const note=$('#word-note').value.trim();
   const priorBelief=$('#word-prior').value||'curious';
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],questions:[],questionHistory:[]};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
   await Store.putWord(word);FTSIndex.addWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();
@@ -3716,6 +3759,7 @@ document.addEventListener('keydown',async(e)=>{
       }
       if(e.target.dataset.rqinput){const row=e.target.closest('[data-refine]');if(row)row.style.display='none';e.target.blur();return;}
       if(e.target.dataset.vninput){const row=e.target.closest('[data-vnedit]');if(row)row.style.display='none';e.target.blur();return;}
+      if(e.target.dataset.fsinput){const row=e.target.closest('[data-fsedit]');if(row)row.style.display='none';e.target.blur();return;}
     }
     return;
   }

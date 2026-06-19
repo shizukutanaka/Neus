@@ -29,7 +29,7 @@ function wordFromImport(dump) {
     sources: (w.sources && typeof w.sources === 'object') ? w.sources : { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false },
     enabled: w.enabled !== false,
     verdict: { status: w.verdict?.status || 'open', note: w.verdict?.note || '' }, verdictAt: w.verdictAt || null,
-    verdictHistory: Array.isArray(w.verdictHistory) ? w.verdictHistory : [],
+    verdictHistory: Array.isArray(w.verdictHistory) ? w.verdictHistory : [], falsifier: typeof w.falsifier === 'string' ? w.falsifier : '',
     questions: Array.isArray(w.questions) ? w.questions : [],
     createdAt: w.createdAt || now, reviewedAt: w.reviewedAt || now,
     lastCollectedAt: w.lastCollectedAt || null, lastFetched: w.lastFetched || 0,
@@ -113,6 +113,16 @@ describe('wordFromImport — reconstruction', () => {
   it('defaults verdictHistory to an empty array when absent or malformed', () => {
     expect(wordFromImport(dossier({ term: 'x' })).verdictHistory).toEqual([]);
     expect(wordFromImport(dossier({ term: 'x', verdictHistory: 'nope' })).verdictHistory).toEqual([]);
+  });
+
+  it('preserves the falsifier (falsification condition) after round-trip', () => {
+    const w = wordFromImport(dossier({ term: 'x', falsifier: 'a replicated counter-study' }));
+    expect(w.falsifier).toBe('a replicated counter-study');
+  });
+
+  it('defaults falsifier to an empty string when absent or non-string', () => {
+    expect(wordFromImport(dossier({ term: 'x' })).falsifier).toBe('');
+    expect(wordFromImport(dossier({ term: 'x', falsifier: 42 })).falsifier).toBe('');
   });
 
   it('guards against malformed arrays', () => {

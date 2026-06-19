@@ -106,6 +106,6 @@ describe('verdict-history wiring (index.html)', () => {
     expect(html).toContain('verdict_revisions: ${(word.verdictHistory||[]).length}');
   });
   it('new words are created with an empty verdictHistory', () => {
-    expect(html).toContain('verdictHistory:[],questions:[],questionHistory:[]');
+    expect(html).toContain('verdictHistory:[],falsifier:\'\',questions:[],questionHistory:[]');
   });
 });
