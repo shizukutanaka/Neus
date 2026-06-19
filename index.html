@@ -166,6 +166,11 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-q-list li::before{content:"?";color:var(--fg-3);flex-shrink:0;}
 .word-q-del{font-size:10px;padding:1px 5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;background:none;cursor:pointer;}
 .word-q-del:hover{color:var(--fg-1);border-color:var(--fg-2);}
+.word-q-resolve{font-size:10px;padding:1px 5px;color:var(--fg-3);border:1px solid var(--line);border-radius:4px;background:none;cursor:pointer;}
+.word-q-resolve:hover{color:var(--accent);border-color:var(--accent);}
+.word-q-resolve.resolved{color:var(--accent);border-color:var(--accent);}
+.word-q-done{text-decoration:line-through;color:var(--fg-3);}
+.word-q-list li.q-resolved::before{color:var(--accent);}
 .word-q-add{display:flex;gap:6px;margin:4px 0 12px;}
 .word-q-add input{flex:1;font-size:12px;font-family:var(--font-mono);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);}
 .word-row{display:flex;flex-direction:column;gap:6px;padding:8px 0;border-bottom:1px solid var(--line);}
@@ -2115,6 +2120,8 @@ function wordFromImport(dump){
 }
 // 前回レビュー以降に収集されたアイテム(= 答えの変化)。語は「問い」、価値は差分。
 const newSinceReview=(events,reviewedAt)=>events.filter(e=>(e.timestamp||0)>(reviewedAt||0));
+// 未解決の問い(アポリア): resolvedAt の無い問いだけを数える。解決は削除ではなく記録で示す。
+const openQuestions=(word)=>(word.questions||[]).filter(q=>!q.resolvedAt);
 // 裁決(探究の帰結): 問いは答えに向かわなければならない。探究の現在地を4段階で記録。
 const VERDICT_DEFS=[
   {key:'open',      ja:'探究中',  en:'open'},
@@ -2231,6 +2238,7 @@ function socraticPrompts(word,events){
   const prior=priorBeliefOf(word);
   const unreviewed=newSinceReview(events,word.reviewedAt).length;
   const qs=(word.questions||[]);
+  const openQs=openQuestions(word);
   // 優先順: 結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り
   if(verdict==='answered'&&stale>0){
     // 反証条件があれば、漠然と「妥当か?」ではなく「その条件は現れたか?」と問える(鋭い論駁)。
@@ -2240,7 +2248,7 @@ function socraticPrompts(word,events){
   // 反証条件を述べられない結論は知ではなく独断(可謬性の自己適用)。
   if(SETTLED_VERDICTS.has(verdict)&&!word.falsifier)out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
   if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
-  if(verdict==='answered'&&qs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
+  if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
   if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
   if(n>0&&qs.length===0)out.push({key:'no-questions',ja:'まだ一つも問いを立てていない。本当に疑問はないか?',en:'You have posed no questions. Is nothing in doubt?'});
   if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
@@ -2410,11 +2418,13 @@ const WordExporter={
       if(stale>0)parts.push('',`再検討 / re-examine: ${stale} new item(s) arrived after this verdict.`);
       parts.push('');
     }
-    // 問い群(残余問題): まだ答えられていない問い。ソクラテス的無知の知。
+    // 問い群(残余問題): 未解決の問い(アポリア)と解決済みの問い(弧の完了)を分けて記す。
     const qs=(word.questions||[]);
     if(qs.length){
+      const openQs=qs.filter(q=>!q.resolvedAt),doneQs=qs.filter(q=>q.resolvedAt);
       parts.push('## 問い群','');
-      for(const q of qs)parts.push(`- ${q.text}`);
+      for(const q of openQs)parts.push(`- ${q.text}`);
+      for(const q of doneQs){const d=q.resolvedAt?` (${isoDate(q.resolvedAt).slice(0,10)})`:'';parts.push(`- ~~${q.text}~~ — 解決済み${d}`);}
       parts.push('');
     }
     parts.push(`## 収集アイテム (${events.length})`,'');
@@ -2799,10 +2809,19 @@ async function renderWords(){
     const fsPrefix=currentLang==='ja'?'覆る条件: ':'changes if: ';
     const falsifierLine=fsText?`<p class="word-falsifier" title="${escapeAttr(currentLang==='ja'?'反証条件(可謬性)':'falsification condition')}">${escapeHtml(fsPrefix)}${escapeHtml(fsText)}${fsBtn}</p>`:(vnEditable?`<p class="word-note"><span class="word-note-empty">${currentLang==='ja'?'反証条件 未記入 — 何があれば覆るか?':'no falsifier — what would change your mind?'}</span>${fsBtn}</p>`:'');
     const falsifierRow=`<div class="word-refine" data-fsedit="${w.id}" style="display:none;"><input type="text" value="${escapeAttr(w.falsifier||'')}" data-fsinput="${escapeAttr(w.id)}" maxlength="280" enterkeyhint="done" placeholder="${escapeAttr(currentLang==='ja'?'何があれば結論を覆すか...':'what would change your mind...')}" aria-label="${escapeAttr(fsEditLabel)}"><button data-wact="savefals" data-id="${escapeAttr(w.id)}">${currentLang==='ja'?'保存':'Save'}</button><button data-wact="cancelfals" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'取消':'cancel')}">${currentLang==='ja'?'取消':'cancel'}</button></div>`;
-    // 問い群(残余問題): ユーザーが記録する未解決の問い。
-    const qs=[...(w.questions||[])].reverse(); // most-recent question first
+    // 問い群(残余問題): ユーザーが記録する問い。解決は削除ではなく resolvedAt で記録し、
+    // 取り消し線で残す(アポリア→解決の弧)。未解決を先、解決済みを後に並べる。
+    const qsAll=[...(w.questions||[])].reverse(); // most-recent first
+    const qs=[...qsAll.filter(q=>!q.resolvedAt),...qsAll.filter(q=>q.resolvedAt)];
     const qDelLabel=currentLang==='ja'?'問いを削除':'remove question';
-    const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>`<li><span style="flex:1">${escapeHtml(q.text)}</span><button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`).join('')}</ul>`:'';
+    const qResolveLabel=currentLang==='ja'?'解決済みにする':'mark resolved';
+    const qReopenLabel=currentLang==='ja'?'未解決に戻す':'reopen question';
+    const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>{
+      const done=!!q.resolvedAt;
+      const txt=done?`<span style="flex:1" class="word-q-done">${escapeHtml(q.text)}</span>`:`<span style="flex:1">${escapeHtml(q.text)}</span>`;
+      const rBtn=`<button class="word-q-resolve${done?' resolved':''}" data-wact="resolveq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${done?qReopenLabel:qResolveLabel}" aria-label="${done?qReopenLabel:qResolveLabel}">&check;</button>`;
+      return `<li${done?' class="q-resolved"':''}>${txt}${rBtn}<button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`;
+    }).join('')}</ul>`:'';
     const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
     const qAdd=`<div class="word-q-add"><input type="text" placeholder="${qPh}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} への未解決の問い`:`open question for ${w.term}`)}" enterkeyhint="done" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'問いを追加':'add question')}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
     // 問答(elenchus): システムが探究の構造から問いを投げ返す。
@@ -2979,6 +2998,14 @@ $('#view').addEventListener('click',async(e)=>{
     word.questions=(word.questions||[]).filter(q=>q.id!==qid);
     await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;
     if(removed)UndoStack.offer(currentLang==='ja'?`問い「${removed.text.slice(0,30)}」を削除`:`deleted question "${removed.text.slice(0,30)}"`,async()=>{const w=await Store.getWord(word.id);if(!w)return;if(!w.questions)w.questions=[];w.questions.push(removed);await Store.putWord(w);FTSIndex.addWord(w);await renderView();});
+    return;
+  }
+  if(act==='resolveq'){
+    // 解決の弧(アポリア→解決): 問いを消さず resolvedAt で「解決済み」を記録。再トグルで再開。
+    const sv=$('#view').scrollTop;
+    const qid=btn.dataset.qid;
+    const q=(word.questions||[]).find(x=>x.id===qid);
+    if(q){q.resolvedAt=q.resolvedAt?null:Date.now();await Store.putWord(word);await renderView();$('#view').scrollTop=sv;}
     return;
   }
   if(act==='refreshwiki'){

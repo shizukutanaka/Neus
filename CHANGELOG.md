@@ -14,6 +14,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **単語の改名 (Rename watchword)**: 用語のスペルミス(例 "WebPGU"→"WebGPU")を修正する手段が無く、削除+再作成で探究履歴(問い・裁決・wiki・収集アイテム)を失っていた。WORDSモーダルに「改名」ボタンを追加。`renameWordPlan` 純粋関数が変更を判定し、normalized が変わる場合は収集済みイベントの `word:` タグを自動で付け替えてアイテムの関連を維持。大文字小文字のみの変更は再タグ付け不要。衝突検出・二重送信防止・Enter/Escape 対応 / Rename a watchword in place, preserving all inquiry history and re-tagging collected items when the normalized form changes
 - **裁決の変遷 (Verdict history / dialectic)**: 裁決ピルは status を巡回できたが、**変更のたびに過去の結論を上書き**していた。ソクラテス式問答法の核心は「論駁を経て結論がどう覆ったか」の記録そのもの — その軌跡が捨てられていた。`questionHistory` と対称な `verdictTransition` 純粋関数を追加し、status が変わるたび去りゆく裁決を `{status,note,at}` として `verdictHistory`(直近8件)に刻む。WORDSカードに変遷チェーン(`.word-vtrail`)、MDドシエに `## 裁決の変遷` セクションと `verdict_revisions` frontmatter、JSON出力にも含めて往復可能に。`setverd`/`reexamine` が利用し、再検討の取消は裁決状態(status・note・履歴)を無損失に復元 / Record how a verdict changed over time — the dialectic the Socratic method exists to preserve
 - **反証条件 (Falsification condition)**: 最も鋭いソクラテス的問い —「何があれば結論を覆すか」。反証条件を述べられない結論は知ではなく独断(ポパーの反証可能性、エレンコスの自己適用)。非 open の裁決に反証条件エディタ(`editfals`/`savefals`、`falsifierPatch` 純粋関数、280字、Enter/Escape)を追加。`socraticPrompts` を強化: 反証条件があれば停滞プロンプトを「あなたは『X』なら覆ると述べた — それは現れたか?」に鋭利化(`stale-falsifier`)し、反証条件なしで決着した裁決には「それは知か、独断か?」(`no-falsifier`)を突きつける。FTS索引・MDドシエ `## 反証条件` セクション・frontmatter・JSON・インポート往復に対応 / State what would change your mind — a verdict without defeaters is dogma; sharpens the elenchus prompts
+- **問いの解決 (Question resolution)**: ソクラテスの弧 アポリア→論駁→解決 が未完だった — 問いは削除しかできず、「答えたのに未解決の問いが残る」プロンプトを黙らせる唯一の手段が削除(=かつて知らなかった証拠の抹消)だった。各問いに解決トグル(`resolveq`、`resolvedAt`)を追加。解決済みは取り消し線で記録に残し、未解決を先頭に並べる。`questions-remain` プロンプトは未解決の問い(`openQuestions`)のみを数えるよう変更 — 削除ではなく解決で矛盾を正直に解消できる。MDドシエは未解決と解決済みを分けて出力、`resolvedAt` は questions 配列に乗って往復 / Resolve a question (keeping the record) instead of only deleting it; the contradiction prompt now counts only open questions
 
 ### Changed
 - **取得失敗と沈黙の区別**: `signalGaps` は失敗したソースを「沈黙(0件)」に混ぜていたため、「空白: news」がニュースに記事が無いのか取得失敗なのか判別できなかった。死角を空白と混同するのは探究像を歪める — 沈黙は発見、取得失敗は発見の不在。`_collectOne` が失敗を `word.lastErrors`(label→code)に記録し、`signalGaps` が `{ active, silent, errored }` を返すよう変更。失敗ソースは silent から外れ、ドシエ `## 空白` と沈黙プロンプトが到達不能ソースを誤って空と報告しなくなった。WORDS ビューに赤い「取得失敗」行(`.word-err`)を追加 / Distinguish a failed fetch from genuine silence
@@ -62,7 +63,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/word-fts.test.mjs` に問い逆順 / isBusy / aria-busy / 裁決バッジ / 重複防止 ワイヤリングテスト(6件)を追加
 - `tests/word-rename.test.mjs` を新規追加: `renameWordPlan` ユニットテスト(7件)＋改名ワイヤリング(6件)
 - `tests/word-verdict-history.test.mjs` を新規追加: `verdictTransition` ユニットテスト(6件)＋裁決変遷ワイヤリング(9件)。`word-import.test.mjs` に verdictHistory 往復テスト(3件)を追加
-- `tests/word-falsifier.test.mjs` を新規追加: `falsifierPatch` ユニット(5件)＋反証条件ワイヤリング/プロンプト/エクスポート(13件)。`word-import.test.mjs` に falsifier 往復テスト(2件)を追加、合計 711件
+- `tests/word-falsifier.test.mjs` を新規追加: `falsifierPatch` ユニット(5件)＋反証条件ワイヤリング/プロンプト/エクスポート(13件)。`word-import.test.mjs` に falsifier 往復テスト(2件)を追加
+- `tests/word-question-resolve.test.mjs` を新規追加: `openQuestions` ユニット(3件)＋questions-remain カウント(2件)＋解決ワイヤリング(8件)、合計 724件
 - 計 634 tests
 
 ## [v0.12.0] - 2026-06-14
