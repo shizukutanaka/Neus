@@ -70,7 +70,7 @@ describe('re-examination wiring (index.html)', () => {
     expect(html).toContain('function verdictStale');
   });
   it('stamps verdictAt when a verdict changes', () => {
-    expect(html).toContain('word.verdictAt=Date.now()');
+    expect(html).toContain('verdictAt:Date.now()');
     expect(html).toContain('verdictAt:null');
   });
   it('surfaces a re-examine badge and action in the view', () => {

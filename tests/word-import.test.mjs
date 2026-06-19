@@ -29,6 +29,7 @@ function wordFromImport(dump) {
     sources: (w.sources && typeof w.sources === 'object') ? w.sources : { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false },
     enabled: w.enabled !== false,
     verdict: { status: w.verdict?.status || 'open', note: w.verdict?.note || '' }, verdictAt: w.verdictAt || null,
+    verdictHistory: Array.isArray(w.verdictHistory) ? w.verdictHistory : [],
     questions: Array.isArray(w.questions) ? w.questions : [],
     createdAt: w.createdAt || now, reviewedAt: w.reviewedAt || now,
     lastCollectedAt: w.lastCollectedAt || null, lastFetched: w.lastFetched || 0,
@@ -103,6 +104,17 @@ describe('wordFromImport — reconstruction', () => {
     expect(w.lastErrors).toBeNull();
   });
 
+  it('preserves verdictHistory (the dialectic trace) after round-trip', () => {
+    const vh = [{ status: 'open', note: '', at: 1 }, { status: 'converging', note: 'leaning yes', at: 2 }];
+    const w = wordFromImport(dossier({ term: 'x', verdictHistory: vh }));
+    expect(w.verdictHistory).toEqual(vh);
+  });
+
+  it('defaults verdictHistory to an empty array when absent or malformed', () => {
+    expect(wordFromImport(dossier({ term: 'x' })).verdictHistory).toEqual([]);
+    expect(wordFromImport(dossier({ term: 'x', verdictHistory: 'nope' })).verdictHistory).toEqual([]);
+  });
+
   it('guards against malformed arrays', () => {
     const w = wordFromImport(dossier({ term: 'x', questions: 'nope', questionHistory: 5 }));
     expect(w.questions).toEqual([]);
@@ -132,6 +144,9 @@ describe('import wiring (index.html)', () => {
     expect(html).toContain('id="word-import"');
     expect(html).toContain('id="word-import-file"');
     expect(html).toContain("WordExporter.importJson(f)");
+  });
+  it('preserves verdictHistory in the wordFromImport wiring', () => {
+    expect(html).toContain('verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[]');
   });
   it('preserves lastErrors in the wordFromImport wiring', () => {
     expect(html).toContain('lastErrors:w.lastErrors||null');

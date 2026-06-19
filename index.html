@@ -152,6 +152,8 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-shift-prior{color:var(--fg-3);}
 .word-shift-arrow{color:var(--fg-3);}
 .word-shift-verdict{color:var(--accent);}
+.word-vtrail{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 8px;}
+.word-vtrail-arrow{color:var(--line);}
 #word-prior{font-family:var(--font-mono);font-size:13px;margin-bottom:8px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);width:100%;}
 .word-elenchus{margin:0 0 12px;padding:8px 12px;border-left:2px solid var(--accent-line);background:var(--bg-2);border-radius:0 var(--radius) var(--radius) 0;}
 .word-elenchus-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--fg-3);display:block;margin-bottom:4px;}
@@ -2103,6 +2105,7 @@ function wordFromImport(dump){
     sources:(w.sources&&typeof w.sources==='object')?w.sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},
     enabled:w.enabled!==false,
     verdict:{status:w.verdict?.status||'open',note:w.verdict?.note||''},verdictAt:w.verdictAt||null,
+    verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[],
     questions:Array.isArray(w.questions)?w.questions:[],
     createdAt:w.createdAt||now,reviewedAt:w.reviewedAt||now,
     lastCollectedAt:w.lastCollectedAt||null,lastFetched:w.lastFetched||0,
@@ -2159,6 +2162,16 @@ function verdictNotePatch(word,newText){
   const cur=(word.verdict?.note||'').trim();
   if(text===cur)return null;
   return{verdict:{status:verdictOf(word),note:text}};
+}
+// 裁決の変遷(弁証法): 結論はしばしば覆る。status が変わるたび、去りゆく裁決を
+// {status,note,at} として履歴に刻む。意見を変えた事実そのものが探究の証。純粋関数。
+// 履歴は直近8件に限る(questionHistory と対称)。同一statusへの遷移は記録しない。
+function verdictTransition(word,newStatus){
+  const cur=verdictOf(word);
+  if(newStatus===cur)return null;
+  const history=[...(word.verdictHistory||[])];
+  history.push({status:cur,note:word.verdict?.note||'',at:word.verdictAt||null});
+  return{verdict:{status:newStatus,note:word.verdict?.note||''},verdictAt:Date.now(),verdictHistory:history.slice(-8)};
 }
 // エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
 const TIER_DEFS=[
@@ -2301,7 +2314,7 @@ const WordExporter={
     const stale=verdictStale(word,events);
     const shift=cognitiveShift(word);
     const wikiCanonTitle=word.wiki?.title&&word.wiki.title.trim().toLowerCase()!==word.term.trim().toLowerCase()?word.wiki.title:null;
-    const fm=['---',`term: ${ys(word.term)}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${ys(wikiCanonTitle)}`:null,word.note?`intent: ${ys(word.note)}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${ys(word.verdict.note)}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
+    const fm=['---',`term: ${ys(word.term)}`,`lang: ${word.lang||'en'}`,wikiCanonTitle?`wiki_title: ${ys(wikiCanonTitle)}`:null,word.note?`intent: ${ys(word.note)}`:null,(word.questionHistory||[]).length?`question_revisions: ${(word.questionHistory||[]).length}`:null,(word.verdictHistory||[]).length?`verdict_revisions: ${(word.verdictHistory||[]).length}`:null,`prior_belief: ${priorBeliefOf(word)}`,`generated_at: ${isoDate(Date.now())}`,`items: ${events.length}`,`unreviewed: ${fresh.length}`,`sources: ${srcList}`,showGaps?`silent: ${gaps.silent.join(', ')}`:null,showErrors?`failed: ${gaps.errored.map(e=>e.label).join(', ')}`:null,related.length?`related: ${related.map(r=>r.normalized).join(', ')}`:null,word.lastCollectedAt?`last_collected: ${isoDate(word.lastCollectedAt)}`:null,word.verdict?.status&&word.verdict.status!=='open'?`verdict_status: ${word.verdict.status}`:null,word.verdict?.note?`verdict_note: ${ys(word.verdict.note)}`:null,stale>0?`reexamine: ${stale}`:null,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${word.term}`,''];
     if(word.note)parts.push(`> ${word.note}`,'');
     // 問いの変遷(elenchus): 旧い定式化があれば、問いがどう彫琢されたかを記録。
@@ -2330,6 +2343,19 @@ const WordExporter={
     if(showErrors)parts.push('## 死角','',`取得失敗: ${gaps.errored.map(e=>`${e.label} (${e.error})`).join(', ')}`,'_(沈黙ではなく取得不能。別経路で確認が必要)_','');
     // 関連(弁証法): 収集テキストに現れた他の登録語。問いの連環。
     if(related.length)parts.push('## 関連','',related.map(r=>`- ${r.term} (${r.count})`).join('\n'),'');
+    // 裁決の変遷(弁証法): 結論がどう覆されてきたか。意見を変えた軌跡こそ探究の記録。
+    const vHist=(word.verdictHistory||[]);
+    if(vHist.length){
+      const lbl=k=>{const d=VERDICT_DEFS.find(x=>x.key===k)||VERDICT_DEFS[0];return`${d.ja} (${d.en})`;};
+      const chain=[...vHist.map(h=>lbl(h.status)),lbl(verdictOf(word))].join(' → ');
+      parts.push('## 裁決の変遷','',chain,'');
+      for(const h of vHist){
+        const d=h.at?` — ${isoDate(h.at).slice(0,10)}`:'';
+        parts.push(`- ${lbl(h.status)}${d}`);
+        if(h.note)parts.push(`  - ${h.note}`);
+      }
+      parts.push('');
+    }
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決の対比。探究が自己認識を変えたかを記録。
     {
       const pd=PRIOR_BELIEF_DEFS.find(d=>d.key===priorBeliefOf(word))||PRIOR_BELIEF_DEFS[0];
@@ -2417,6 +2443,7 @@ const WordExporter={
         note:word.note||'',questionHistory:word.questionHistory||[],
         priorBelief:priorBeliefOf(word),
         verdict:{status:verdictOf(word),note:word.verdict?.note||''},verdictAt:word.verdictAt||null,
+        verdictHistory:word.verdictHistory||[],
         questions:word.questions||[],
         sources:word.sources||{},enabled:word.enabled!==false,
         createdAt:word.createdAt||null,reviewedAt:word.reviewedAt||null,
@@ -2761,6 +2788,10 @@ async function renderWords(){
     const shift=cognitiveShift(w);
     const shiftLine=shift.changed?`<div class="word-shift" title="${escapeAttr(currentLang==='ja'?t('word.shift'):t('word.shift'))}"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span><span class="word-shift-arrow"> → </span><span class="word-shift-verdict">${currentLang==='ja'?shift.vd.ja:shift.vd.en}</span></div>`:
       `<div class="word-shift"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span></div>`;
+    // 裁決の変遷(弁証法): status を変えた軌跡。意見を変えた事実を可視化する。
+    const vHist=(w.verdictHistory||[]);
+    const vLbl=k=>{const d=VERDICT_DEFS.find(x=>x.key===k)||VERDICT_DEFS[0];return currentLang==='ja'?d.ja:d.en;};
+    const verdictTrail=vHist.length?`<div class="word-vtrail" title="${escapeAttr(currentLang==='ja'?'裁決の変遷(弁証法)':'verdict history (dialectic)')}" aria-label="${escapeAttr(currentLang==='ja'?`裁決の変遷: ${[...vHist.map(h=>vLbl(h.status)),vLbl(verdictOf(w))].join(' から ')}`:`verdict history: ${[...vHist.map(h=>vLbl(h.status)),vLbl(verdictOf(w))].join(' to ')}`)}">${[...vHist.map(h=>vLbl(h.status)),vLbl(verdictOf(w))].map(escapeHtml).join('<span class="word-vtrail-arrow"> → </span>')}</div>`:'';
     const tiers=tierBreakdown(items);
     const provLine=tiers.length?`<div class="word-prov" title="${currentLang==='ja'?'出所(知の階層)':'provenance (epistemic tiers)'}">${tiers.map(tb=>`<span class="word-prov-tier tier-${tb.tier}">${currentLang==='ja'?tb.ja:tb.en} ${tb.count}</span>`).join('')}</div>`:'';
     const gaps=signalGaps(w,items);
@@ -2777,6 +2808,7 @@ async function renderWords(){
       ${noteLine}
       ${refineRow}
       ${shiftLine}
+      ${verdictTrail}
       ${verdictNote}
       ${verdictNoteRow}
       ${provLine}
@@ -2818,7 +2850,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     try{await WordCollector.collectOne(word);}catch(e){}finally{await refreshCounts();await renderView();}return;
@@ -2868,24 +2900,23 @@ $('#view').addEventListener('click',async(e)=>{
   }
   if(act==='setverd'){
     const sv=$('#view').scrollTop;
-    const cur=verdictOf(word);
     if(!word.verdict)word.verdict={status:'open',note:''};
-    word.verdict.status=nextVerdict(cur);
-    word.verdictAt=Date.now();
+    const patch=verdictTransition(word,nextVerdict(verdictOf(word)));
+    if(patch)Object.assign(word,patch);
     await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;
   }
   if(act==='reexamine'){
     // 裁決を白紙へ戻す: 新証拠の到来は結論を再び問いに開く。誤操作に備え取り消し可能に。
     const sv=$('#view').scrollTop;
-    const prevStatus=verdictOf(word),prevAt=word.verdictAt||null;
     if(!word.verdict)word.verdict={status:'open',note:''};
-    word.verdict.status='open';
-    word.verdictAt=Date.now();
+    // 取消が無損失になるよう、遷移前の裁決状態をまるごと退避する。
+    const prevVerdict={...word.verdict},prevAt=word.verdictAt||null,prevHistory=[...(word.verdictHistory||[])];
+    const patch=verdictTransition(word,'open');
+    if(patch)Object.assign(word,patch);
     await Store.putWord(word);await renderView();$('#view').scrollTop=sv;
     UndoStack.offer(currentLang==='ja'?'裁決を再検討に戻しました':'Verdict re-opened',async()=>{
       const w=await Store.getWord(word.id);if(!w)return;
-      if(!w.verdict)w.verdict={status:'open',note:''};
-      w.verdict.status=prevStatus;w.verdictAt=prevAt;
+      w.verdict=prevVerdict;w.verdictAt=prevAt;w.verdictHistory=prevHistory;
       await Store.putWord(w);await renderView();
     });
     return;
@@ -3008,7 +3039,7 @@ $('#view').addEventListener('click',async(e)=>{
     const term=(rwBtn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
     if(await Store.findWordByTerm(normalized)){wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
-    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
+    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);await refreshCounts();
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
@@ -3376,7 +3407,7 @@ async function addWord(){
   const note=$('#word-note').value.trim();
   const priorBelief=$('#word-prior').value||'curious';
   const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,questions:[],questionHistory:[]};
+  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],questions:[],questionHistory:[]};
   await Store.putWord(word);FTSIndex.addWord(word);
   $('#word-input').value='';$('#word-note').value='';
   await renderWordList();await refreshCounts();

@@ -86,7 +86,8 @@ describe('collector guard wiring (index.html)', () => {
   it('makes re-examination reversible via the undo stack', () => {
     expect(html).toContain("act==='reexamine'");
     expect(html).toContain('Verdict re-opened');
-    expect(html).toMatch(/UndoStack\.offer[\s\S]*w\.verdict\.status=prevStatus/);
+    // undo restores the full prior verdict state (status, note, history) losslessly
+    expect(html).toMatch(/UndoStack\.offer[\s\S]*w\.verdict=prevVerdict;w\.verdictAt=prevAt;w\.verdictHistory=prevHistory/);
   });
 });
 
