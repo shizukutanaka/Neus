@@ -78,6 +78,12 @@ describe('collector guard wiring (index.html)', () => {
     // A single bad word must not stop remaining words from being processed.
     expect(html).toContain("try{total+=await _collectOne(w);}catch(e){console.warn(");
   });
+  it('logs (not silently swallows) errors from initial collect after word add', () => {
+    // The "add word + immediate collectOne" path had catch(e){} — empty, completely silent.
+    // A failure here (e.g. IndexedDB error mid-collect) would disappear with no trace.
+    // Fixed: console.warn so the error is at least visible in devtools.
+    expect(html).toContain("catch(e){console.warn('[WordCollector] initial collect failed:',e);}");
+  });
   it('reports raw fetched count honestly (fetched, not collected)', () => {
     expect(html).toContain('word.lastFetched=total');
     expect(html).toContain('fetched ${total} item(s)');

@@ -177,7 +177,7 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain("try{await WordCollector.collectAll();}finally{clearInterval(_t);btn.disabled=false;}");
   });
   it('suggest handler wraps collectOne in try-catch so refreshCounts/renderView always run', () => {
-    expect(html).toContain("try{await WordCollector.collectOne(word);}catch(e){}finally{await refreshCounts();await renderView();}return;");
+    expect(html).toContain("try{await WordCollector.collectOne(word);}catch(e){console.warn('[WordCollector] initial collect failed:',e);}finally{await refreshCounts();await renderView();}return;");
   });
   it('delq offers undo via UndoStack', () => {
     expect(html).toContain("if(removed)UndoStack.offer(");

@@ -2963,7 +2963,7 @@ $('#view').addEventListener('click',async(e)=>{
     const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
-    try{await WordCollector.collectOne(word);}catch(e){}finally{await refreshCounts();await renderView();}return;
+    try{await WordCollector.collectOne(word);}catch(e){console.warn('[WordCollector] initial collect failed:',e);}finally{await refreshCounts();await renderView();}return;
   }
   if(act==='showmore'){
     const section=e.target.closest('section[data-word]');
