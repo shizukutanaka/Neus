@@ -22,8 +22,27 @@ const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org)$/i;
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const TIMEOUT_MS = 15000;
 
-// Private/internal IP ranges — SSRF prevention
-const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[fc|\[fd|\[fe80)/i;
+// Private/internal IP ranges — SSRF prevention.
+// WHATWG URL normalizes IPv4-mapped IPv6 to pure hex before this check runs,
+// e.g. [::ffff:127.0.0.1] → [::ffff:7f00:1]. Match both the plain IPv4 dotted
+// form (belt) and the hex-normalized IPv6 form (suspenders):
+//   127.x.x.x  → ::ffff:7f??:????  → \[::ffff:7f
+//   10.x.x.x   → ::ffff:0a??:????  → \[::ffff:a[0-9a-f][0-9a-f]:
+//   192.168.x.x → ::ffff:c0a8:??   → \[::ffff:c0a8:
+//   172.16-31.x → ::ffff:ac1[0-f]: → \[::ffff:ac1[0-9a-f]:
+//   169.254.x.x → ::ffff:a9fe:??   → \[::ffff:a9fe:
+const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
+
+// Read a response body up to MAX_SIZE bytes. Returns the ArrayBuffer or null if
+// Content-Length already exceeds the limit. Throws if the streamed body exceeds it.
+// This enforces the size limit even when Content-Length is absent (chunked encoding).
+async function readCapped(res) {
+  const cl = res.headers.get('content-length');
+  if (cl && Number(cl) > MAX_SIZE) return null;
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > MAX_SIZE) return null;
+  return buf;
+}
 
 function corsHeaders() {
   return {
@@ -102,14 +121,15 @@ async function handleRSS(request) {
   const ct = upstream.headers.get('content-type') || '';
   if (!RSS_CONTENT_RE.test(ct)) return jsonErr(415, 'unsupported_content_type');
 
-  // Size guard via Content-Length(missing値はストリーミング側で対応)
-  const cl = upstream.headers.get('content-length');
-  if (cl && Number(cl) > MAX_SIZE) return jsonErr(413, 'too_large');
+  // Size guard: enforced on the buffered body so chunked/no-Content-Length responses
+  // are capped too (old Content-Length-only check silently passed unbounded streams).
+  const buf = await readCapped(upstream);
+  if (!buf) return jsonErr(413, 'too_large');
 
   // upstreamの検証子をクライアントへ中継(次回のConditional GET用)
   const etag = upstream.headers.get('etag');
   const lastMod = upstream.headers.get('last-modified');
-  return new Response(upstream.body, {
+  return new Response(buf, {
     status: 200,
     headers: {
       'content-type': ct,
@@ -155,10 +175,10 @@ async function handleJSON(request) {
   const ct = upstream.headers.get('content-type') || '';
   if (!/json/i.test(ct)) return jsonErr(415, 'unsupported_content_type');
 
-  const cl = upstream.headers.get('content-length');
-  if (cl && Number(cl) > MAX_SIZE) return jsonErr(413, 'too_large');
+  const buf = await readCapped(upstream);
+  if (!buf) return jsonErr(413, 'too_large');
 
-  return new Response(upstream.body, {
+  return new Response(buf, {
     status: 200,
     headers: {
       'content-type': 'application/json; charset=utf-8',
