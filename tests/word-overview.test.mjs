@@ -38,7 +38,7 @@ function wordsOverview(words, all) {
     const tag = 'word:' + w.normalized;
     const items = all.filter(e => (e.meta.autoTags || []).includes(tag) && !e.state.archived);
     if (verdictStale(w, items) > 0) o.reexamine++;
-    o.unreviewed += newSinceReview(items, w.reviewedAt).length;
+    if (newSinceReview(items, w.reviewedAt).length > 0) o.unreviewed++;
     if (socraticPrompts(w, items).length > 0) o.prompts++;
     if (!w.lastCollectedAt) o.uncollected++;
   }
@@ -70,14 +70,16 @@ describe('wordsOverview', () => {
     expect(wordsOverview(words, all).reexamine).toBe(1);
   });
 
-  it('sums unreviewed items across words', () => {
+  it('counts words that have at least one unreviewed item (not item total)', () => {
+    // The chip "unreviewed N" must match the wordMatchesOv('unreviewed') filter, which
+    // returns words with ≥1 unreviewed item. So the counter is a word count, not item sum.
     const words = [
       { normalized: 'a', reviewedAt: 0, lastCollectedAt: 1, questions: [{}] },
       { normalized: 'b', reviewedAt: 50, lastCollectedAt: 1, questions: [{}] },
     ];
     const all = [item('a', 10), item('a', 20), item('b', 10), item('b', 100)];
-    // a: both after 0 -> 2; b: only ts100 after 50 -> 1
-    expect(wordsOverview(words, all).unreviewed).toBe(3);
+    // a: 2 unreviewed -> counts as 1 word; b: 1 unreviewed -> counts as 1 word => total 2 words
+    expect(wordsOverview(words, all).unreviewed).toBe(2);
   });
 
   it('counts words that have at least one pending prompt', () => {
@@ -97,10 +99,10 @@ describe('wordsOverview', () => {
     expect(wordsOverview(words, []).uncollected).toBe(1);
   });
 
-  it('ignores archived items when counting', () => {
+  it('ignores archived items when counting (word counts as 0 if only live items are reviewed)', () => {
     const words = [{ normalized: 'a', reviewedAt: 0, lastCollectedAt: 1, questions: [{}] }];
-    const all = [item('a', 10), item('a', 20, true)];
-    expect(wordsOverview(words, all).unreviewed).toBe(1);
+    const all = [item('a', 10), item('a', 20, true)]; // archived item excluded; live ts10 after 0 -> word has unreviewed
+    expect(wordsOverview(words, all).unreviewed).toBe(1); // 1 word with ≥1 unreviewed
   });
 });
 
@@ -170,5 +172,18 @@ describe('overview wiring (index.html)', () => {
   it('filters the rendered list and offers a clear control', () => {
     expect(html).toContain('wordMatchesOv(w,all,wordViewFilter)');
     expect(html).toContain('no words match this filter');
+  });
+  it('unreviewed counter counts words not items (matches wordMatchesOv filter)', () => {
+    // chip shows "unreviewed N" where N is a word count; the filter shows words with ≥1 item.
+    // The old `o.unreviewed+=...length` summed items — the chip would claim "47" but filter
+    // would show 3 words. Fixed to `if(...>0)o.unreviewed++` to count words instead.
+    expect(html).toContain('if(newSinceReview(items,w.reviewedAt).length>0)o.unreviewed++');
+    expect(html).not.toContain('o.unreviewed+=newSinceReview(items,w.reviewedAt).length');
+  });
+  it('srcList in dossier frontmatter uses display labels (same namespace as silent/failed)', () => {
+    // Storage key 'hn' and display label 'Hacker News' must not appear in the same YAML doc.
+    // sources: must use the same label strings that silent: and failed: use.
+    expect(html).toContain("...(word.sources?.wikipedia?['Wikipedia']:[]),...Object.keys(WORD_FEEDS)");
+    expect(html).not.toContain("['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join");
   });
 });

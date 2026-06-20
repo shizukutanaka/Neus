@@ -76,7 +76,7 @@ function aggregateTags(events) {
 // Mirrored from WordExporter.toDossier
 const ys = s => '"' + String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 function toDossier(word, events, others = []) {
-  const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
+  const srcList = [...(word.sources?.wikipedia ? ['Wikipedia'] : []), ...Object.keys(WORD_FEEDS).filter(k => word.sources?.[k]).map(k => WORD_FEEDS[k].label)].join(', ') || '-';
   const fresh = newSinceReview(events, word.reviewedAt);
   const gaps = signalGaps(word, events);
   const showGaps = !!word.lastCollectedAt && gaps.silent.length > 0;
@@ -204,10 +204,13 @@ describe('WordExporter.toDossier', () => {
     expect(md).toContain('## 収集アイテム (0)');
   });
 
-  it('lists enabled sources in the frontmatter', () => {
+  it('lists enabled sources in the frontmatter using display labels (same namespace as silent/failed)', () => {
+    // Storage keys (wikipedia/news/arxiv) and display labels (Wikipedia/Google News/arXiv) must
+    // not be mixed in the same YAML document. sources: uses labels, matching silent: and failed:.
     const w = { ...word, sources: { wikipedia: true, news: true, arxiv: true, reddit: false } };
     const md = toDossier(w, events);
-    expect(md).toContain('sources: wikipedia, news, arxiv');
+    expect(md).toContain('sources: Wikipedia, Google News, arXiv');
+    expect(md).not.toContain('sources: wikipedia, news, arxiv');
   });
 
   it('records last_collected in the frontmatter when present', () => {
@@ -436,3 +439,4 @@ describe('toDossier — 死角 (fetch failures as blind spots)', () => {
     expect(md).toContain('Reddit (http_404)');
   });
 });
+

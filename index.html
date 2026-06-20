@@ -2301,7 +2301,7 @@ function wordsOverview(words,all){
     const tag='word:'+w.normalized;
     const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived);
     if(verdictStale(w,items)>0)o.reexamine++;
-    o.unreviewed+=newSinceReview(items,w.reviewedAt).length;
+    if(newSinceReview(items,w.reviewedAt).length>0)o.unreviewed++;
     if(socraticPrompts(w,items).length>0)o.prompts++;
     if(!w.lastCollectedAt)o.uncollected++;
   }
@@ -2366,7 +2366,7 @@ const WordExporter={
   toDossier(word,events,others=[]){
     // YAML scalar: wrap in double-quotes and escape backslash, quote, newline.
     const ys=s=>'"'+String(s||'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
-    const srcList=['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join(', ')||'-';
+    const srcList=[...(word.sources?.wikipedia?['Wikipedia']:[]),...Object.keys(WORD_FEEDS).filter(k=>word.sources?.[k]).map(k=>WORD_FEEDS[k].label)].join(', ')||'-';
     const fresh=newSinceReview(events,word.reviewedAt);
     const gaps=signalGaps(word,events);
     const showGaps=!!word.lastCollectedAt&&gaps.silent.length>0;  // 収集後のみ空白を語る
