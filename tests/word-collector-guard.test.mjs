@@ -115,3 +115,16 @@ describe('modal word list collection status (index.html)', () => {
     expect(html).toContain("currentLang==='ja'?'未収集':'not collected'");
   });
 });
+
+describe('cross-word dedup autoTag merge (index.html)', () => {
+  it('merges incoming autoTags onto an existing hash-duplicate event', () => {
+    // When watchword A and B both collect the same article, the second collect sees a
+    // hash-duplicate and must merge the incoming word:B tag onto the existing event so
+    // the article appears under both words' views. Old code silently dropped the tag.
+    expect(html).toContain('const merged=[...new Set([...(existing.meta.autoTags||[]),...(ev.meta.autoTags||[])])]');
+  });
+  it('only writes the merged event to Store when tags actually changed', () => {
+    // Avoid spurious writes when both events already share the same tags.
+    expect(html).toContain('if(merged.length!==(existing.meta.autoTags||[]).length)');
+  });
+});

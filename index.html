@@ -1828,7 +1828,9 @@ const WordCollector=(()=>{
     if(word.sources?.wikipedia){
       const wiki=await fetchWiki(word);
       if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
-      else if(!word.wiki?.extract)errors['Wikipedia']='fetch';
+      // always record failure — a stale cached extract must not hide a fresh fetch error.
+      // signalGaps checks word.wiki?.extract separately and can show "errored but has cached data".
+      else errors['Wikipedia']='fetch';
     }
     const q=encodeURIComponent((word.term||'').trim());
     for(const key of Object.keys(WORD_FEEDS)){
@@ -1890,7 +1892,13 @@ Bus.subscribe('inbound.fetched',async({raw,source})=>{
 
 Bus.subscribe('event.normalized',async(ev)=>{
   const existing=await Store.findByHash(ev.hash);
-  if(existing){Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;}
+  if(existing){
+    // Merge incoming autoTags (e.g. word:gpt) onto the existing event so an article
+    // collected by two different watchwords appears under both words' views.
+    const merged=[...new Set([...(existing.meta.autoTags||[]),...(ev.meta.autoTags||[])])];
+    if(merged.length!==(existing.meta.autoTags||[]).length){existing.meta.autoTags=merged;await Store.putEvent(existing);FTSIndex.add(existing);}
+    Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;
+  }
   const recent=await Store.recentEvents(CONFIG.dedupWindowMs);
   const newTok=new Set(tokenize(ev.content.title));
   if(newTok.size>0){

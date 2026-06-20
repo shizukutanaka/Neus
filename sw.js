@@ -58,7 +58,7 @@ self.addEventListener('fetch', (e) => {
     caches.open(CACHE).then(cache =>
       cache.match(req).then(cached => {
         const fetchAndPut = fetch(req).then(res => {
-          if (res.ok) cache.put(req, res.clone());
+          if (res.ok && !res.headers.get('cache-control')?.includes('no-store')) cache.put(req, res.clone());
           return res;
         }).catch(() => cached);
         return cached || fetchAndPut;

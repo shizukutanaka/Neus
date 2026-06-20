@@ -120,6 +120,13 @@ describe('signal-gap wiring (index.html)', () => {
     expect(html).toContain("errors[label]=`http_${res.status}`");
     expect(html).toContain("errors[label]='parse'");
   });
+  it('records Wikipedia failure even when a stale cached extract exists', () => {
+    // Old code: `else if(!word.wiki?.extract)errors['Wikipedia']='fetch'` — if cached
+    // extract was present, the failure was suppressed and signalGaps showed Wikipedia green.
+    // Fixed: always record the failure; signalGaps checks word.wiki separately.
+    expect(html).toContain("else errors['Wikipedia']='fetch'");
+    expect(html).not.toContain("else if(!word.wiki?.extract)errors['Wikipedia']='fetch'");
+  });
   it('renders a distinct fetch-failed line in the WORDS view', () => {
     expect(html).toContain('class="word-err"');
     expect(html).toContain('gaps.errored.length');
