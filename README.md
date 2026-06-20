@@ -138,8 +138,8 @@ APIキーは端末内のIndexedDBにのみ保存される。パスフレーズ�
 
 ```
 neus/
-  index.html          # PWA本体 (~88KB、全ロジックインライン)
-  _worker.js          # Cloudflare Worker CORSプロキシ
+  index.html          # PWA本体 (~277KB、全ロジックインライン)
+  _worker.js          # Cloudflare Worker CORSプロキシ (/rss, /json)
   sw.js               # Service Worker
   manifest.json       # PWA設定(Share Target宣言含む)
   bookmarklet.js      # Bookmarklet配布ドキュメント
@@ -147,9 +147,11 @@ neus/
   _redirects          # SPA fallback
   wrangler.toml       # Cloudflare Worker設定
   package.json        # npm scripts
+  SPEC.md             # 仕様書(一次情報)
+  ARCHITECTURE.md     # アーキテクチャ概観
   CHANGELOG.md        # 変更履歴
-  docs/adr/           # 設計判断記録(ADR 0001-0006)
-  tests/              # Vitest単体テスト(80件)
+  docs/adr/           # 設計判断記録(ADR 0001-0016)
+  tests/              # Vitest単体テスト
   scripts/            # HTMLチェッカー等
 ```
 
@@ -157,8 +159,8 @@ neus/
 
 ```bash
 npm run lint          # _worker.js, sw.js 構文チェック
-node scripts/check-html.mjs  # index.html 33点静的検証
-npm test              # 全80テスト実行
+npm run check         # index.html 静的検証 + CSP ハッシュ照合
+npm test              # 全単体テスト実行(vitest)
 npm run dev           # http://localhost:8080 で確認
 ```
 

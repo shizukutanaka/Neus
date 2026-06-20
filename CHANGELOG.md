@@ -7,6 +7,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- **仕様書 (SPEC.md)**: 現行 v0.12.0 を一次情報として定義する仕様書を新設。不変条件(I1-I8)・データモデル(InformationEvent / Watchword)・探究モデル・Worker API・セキュリティを集約し、長所/短所/改善点の監査結果を §10 に記録 / Add SPEC.md as the authoritative specification; documents invariants, data model, inquiry model, Worker API, and an audited strengths/weaknesses/improvements section
+
+### Changed
+- **ドキュメントの版ずれ解消**: `ARCHITECTURE.md` を v0.2.0 → v0.12.0 に更新(words store・探究モデル・`source.type:'word'`・`/json` endpoint・ADR 0009-0016・モジュール一覧)。`README.md` のファイル構成と検証コマンドの古い数値を現行へ修正 / Bring ARCHITECTURE.md and README.md up to date with the watchword/inquiry subsystems
+
+### Fixed
+- **単語カード件数バッジの曖昧さ**: 検索結果の `wordResultHtml` がラベルなしの `lastFetched` 数値だけを表示し、裁決ピルや match% と区別できず a11y ラベルも無かった。`title` / `aria-label` で「収集時の取得件数」であることを明示(実在件数は WORDS モーダルが `countFor` で別途表示)。`publishedAt||timestamp` の日付フォールバック規約を回帰テストで固定し、parse 時に日付を捏造しないことを保証 / Label the ambiguous fetched-count badge; pin the publishedAt date-fallback convention with regression tests
+
+### Added (continued from prior rounds)
 - **収集進捗インジケータ**: `WordCollector.getProgress()` が収集中の `{done,total}` を公開。COLLECT ALL ボタンが `N/M` を表示し、複数語収集中も無反応に見えない / Collection progress: COLLECT ALL button shows `N/M` while multiple words are fetched
 - **WORDS ビューの並び替え**: 日付 / 新着 / 裁決 の3モードをトグルボタンで切替(`wordSortKey`)。新着は未確認件数降順、裁決は answered を先頭に / WORDS view sort modes (date / new / verdict)
 - **STATS への単語サマリ統合**: 統計モーダルに総語数・解決数・未確認・要再検討を表示(`wordsOverview`)。ビュー切替なしで探究の健全性を把握 / Word summary in the STATS modal

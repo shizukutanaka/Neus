@@ -1,6 +1,6 @@
 # Neus — Architecture
 
-v0.2.0 アーキテクチャ概観。詳細な設計判断は `docs/adr/` 参照。
+v0.12.0 アーキテクチャ概観。詳細な設計判断は `docs/adr/`、正式な仕様は `SPEC.md` 参照。
 
 ## 全体像
 
@@ -46,9 +46,13 @@ v0.2.0 アーキテクチャ概観。詳細な設計判断は `docs/adr/` 参照
 | Adapter | 入力 | 出力topic |
 |---|---|---|
 | `RSSPoller` | RSS/Atom XML(Workerプロキシ経由) | `inbound.fetched` |
+| `WordCollector` | 単語の検索フィード(RSS) + Wikipedia(JSON、`/json` 経由) | `inbound.fetched` |
 | `ShareTarget` | URL params(PWA Share Target) | `event.stored` |
 | `Bookmarklet` | URL params(`?share_url=...`) | `event.stored` |
 | `OPML.parse` | OPML XML(ファイル) | Sources(直接保存) |
+
+`WordCollector` 由来のイベントは `source.type:'word'` を持ち、正規化時に
+`meta.autoTags` へ `word:{normalized}` が付与される。以降の処理は他ソースと共通。
 
 ### 2. Event Bus(pub/sub)
 モジュール間結合度を最小化。topic 11種類:
@@ -79,8 +83,9 @@ Eventを変換・拡張。
 | `VaultMatcher` | ファイル名トークンとマッチ | links配列に `vault:` URI |
 
 ### 4. Storage
-- `IndexedDB`: 永続化(events / sources / settings 3 stores)
-- `FTSIndex`: in-memory N-gram inverted index
+- `IndexedDB`(`neus-v1` version 2): 永続化(events / sources / settings / words 4 stores)。
+  upgrade は全 store を `if(!objectStoreNames.contains(name))` でガードし v1→v2 を非破壊にする
+- `FTSIndex`: in-memory N-gram inverted index(events と words の両方を索引化)
 - `Crypto`: AES-GCM 256bit + PBKDF2 300k iterations(APIキー対象)
 
 ### 5. Outbound Adapters
@@ -91,8 +96,8 @@ Eventを変換・拡張。
 | `JSONBackup` | Download | JSON(全データ) |
 
 ### 6. UI
-- Views: INBOX / ALL / STARRED / ARCHIVED / LATER / SEARCH / DIGEST
-- Modals: Sources / Vault / Settings / Detail / Keywords / Stats / Shortcuts
+- Views: INBOX / ALL / STARRED / ARCHIVED / LATER / WORDS / DIGEST / SEARCH
+- Modals: Sources / Vault / Settings / Detail / Keywords / Stats / Words / Shortcuts
 - Onboarding: 5-step wizard
 - i18n: JA/EN, `t()` helper, 100+ keys
 - A11y: ARIA roles, focus trap, skip link, keyboard shortcuts
@@ -114,7 +119,7 @@ InformationEvent = {
   publishedAt?: number,          // 公開時刻(RSS pubDate)
   source: {
     id: string,
-    type: 'rss' | 'share',
+    type: 'rss' | 'share' | 'word',
     name: string,
     url?: string,
   },
@@ -156,7 +161,44 @@ InformationEvent = {
 }
 ```
 
-## モジュール一覧(v0.2.0、計22)
+### Watchword(words store、v0.12.0)
+
+単語ウォッチと探究モデル。詳細仕様は `SPEC.md` §5.3 / §6.3。
+
+```js
+Word = {
+  id, term, normalized, lang, note,
+  sources: { wikipedia, news, reddit, hn, arxiv },
+  enabled, createdAt, reviewedAt, lastCollectedAt, lastFetched,
+  wiki: { title, extract, url, thumbnail, fetchedAt } | null,
+  lastErrors: { [label]: code } | null,
+  // 探究モデル (inquiry model)
+  priorBelief,                    // curious | certain | skeptical | agnostic
+  verdict: { status, note },      // open | converging | answered | suspended
+  verdictAt, verdictHistory,      // 履歴は HISTORY_CAP=5 件
+  falsifier,                      // 反証条件
+  questions,                      // [{ id, text, createdAt, resolvedAt? }]
+  questionHistory,                // intent 改稿履歴 (HISTORY_CAP=5)
+}
+```
+
+探究モデルは「語=問い、収集物=答えの差分」とみなす。`cognitiveShift` が事前信念と
+裁決の方向逆転 (`shifted`) と終端到達 (`concluded`) を判定し、`socraticPrompts` が
+状況に応じた問い直しを最大3件提示する。`SETTLED_VERDICTS` の終端は `answered` と
+`suspended` のみ (`converging` は終端でない)。
+
+### Worker endpoints(`_worker.js`)
+
+| endpoint | 制約 |
+|---|---|
+| `GET /rss?url=` | Content-Type が xml/rss/atom。Conditional GET 転送 |
+| `GET /json?url=` | host が `*.wikipedia.org \| *.wikimedia.org` 限定 (SSRF + 任意JSON中継防止) |
+| `GET /` | ヘルスチェック |
+
+共通: http(s) のみ / `PRIVATE_HOST_RE` で private IP 拒否 (IPv4-mapped IPv6 の hex 正規化形も照合) /
+`readCapped` で本文 5MB 上限 (Content-Length 欠落時も適用) / 15s timeout / `cache-control: no-store`。
+
+## モジュール一覧(v0.12.0、計24+)
 
 | # | モジュール | 行数概算 |
 |---|---|---|
@@ -182,6 +224,8 @@ InformationEvent = {
 | 20 | `ErrorBoundary` | 20 |
 | 21 | `UndoStack` | 25 |
 | 22 | `Perf` | 4 |
+| 23 | `WordCollector` | 60 |
+| 24 | `InterestProfile` | 40 |
 
 ## 設計判断(ADR)
 
@@ -195,6 +239,14 @@ InformationEvent = {
 | ADR-0006 | Bonsai 1.7B WebGPU(v1.1) |
 | ADR-0007 | モノリス vs 外部化(v0.3.0で外部化) |
 | ADR-0008 | AutoSync / Digest / LATER(v0.2.0) |
+| ADR-0009 | Event 暗号化 |
+| ADR-0010 | arXiv ランキング改善 |
+| ADR-0011 | FTS IDF とプライバシ |
+| ADR-0012 | Interest Profile |
+| ADR-0013 | カテゴリ調査ロードマップ |
+| ADR-0014 | PWA UX / スワイプ |
+| ADR-0015 | Conditional GET |
+| ADR-0016 | Watchword Collector(`/json` 許可リスト) |
 
 ## 将来の方針
 

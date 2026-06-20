@@ -51,6 +51,15 @@ describe('word action buttons expose accessible names (index.html)', () => {
   it('labels the filter button with the word term', () => {
     expect(html).toContain("data-wact=\"filter\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} で絞り込む`:`filter by ${w.term}`)}\"");
   });
+  it('labels the fetched-count badge so a bare number is not ambiguous', () => {
+    // wordResultHtml's count badge previously rendered ${w.lastFetched} with no label,
+    // indistinguishable from the verdict pill or match %. It is the *raw fetched* count
+    // (not live stored count, which the modal shows via countFor), so its title/aria-label
+    // must say so explicitly.
+    expect(html).toContain("収集時の取得件数: ${w.lastFetched}");
+    expect(html).toContain("fetched at last collection: ${w.lastFetched}");
+    expect(html).toMatch(/cntBadge=w\.lastFetched\?`<span title="\$\{escapeAttr\(cntTitle\)\}" aria-label="\$\{escapeAttr\(cntTitle\)\}"/);
+  });
   it('labels the copy/md/json/vault export buttons with the word term', () => {
     expect(html).toContain("data-wact=\"copy\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} のドシエをコピー`:`copy dossier for ${w.term}`)}\"");
     expect(html).toContain("data-wact=\"md\" data-id=\"${w.id}\" aria-label=\"${escapeAttr(currentLang==='ja'?`${w.term} をMarkdown出力`:`export ${w.term} as Markdown`)}\"");
