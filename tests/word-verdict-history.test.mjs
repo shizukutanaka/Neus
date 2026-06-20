@@ -22,12 +22,13 @@ const VERDICT_DEFS = [
   { key: 'suspended', ja: '保留', en: 'suspended' },
 ];
 function verdictOf(word) { return word.verdict?.status || 'open'; }
+const HISTORY_CAP = 5;
 function verdictTransition(word, newStatus) {
   const cur = verdictOf(word);
   if (newStatus === cur) return null;
   const history = [...(word.verdictHistory || [])];
   history.push({ status: cur, note: word.verdict?.note || '', at: word.verdictAt || null });
-  return { verdict: { status: newStatus, note: word.verdict?.note || '' }, verdictAt: Date.now(), verdictHistory: history.slice(-8) };
+  return { verdict: { status: newStatus, note: word.verdict?.note || '' }, verdictAt: Date.now(), verdictHistory: history.slice(-HISTORY_CAP) };
 }
 
 describe('verdictTransition — dialectic recording', () => {
@@ -59,14 +60,14 @@ describe('verdictTransition — dialectic recording', () => {
     expect(word.verdictHistory.map(h => h.status)).toEqual(['open', 'converging']);
   });
 
-  it('caps history at the most recent 8 entries', () => {
+  it('caps history at HISTORY_CAP (5) entries — symmetric with questionHistory', () => {
     const long = Array.from({ length: 8 }, (_, i) => ({ status: 'open', note: String(i), at: i }));
     const word = { verdict: { status: 'answered', note: 'n' }, verdictAt: 99, verdictHistory: long };
     const p = verdictTransition(word, 'open');
-    expect(p.verdictHistory).toHaveLength(8);
-    // oldest (status '0') dropped, newest appended is the departing 'answered'
-    expect(p.verdictHistory[0].note).toBe('1');
-    expect(p.verdictHistory[7].status).toBe('answered');
+    expect(p.verdictHistory).toHaveLength(5);
+    // 8 old + 1 new = 9, capped to 5: oldest 4 dropped, newest is the departing 'answered'
+    expect(p.verdictHistory[0].note).toBe('4');
+    expect(p.verdictHistory[4].status).toBe('answered');
   });
 
   it('defaults a missing verdict to open when recording', () => {
@@ -76,9 +77,10 @@ describe('verdictTransition — dialectic recording', () => {
 });
 
 describe('verdict-history wiring (index.html)', () => {
-  it('declares the verdictTransition pure helper', () => {
+  it('declares the verdictTransition pure helper using HISTORY_CAP', () => {
     expect(html).toContain('function verdictTransition(word,newStatus)');
-    expect(html).toContain('history.slice(-8)');
+    expect(html).toContain('const HISTORY_CAP=5');
+    expect(html).toContain('history.slice(-HISTORY_CAP)');
   });
   it('setverd uses verdictTransition to cycle the verdict', () => {
     expect(html).toContain("act==='setverd'");

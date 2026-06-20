@@ -2158,13 +2158,16 @@ function cognitiveShift(word){
 }
 // 問いの彫琢(elenchus): 問いそのものが暫定的。論駁はしばしば問いの誤りを暴く。
 // 旧い定式化を履歴に残し、問いの変遷を探究の一部として記録する。純粋関数。
+// Both question and verdict history are capped at the same depth to preserve the symmetry
+// the comment in verdictTransition promised but the old hardcoded 5 vs 8 violated.
+const HISTORY_CAP=5;
 function refineQuestion(word,newText){
   const text=(newText||'').trim();
   const cur=(word.note||'').trim();
   if(!text||text===cur)return null; // 変更なし
   const history=[...(word.questionHistory||[])];
   if(cur)history.push({text:cur,at:Date.now()});
-  return{note:text,questionHistory:history.slice(-5)};
+  return{note:text,questionHistory:history.slice(-HISTORY_CAP)};
 }
 // 再検討(知に終わりなし): 裁決後に到来した新証拠の数。決着した結論ほど反証に晒すべき、というエレンコスの自己適用。
 const SETTLED_VERDICTS=new Set(['answered','suspended']);
@@ -2192,13 +2195,13 @@ function falsifierPatch(word,newText){
 }
 // 裁決の変遷(弁証法): 結論はしばしば覆る。status が変わるたび、去りゆく裁決を
 // {status,note,at} として履歴に刻む。意見を変えた事実そのものが探究の証。純粋関数。
-// 履歴は直近8件に限る(questionHistory と対称)。同一statusへの遷移は記録しない。
+// 履歴は HISTORY_CAP 件に限る(questionHistory と真に対称)。同一statusへの遷移は記録しない。
 function verdictTransition(word,newStatus){
   const cur=verdictOf(word);
   if(newStatus===cur)return null;
   const history=[...(word.verdictHistory||[])];
   history.push({status:cur,note:word.verdict?.note||'',at:word.verdictAt||null});
-  return{verdict:{status:newStatus,note:word.verdict?.note||''},verdictAt:Date.now(),verdictHistory:history.slice(-8)};
+  return{verdict:{status:newStatus,note:word.verdict?.note||''},verdictAt:Date.now(),verdictHistory:history.slice(-HISTORY_CAP)};
 }
 // エピステーメー(知)とドクサ(臆見)の区別。収集元を信頼の層に分類する。
 const TIER_DEFS=[

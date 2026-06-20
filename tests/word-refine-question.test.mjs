@@ -19,7 +19,8 @@ function refineQuestion(word, newText) {
   if (!text || text === cur) return null; // no change
   const history = [...(word.questionHistory || [])];
   if (cur) history.push({ text: cur, at: Date.now() });
-  return { note: text, questionHistory: history.slice(-5) };
+  const HISTORY_CAP = 5;
+  return { note: text, questionHistory: history.slice(-HISTORY_CAP) };
 }
 
 describe('refineQuestion', () => {
