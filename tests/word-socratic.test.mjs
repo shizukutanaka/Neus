@@ -92,7 +92,7 @@ function socraticPrompts(word, events) {
   if (n > 0 && !hasResearch && onlyTalk) out.push({ key: 'no-research', ja: '一次情報(研究)がない。これは検証された事実か、それとも意見か?', en: 'No primary research. Is this verified fact, or opinion?' });
   if (verdict === 'answered' && qs.length > 0) out.push({ key: 'questions-remain', ja: '解決としたが、未解決の問いが残っている。本当に解決したか?', en: 'Marked answered, yet open questions remain. Truly resolved?' });
   if (prior === 'certain' && verdict === 'open' && n >= 5) out.push({ key: 'certain-unresolved', ja: '確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?', en: 'You began certain, yet reached no verdict. What is still missing?' });
-  if (n > 0 && qs.length === 0) out.push({ key: 'no-questions', ja: 'まだ一つも問いを立てていない。本当に疑問はないか?', en: 'You have posed no questions. Is nothing in doubt?' });
+  if (n > 0 && qs.length === 0 && !word.note) out.push({ key: 'no-questions', ja: '問いも意図も未設定。この探究は何を目指しているか?', en: "No question or intent set. What is this inquiry trying to resolve?" });
   if (word.lastCollectedAt && gaps.silent.length > 0) out.push({ key: 'silence', ja: `${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`, en: `${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?` });
   if (unreviewed >= 10) out.push({ key: 'unreviewed', ja: `${unreviewed}件が未確認。読まずに判断していないか?`, en: `${unreviewed} unreviewed. Are you concluding without reading?` });
   return out.slice(0, 3);
@@ -174,10 +174,17 @@ describe('cognitiveShift', () => {
 describe('socraticPrompts', () => {
   const base = { verdict: { status: 'open' }, priorBelief: 'curious', reviewedAt: 0, questions: [], lastCollectedAt: 1000 };
 
-  it('returns no-questions prompt when events exist but no questions are registered', () => {
+  it('returns no-questions prompt when events exist, no sub-questions, and no note', () => {
     const events = [mkEv({ src: 'X · Google News', ts: 100 })];
     const ps = socraticPrompts(base, events);
     expect(ps.some(p => p.key === 'no-questions')).toBe(true);
+  });
+
+  it('does NOT return no-questions when word.note is set (note IS the primary question)', () => {
+    const wordWithNote = { ...base, note: 'Is WebGPU ready for production?' };
+    const events = [mkEv({ src: 'X · Google News', ts: 100 })];
+    const ps = socraticPrompts(wordWithNote, events);
+    expect(ps.some(p => p.key === 'no-questions')).toBe(false);
   });
 
   it('returns no-research prompt when all items are discussion-tier', () => {
@@ -308,6 +315,9 @@ describe('verdictStale / cognitiveShift / socraticPrompts wiring (index.html)', 
 
   it('includes question_revisions count in frontmatter when history is non-empty', () => {
     expect(html).toContain('`question_revisions: ${(word.questionHistory||[]).length}`');
+  });
+  it('no-questions gate includes &&!word.note (note IS a primary question)', () => {
+    expect(html).toContain('qs.length===0&&!word.note');
   });
 });
 

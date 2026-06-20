@@ -74,6 +74,10 @@ describe('collector guard wiring (index.html)', () => {
     expect(html).toContain('async function _collectOne(word)');
     expect(html).toContain('await _collectOne(w)');
   });
+  it('wraps per-word _collectOne in try-catch so one failure does not abort the batch', () => {
+    // A single bad word must not stop remaining words from being processed.
+    expect(html).toContain("try{total+=await _collectOne(w);}catch(e){console.warn(");
+  });
   it('reports raw fetched count honestly (fetched, not collected)', () => {
     expect(html).toContain('word.lastFetched=total');
     expect(html).toContain('fetched ${total} item(s)');

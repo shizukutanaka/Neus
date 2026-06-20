@@ -101,10 +101,10 @@ describe('cognitiveShift wiring (index.html)', () => {
   it('card shiftLine adds shifted CSS class when shifted', () => {
     expect(html).toContain("shift.shifted?' shifted':''");
   });
-  it('dossier 認識の変容 uses concluded and annotates [epistemic shift] vs [prior confirmed]', () => {
+  it('dossier 認識の変容 uses concluded and annotates shift type in JA/EN', () => {
     expect(html).toContain('if(shift.concluded)');
-    expect(html).toContain('[epistemic shift]');
-    expect(html).toContain('[prior confirmed]');
+    expect(html).toContain('[認識の逆転 / epistemic shift]');
+    expect(html).toContain('[先入観の確証 / prior confirmed]');
   });
   it('JSON export uses concluded and shifted instead of changed', () => {
     expect(html).toContain('concluded:shift.concluded,shifted:shift.shifted');

@@ -1868,7 +1868,7 @@ const WordCollector=(()=>{
     busy=true;progress={done:0,total:words.length};
     try{
       toast(currentLang==='ja'?`${words.length}単語を収集中...`:`collecting ${words.length} word(s)...`);
-      let total=0;for(const w of words){total+=await _collectOne(w);progress.done++;}
+      let total=0;for(const w of words){try{total+=await _collectOne(w);}catch(e){console.warn('[WordCollector] error on',w.term,e);}progress.done++;}
       toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
       return total;
     }finally{busy=false;progress={done:0,total:0};}
@@ -2279,7 +2279,8 @@ function socraticPrompts(word,events){
     const sinceConverging=events.filter(e=>(e.timestamp||0)>word.verdictAt).length;
     if(sinceConverging>=10)out.push({key:'prolonged-converging',ja:`収束中として${sinceConverging}件の新情報を得た。結論を出す準備はできているか?`,en:`${sinceConverging} new item(s) while converging. Ready to conclude, or is the inquiry drifting?`});
   }
-  if(n>0&&qs.length===0)out.push({key:'no-questions',ja:'まだ一つも問いを立てていない。本当に疑問はないか?',en:'You have posed no questions. Is nothing in doubt?'});
+  // word.note IS a question (the primary inquiry intent); fire no-questions only when neither note nor sub-questions exist.
+  if(n>0&&qs.length===0&&!word.note)out.push({key:'no-questions',ja:'問いも意図も未設定。この探究は何を目指しているか?',en:'No question or intent set. What is this inquiry trying to resolve?'});
   if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
   if(unreviewed>=10)out.push({key:'unreviewed',ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
   return out.slice(0,3);
@@ -2420,7 +2421,7 @@ const WordExporter={
       parts.push('## 認識の変容','');
       if(shift.concluded){
         const vd=VERDICT_DEFS.find(d=>d.key===shift.verdict)||VERDICT_DEFS[0];
-        const tag=shift.shifted?'[epistemic shift]':'[prior confirmed]';
+        const tag=shift.shifted?'[認識の逆転 / epistemic shift]':'[先入観の確証 / prior confirmed]';
         parts.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en}) ${tag}`,'');
       }else{
         parts.push(`${pd.ja} (${pd.en}) → 探究継続中 (ongoing)`,'');
@@ -2855,7 +2856,7 @@ async function renderWords(){
     const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>{
       const done=!!q.resolvedAt;
       const txt=done?`<span style="flex:1" class="word-q-done">${escapeHtml(q.text)}</span>`:`<span style="flex:1">${escapeHtml(q.text)}</span>`;
-      const rBtn=`<button class="word-q-resolve${done?' resolved':''}" data-wact="resolveq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${done?qReopenLabel:qResolveLabel}" aria-label="${done?qReopenLabel:qResolveLabel}">&check;</button>`;
+      const rBtn=`<button class="word-q-resolve${done?' resolved':''}" data-wact="resolveq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${done?qReopenLabel:qResolveLabel}" aria-label="${done?qReopenLabel:qResolveLabel}" aria-pressed="${done}">&check;</button>`;
       return `<li${done?' class="q-resolved"':''}>${txt}${rBtn}<button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`;
     }).join('')}</ul>`:'';
     const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
@@ -3024,8 +3025,11 @@ $('#view').addEventListener('click',async(e)=>{
     if(!text){toast(currentLang==='ja'?'問いを入力':'enter a question','err');return;}
     if(!word.questions)word.questions=[];
     if(word.questions.some(q=>q.text===text)){toast(currentLang==='ja'?'その問いは既に追加済み':'question already exists','err');return;}
-    word.questions.push({id:uuid(),text,createdAt:Date.now()});
-    if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;return;
+    const newQ={id:uuid(),text,createdAt:Date.now()};
+    word.questions.push(newQ);
+    if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();$('#view').scrollTop=sv;
+    UndoStack.offer(currentLang==='ja'?`問い「${text.slice(0,30)}」を追加`:`added question "${text.slice(0,30)}"`,async()=>{const w=await Store.getWord(word.id);if(!w)return;w.questions=(w.questions||[]).filter(q=>q.id!==newQ.id);await Store.putWord(w);FTSIndex.addWord(w);await renderView();});
+    return;
   }
   if(act==='delq'){
     const sv=$('#view').scrollTop;

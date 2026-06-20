@@ -72,7 +72,7 @@ function socraticPrompts(word, events) {
   if (n > 0 && !hasResearch && onlyTalk) out.push({ key: 'no-research' });
   if (verdict === 'answered' && qs.length > 0) out.push({ key: 'questions-remain' });
   if (prior === 'certain' && verdict === 'open' && n >= 5) out.push({ key: 'certain-unresolved' });
-  if (n > 0 && qs.length === 0) out.push({ key: 'no-questions' });
+  if (n > 0 && qs.length === 0 && !word.note) out.push({ key: 'no-questions' });
   if (word.lastCollectedAt && gaps.silent.length > 0) out.push({ key: 'silence' });
   if (unreviewed >= 10) out.push({ key: 'unreviewed' });
   return out.slice(0, 3);
