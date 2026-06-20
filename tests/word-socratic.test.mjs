@@ -252,9 +252,10 @@ describe('verdictStale / cognitiveShift / socraticPrompts wiring (index.html)', 
     expect(html).toContain('word.verdictAt||0');
   });
 
-  it('defines cognitiveShift returning prior, verdict, changed', () => {
+  it('defines cognitiveShift with direction-aware concluded/shifted fields', () => {
     expect(html).toContain('function cognitiveShift(word)');
-    expect(html).toContain('changed:prior!==verdict&&verdict!==\'open\'');
+    expect(html).toContain('const concluded=verdictDir!==\'open\'');
+    expect(html).toContain('const shifted=concluded&&priorDir!==\'open\'&&priorDir!==verdictDir');
   });
 
   it('defines socraticPrompts returning at most 3 prompts', () => {
