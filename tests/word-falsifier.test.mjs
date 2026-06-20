@@ -82,9 +82,13 @@ describe('socraticPrompts falsifier integration (index.html)', () => {
     expect(html).toContain("key:'stale-falsifier'");
     expect(html).toContain('word.falsifier');
   });
-  it('challenges a settled verdict that never stated a falsifier', () => {
+  it('challenges an answered verdict that never stated a falsifier', () => {
     expect(html).toContain("key:'no-falsifier'");
-    expect(html).toContain('SETTLED_VERDICTS.has(verdict)&&!word.falsifier');
+    expect(html).toContain("verdict==='answered'&&!word.falsifier");
+  });
+  it('challenges a suspended verdict that never stated a reopener condition', () => {
+    expect(html).toContain("key:'no-reopener'");
+    expect(html).toContain("verdict==='suspended'&&!word.falsifier");
   });
 });
 

@@ -2260,7 +2260,9 @@ function socraticPrompts(word,events){
     else out.push({key:'stale',ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
   }
   // 反証条件を述べられない結論は知ではなく独断(可謬性の自己適用)。
-  if(SETTLED_VERDICTS.has(verdict)&&!word.falsifier)out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
+  // 'suspended' means "we could not conclude" — the prompt must not say "you concluded".
+  if(verdict==='answered'&&!word.falsifier)out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
+  if(verdict==='suspended'&&!word.falsifier)out.push({key:'no-reopener',ja:'探究を保留したが、何があれば再開するかを述べていない。探究はいつ終わるのか?',en:'You suspended, but never stated what would reopen the inquiry. When does inquiry end?'});
   if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
   if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
   if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
