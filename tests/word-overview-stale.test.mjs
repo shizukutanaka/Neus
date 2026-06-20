@@ -111,3 +111,16 @@ describe('stale-suspended Socratic prompt (index.html)', () => {
     expect(html).toContain('word.falsifier');
   });
 });
+
+describe('prolonged-converging Socratic prompt (index.html)', () => {
+  it('declares the prolonged-converging prompt key', () => {
+    expect(html).toContain("key:'prolonged-converging'");
+  });
+  it('only fires when verdict is converging and verdictAt is set', () => {
+    expect(html).toContain("verdict==='converging'&&word.verdictAt");
+  });
+  it('counts items since verdictAt (sinceConverging>=10 threshold)', () => {
+    expect(html).toContain('sinceConverging=events.filter(e=>(e.timestamp||0)>word.verdictAt).length');
+    expect(html).toContain('sinceConverging>=10');
+  });
+});

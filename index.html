@@ -2274,6 +2274,11 @@ function socraticPrompts(word,events){
   // 認識の逆転: 先入観と正反対の結論になった場合のみ(可謬性の自己体験として最も価値が高い)。
   if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
   if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});
+  // 収束の長期停滞: 収束中のまま多くの証拠を蓄えているなら、結論を避けているか再考が必要。
+  if(verdict==='converging'&&word.verdictAt){
+    const sinceConverging=events.filter(e=>(e.timestamp||0)>word.verdictAt).length;
+    if(sinceConverging>=10)out.push({key:'prolonged-converging',ja:`収束中として${sinceConverging}件の新情報を得た。結論を出す準備はできているか?`,en:`${sinceConverging} new item(s) while converging. Ready to conclude, or is the inquiry drifting?`});
+  }
   if(n>0&&qs.length===0)out.push({key:'no-questions',ja:'まだ一つも問いを立てていない。本当に疑問はないか?',en:'You have posed no questions. Is nothing in doubt?'});
   if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
   if(unreviewed>=10)out.push({key:'unreviewed',ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
