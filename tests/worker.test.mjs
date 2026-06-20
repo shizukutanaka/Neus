@@ -2,13 +2,20 @@
 // Covers SSRF prevention, content-type validation, routing, error handling,
 // and the /json endpoint allowlist (Wikipedia-only proxy security boundary).
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ===== Extract pure logic from _worker.js =====
 // Import the module and reconstruct testable surface.
 
 // PRIVATE_HOST_RE (copied — stays in sync via ci check)
-const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[fc|\[fd|\[fe80)/i;
+// WHATWG URL normalizes IPv4-mapped IPv6 to hex before PRIVATE_HOST_RE sees the hostname,
+// so the regex must match the normalized hex form, not the dotted IPv4 notation.
+const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
 
 const RSS_CONTENT_RE = /xml|rss|atom|application\/feed/i;
 
@@ -84,6 +91,12 @@ describe('validateTarget — SSRF prevention', () => {
     'http://172.31.255.255/last',
     'http://169.254.169.254/metadata',  // AWS metadata
     'http://0.0.0.0/any',
+    // IPv4-mapped IPv6 — resolve identically to their IPv4 counterparts at socket level
+    'http://[::ffff:127.0.0.1]/loopback',
+    'http://[::ffff:10.0.0.1]/private',
+    'http://[::ffff:192.168.1.1]/private',
+    'http://[::ffff:172.16.0.1]/private',
+    'http://[::ffff:169.254.169.254]/metadata',
   ];
 
   blocked.forEach(url => {
@@ -233,6 +246,67 @@ describe('JSON_CONTENT_RE — /json content-type validation', () => {
   it('rejects text/html', () => expect(jsonRe.test('text/html')).toBe(false));
   it('rejects text/xml', () => expect(jsonRe.test('text/xml')).toBe(false));
   it('rejects empty string', () => expect(jsonRe.test('')).toBe(false));
+});
+
+describe('readCapped — streaming size enforcement', () => {
+  const MAX_SIZE = 5 * 1024 * 1024;
+
+  // Mirror of readCapped from _worker.js
+  async function readCapped(res) {
+    const cl = res.headers.get('content-length');
+    if (cl && Number(cl) > MAX_SIZE) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_SIZE) return null;
+    return buf;
+  }
+
+  function makeRes(body, contentLength = null) {
+    const headers = new Headers();
+    if (contentLength !== null) headers.set('content-length', String(contentLength));
+    return new Response(body, { headers });
+  }
+
+  it('returns buffer for a small body without Content-Length', async () => {
+    const res = makeRes('hello');
+    const buf = await readCapped(res);
+    expect(buf).not.toBeNull();
+    expect(buf.byteLength).toBe(5);
+  });
+
+  it('returns null when Content-Length exceeds MAX_SIZE (fast reject)', async () => {
+    const res = makeRes('x', MAX_SIZE + 1);
+    expect(await readCapped(res)).toBeNull();
+  });
+
+  it('returns null when streamed body exceeds MAX_SIZE even without Content-Length', async () => {
+    // Simulate a server that omits Content-Length but sends a large body
+    const oversized = new Uint8Array(MAX_SIZE + 1);
+    const res = makeRes(oversized.buffer);
+    expect(await readCapped(res)).toBeNull();
+  });
+
+  it('accepts exactly MAX_SIZE bytes', async () => {
+    const exact = new Uint8Array(MAX_SIZE);
+    const res = makeRes(exact.buffer);
+    expect(await readCapped(res)).not.toBeNull();
+  });
+});
+
+describe('Worker _worker.js source invariants', () => {
+  let src;
+  beforeAll(() => {
+    src = readFileSync(join(__dirname, '..', '_worker.js'), 'utf8');
+  });
+
+  it('readCapped helper enforces streaming size even without Content-Length', () => {
+    expect(src).toContain('async function readCapped(res)');
+    expect(src).toContain('const buf = await res.arrayBuffer()');
+    expect(src).toContain('if (buf.byteLength > MAX_SIZE) return null');
+  });
+  it('SSRF guard matches IPv4-mapped IPv6 in WHATWG hex-normalized form', () => {
+    // WHATWG URL normalizes [::ffff:127.0.0.1] → [::ffff:7f00:1], so match hex.
+    expect(src).toContain('::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)');
+  });
 });
 
 describe('Conditional GET (ETag / Last-Modified)', () => {
