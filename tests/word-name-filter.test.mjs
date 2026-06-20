@@ -1,9 +1,12 @@
 // Neus — Watchword name-filter tests
 // With many words, the overview chips filter by inquiry state but give no way
-// to find a specific term. The name filter narrows the WORDS view by:
+// to find a specific term. The name filter narrows the WORDS view by exactly the
+// fields FTS indexes (wordText), so global search and in-view filter agree:
 //   - word.normalized (the word itself)
 //   - word.note (the inquiry question)
 //   - word.verdict.note (the rationale for the verdict)
+//   - word.falsifier (the stated defeater)
+//   - word.questions[].text (the sub-questions / aporia)
 // via DOM manipulation (no re-render), so the input stays focused on every keystroke.
 // It stacks with the overview-chip filter (AND semantics).
 
@@ -25,13 +28,12 @@ const wordMatchesOv = (w, all, filter) => {
   return true;
 };
 
-// Mirror of matchesWnf in renderWords() — name filter checks normalized, note, and verdict rationale.
+// Mirror of wnfHay + matchesWnf in renderWords() — searches the same fields FTS indexes.
+const wnfHay = (w) => [w.normalized, w.note, w.verdict?.note, w.falsifier, ...(w.questions || []).map(q => q.text)]
+  .filter(Boolean).join(' ').toLowerCase();
 function matchesWnf(w, nameFilter) {
   if (!nameFilter) return true;
-  const q = nameFilter.toLowerCase();
-  return w.normalized.includes(q) ||
-    (w.note || '').toLowerCase().includes(q) ||
-    (w.verdict?.note || '').toLowerCase().includes(q);
+  return wnfHay(w).includes(nameFilter.toLowerCase());
 }
 
 // The combined filter applied by renderWords():
@@ -44,8 +46,8 @@ function applyFilters(words, all, ovFilter, nameFilter) {
 }
 
 const words = [
-  { normalized: 'webgpu', note: 'GPU programming in the browser', verdict: { status: 'open' } },
-  { normalized: 'rust', note: 'systems language', verdict: { status: 'answered', note: 'memory safe by design' } },
+  { normalized: 'webgpu', note: 'GPU programming in the browser', verdict: { status: 'open' }, questions: [{ text: 'driver maturity?' }] },
+  { normalized: 'rust', note: 'systems language', verdict: { status: 'answered', note: 'memory safe by design' }, falsifier: 'a documented use-after-free in safe code' },
   { normalized: 'webassembly', note: 'compile target for the web', verdict: { status: 'open' } },
   { normalized: 'graphics', note: '', verdict: { status: 'open' } },
 ];
@@ -73,6 +75,18 @@ describe('name filter logic', () => {
 
   it('filters by verdict rationale', () => {
     const result = applyFilters(words, [], null, 'memory safe');
+    expect(result).toHaveLength(1);
+    expect(result[0].normalized).toBe('rust');
+  });
+
+  it('filters by sub-question text (FTS indexes questions[]; the filter must too)', () => {
+    const result = applyFilters(words, [], null, 'driver maturity');
+    expect(result).toHaveLength(1);
+    expect(result[0].normalized).toBe('webgpu');
+  });
+
+  it('filters by falsifier text (FTS indexes falsifier; the filter must too)', () => {
+    const result = applyFilters(words, [], null, 'use-after-free');
     expect(result).toHaveLength(1);
     expect(result[0].normalized).toBe('rust');
   });
@@ -106,10 +120,15 @@ describe('name filter wiring (index.html)', () => {
     expect(html).toContain('id="word-name-filter"');
     expect(html).toContain('class="word-name-filter"');
   });
-  it('defines matchesWnf helper that checks note and verdict rationale', () => {
-    expect(html).toContain('const matchesWnf=');
-    expect(html).toContain("(w.note||'').toLowerCase().includes(wordNameFilter)");
-    expect(html).toContain("(w.verdict?.note||'').toLowerCase().includes(wordNameFilter)");
+  it('defines a wnfHay helper that searches the same fields FTS indexes', () => {
+    // wnfHay must include note, verdict.note, falsifier, and questions[].text so the
+    // in-view filter matches whatever global FTS search (wordText) can surface.
+    expect(html).toContain('const wnfHay=(w)=>');
+    expect(html).toContain('w.normalized,w.note,w.verdict?.note,w.falsifier,...(w.questions||[]).map(q=>q.text)');
+    expect(html).toContain('const matchesWnf=(w)=>!wordNameFilter||wnfHay(w).includes(wordNameFilter)');
+  });
+  it('builds the data-wsearch haystack from the same wnfHay helper (filter/search parity)', () => {
+    expect(html).toContain('data-wsearch="${escapeAttr(wnfHay(w))}"');
   });
   it('folds the name filter into the shown array via matchesWnf', () => {
     expect(html).toContain('matchesWnf(w)');
