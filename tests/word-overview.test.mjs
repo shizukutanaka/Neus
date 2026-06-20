@@ -186,4 +186,10 @@ describe('overview wiring (index.html)', () => {
     expect(html).toContain("...(word.sources?.wikipedia?['Wikipedia']:[]),...Object.keys(WORD_FEEDS)");
     expect(html).not.toContain("['wikipedia',...Object.keys(WORD_FEEDS)].filter(k=>word.sources?.[k]).join");
   });
+  it('resets wordViewFilter when navigating away from the WORDS view', () => {
+    // Without this reset, a filter set in WORDS survives a nav-away/nav-back round-trip,
+    // silently hiding words on return. The user has no visible indicator the filter is active
+    // unless they spot the highlighted chip.
+    expect(html).toContain("if(currentView==='words'&&b.dataset.view!=='words')wordViewFilter=null");
+  });
 });

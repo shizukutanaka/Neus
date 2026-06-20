@@ -84,11 +84,21 @@ describe('socraticPrompts falsifier integration (index.html)', () => {
   });
   it('challenges an answered verdict that never stated a falsifier', () => {
     expect(html).toContain("key:'no-falsifier'");
-    expect(html).toContain("verdict==='answered'&&!word.falsifier");
+    // no-falsifier now lives inside if(...&&!word.falsifier){ else if(verdict==='answered') }
+    expect(html).toContain("else if(verdict==='answered')out.push({key:'no-falsifier'");
   });
   it('challenges a suspended verdict that never stated a reopener condition', () => {
     expect(html).toContain("key:'no-reopener'");
     expect(html).toContain("verdict==='suspended'&&!word.falsifier");
+  });
+  it('no-falsifier and confirmed-certain are mutually exclusive (prior=certain takes precedence)', () => {
+    // Both conditions used to fire simultaneously for prior=certain+verdict=answered+!falsifier,
+    // consuming 2 of 3 elenchus slots with near-identical intent. Fixed: they are now branches
+    // of the same if/else — confirmed-certain wins when prior==='certain'.
+    expect(html).toContain("if(prior==='certain')out.push({key:'confirmed-certain'");
+    expect(html).toContain("else if(verdict==='answered')out.push({key:'no-falsifier'");
+    // The old pattern where both were independent top-level ifs must be gone.
+    expect(html).not.toMatch(/out\.push\(\{key:'no-falsifier'[\s\S]{0,20}\}\);\s*[\s\S]{0,200}out\.push\(\{key:'confirmed-certain'/);
   });
 });
 

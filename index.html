@@ -1439,11 +1439,14 @@ async function confirmAsync(message,opts={}){
 }
 
 // Undo Stack — 直近の破壊的操作を1件記録
+// Single-slot undo register. Holds exactly one undoable action at a time.
+// When a new offer arrives while one is pending, the earlier action is silently
+// replaced — callers must not assume prior undos survive a new offer.
 const UndoStack=(()=>{
   let pending=null;let timer=null;
   const TIMEOUT_MS=8000;
   function offer(label,undoFn){
-    if(timer){clearTimeout(timer);if(pending)pending=null;}
+    if(timer)clearTimeout(timer);
     pending={label,undoFn};
     // Toast の代わりに永続化トースト風UI
     const id='undo-toast';
@@ -2268,10 +2271,14 @@ function socraticPrompts(word,events){
   }
   // 反証条件を述べられない結論は知ではなく独断(可謬性の自己適用)。
   // 'suspended' means "we could not conclude" — the prompt must not say "you concluded".
-  if(verdict==='answered'&&!word.falsifier)out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
+  // confirmed-certain is strictly more specific than no-falsifier when prior==='certain',
+  // so the two must be mutually exclusive — otherwise both consume 2 of 3 elenchus slots
+  // with near-identical intent (prior=certain+verdict=answered+!falsifier trips both).
+  if((verdict==='answered'||verdict==='converging')&&!word.falsifier){
+    if(prior==='certain')out.push({key:'confirmed-certain',ja:'確信して始め、確信のまま終わった。本当に反証を探したか?',en:'You began certain and concluded affirmatively. Did you genuinely seek counterevidence?'});
+    else if(verdict==='answered')out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
+  }
   if(verdict==='suspended'&&!word.falsifier)out.push({key:'no-reopener',ja:'探究を保留したが、何があれば再開するかを述べていない。探究はいつ終わるのか?',en:'You suspended, but never stated what would reopen the inquiry. When does inquiry end?'});
-  // 確証バイアス警戒: no-falsifier と同じクラスタに配置(反証不在 + 方向バイアス)。
-  if(prior==='certain'&&(verdict==='answered'||verdict==='converging')&&!word.falsifier)out.push({key:'confirmed-certain',ja:'確信して始め、確信のまま終わった。本当に反証を探したか?',en:'You began certain and concluded affirmatively. Did you genuinely seek counterevidence?'});
   if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
   if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
   if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
@@ -3294,7 +3301,7 @@ $('#kw-sheet-cancel').addEventListener('click',closeKwSheet);
 $('#kw-sheet').addEventListener('click',(e)=>{if(e.target.id==='kw-sheet')closeKwSheet();});
 
 $$('.nav button').forEach(b=>{
-  b.addEventListener('click',async()=>{$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});b.classList.add('active');b.setAttribute('aria-selected','true');currentView=b.dataset.view;kbCursor=-1;await renderView();});
+  b.addEventListener('click',async()=>{$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});b.classList.add('active');b.setAttribute('aria-selected','true');if(currentView==='words'&&b.dataset.view!=='words')wordViewFilter=null;currentView=b.dataset.view;kbCursor=-1;await renderView();});
 });
 
 // ===== SEARCH ===========================================================

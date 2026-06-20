@@ -141,7 +141,9 @@ describe('socraticPrompts — new shift-aware prompts (index.html)', () => {
   });
   it('declares confirmed-certain prompt (confirmation bias warning)', () => {
     expect(html).toContain("key:'confirmed-certain'");
-    expect(html).toContain("prior==='certain'&&(verdict==='answered'||verdict==='converging')&&!word.falsifier");
+    // confirmed-certain now lives inside an if block with no-falsifier as else-if:
+    // if(prior==='certain')out.push({key:'confirmed-certain',...})
+    expect(html).toContain("if(prior==='certain')out.push({key:'confirmed-certain'");
   });
   it('shift-aware prompts use the shift object from cognitiveShift', () => {
     expect(html).toContain('const shift=cognitiveShift(word)');

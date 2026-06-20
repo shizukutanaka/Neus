@@ -183,6 +183,12 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain("if(removed)UndoStack.offer(");
     expect(html).toContain("w.questions.push(removed);await Store.putWord(w);FTSIndex.addWord(w);await renderView();");
   });
+  it('UndoStack is documented as a single-slot register (not a true stack)', () => {
+    // UndoStack holds exactly one pending undo — a new offer silently replaces the prior one.
+    // The comment makes this invariant explicit so callers know not to rely on prior undos surviving.
+    expect(html).toContain('Single-slot undo register');
+    expect(html).toContain('new offer arrives while one is pending');
+  });
   it('renders questions most-recent-first by reversing the array', () => {
     expect(html).toContain('[...(w.questions||[])].reverse()');
   });
