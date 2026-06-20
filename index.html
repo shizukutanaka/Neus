@@ -2263,14 +2263,14 @@ function socraticPrompts(word,events){
   // 'suspended' means "we could not conclude" — the prompt must not say "you concluded".
   if(verdict==='answered'&&!word.falsifier)out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
   if(verdict==='suspended'&&!word.falsifier)out.push({key:'no-reopener',ja:'探究を保留したが、何があれば再開するかを述べていない。探究はいつ終わるのか?',en:'You suspended, but never stated what would reopen the inquiry. When does inquiry end?'});
+  // 確証バイアス警戒: no-falsifier と同じクラスタに配置(反証不在 + 方向バイアス)。
+  if(prior==='certain'&&(verdict==='answered'||verdict==='converging')&&!word.falsifier)out.push({key:'confirmed-certain',ja:'確信して始め、確信のまま終わった。本当に反証を探したか?',en:'You began certain and concluded affirmatively. Did you genuinely seek counterevidence?'});
   if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
   if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
   if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
   // 認識の逆転: 先入観と正反対の結論になった場合のみ(可謬性の自己体験として最も価値が高い)。
   if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
   if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});
-  // 確証バイアス警戒: 確信→解決のとき反証条件が未設定なら問い直す(潜在的な確証バイアス)。
-  if(prior==='certain'&&(verdict==='answered'||verdict==='converging')&&!word.falsifier)out.push({key:'confirmed-certain',ja:'確信して始め、確信のまま終わった。本当に反証を探したか?',en:'You began certain and concluded affirmatively. Did you genuinely seek counterevidence?'});
   if(n>0&&qs.length===0)out.push({key:'no-questions',ja:'まだ一つも問いを立てていない。本当に疑問はないか?',en:'You have posed no questions. Is nothing in doubt?'});
   if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
   if(unreviewed>=10)out.push({key:'unreviewed',ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
