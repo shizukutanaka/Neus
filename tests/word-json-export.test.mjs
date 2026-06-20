@@ -15,9 +15,16 @@ const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 // ===== Minimal mirrors of analysis dependencies (kept trivial/deterministic) =====
 function verdictOf(word) { return word.verdict?.status || 'open'; }
 function priorBeliefOf(word) { return word.priorBelief || 'curious'; }
+const PRIOR_DIRECTION = { certain: 'affirm', skeptical: 'deny', curious: 'open', agnostic: 'open' };
+const VERDICT_DIRECTION = { answered: 'affirm', converging: 'affirm', suspended: 'deny', open: 'open' };
+const SETTLED_VERDICTS = new Set(['answered', 'suspended']);
 function cognitiveShift(word) {
   const prior = priorBeliefOf(word), verdict = verdictOf(word);
-  return { prior, verdict, changed: prior !== verdict && verdict !== 'open' };
+  const priorDir = PRIOR_DIRECTION[prior] || 'open';
+  const verdictDir = VERDICT_DIRECTION[verdict] || 'open';
+  const concluded = SETTLED_VERDICTS.has(verdict);
+  const shifted = priorDir !== 'open' && verdictDir !== 'open' && priorDir !== verdictDir;
+  return { prior, verdict, concluded, shifted };
 }
 const stub = { tierBreakdown: () => [], signalGaps: () => ({ active: [], silent: [] }), relatedWords: () => [], verdictStale: () => 0, socraticPrompts: () => [], newSinceReview: () => [] };
 
@@ -39,7 +46,7 @@ function toWordJson(word, events, others = []) {
     },
     analysis: {
       tiers: stub.tierBreakdown(), gaps: stub.signalGaps(), related: stub.relatedWords(),
-      cognitiveShift: { prior: shift.prior, verdict: shift.verdict, changed: shift.changed },
+      cognitiveShift: { prior: shift.prior, verdict: shift.verdict, concluded: shift.concluded, shifted: shift.shifted },
       reexamine: stub.verdictStale(), prompts: stub.socraticPrompts().map(p => p.key),
       unreviewed: stub.newSinceReview().length,
     },
@@ -88,7 +95,9 @@ describe('toWordJson — completeness', () => {
   it('includes a derived analysis block and a schema version', () => {
     expect(out.schema).toBe(2);
     expect(out.analysis).toBeTruthy();
-    expect(out.analysis.cognitiveShift).toEqual({ prior: 'skeptical', verdict: 'converging', changed: true });
+    // skeptical(deny) → converging(affirm): a reversal underway, but converging is in-progress
+    // (not terminal), so concluded=false while shifted=true.
+    expect(out.analysis.cognitiveShift).toEqual({ prior: 'skeptical', verdict: 'converging', concluded: false, shifted: true });
   });
 
   it('fills safe defaults for a bare word', () => {

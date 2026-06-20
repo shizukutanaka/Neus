@@ -26,21 +26,32 @@ const VERDICT_DEFS = [
   { key: 'answered',   ja: '解決',   en: 'answered' },
   { key: 'suspended',  ja: '保留',   en: 'suspended' },
 ];
+const PRIOR_DIRECTION = { certain: 'affirm', skeptical: 'deny', curious: 'open', agnostic: 'open' };
+const VERDICT_DIRECTION = { answered: 'affirm', converging: 'affirm', suspended: 'deny', open: 'open' };
+const SETTLED_VERDICTS = new Set(['answered', 'suspended']);
 function priorBeliefOf(word) { return word.priorBelief || 'curious'; }
 function verdictOf(word) { return word.verdict?.status || 'open'; }
 function cognitiveShift(word) {
   const prior = priorBeliefOf(word), verdict = verdictOf(word);
   const pd = PRIOR_BELIEF_DEFS.find(d => d.key === prior) || PRIOR_BELIEF_DEFS[0];
   const vd = VERDICT_DEFS.find(d => d.key === verdict) || VERDICT_DEFS[0];
-  return { prior, verdict, pd, vd, changed: prior !== verdict && verdict !== 'open' };
+  const priorDir = PRIOR_DIRECTION[prior] || 'open';
+  const verdictDir = VERDICT_DIRECTION[verdict] || 'open';
+  const concluded = SETTLED_VERDICTS.has(verdict);
+  const shifted = priorDir !== 'open' && verdictDir !== 'open' && priorDir !== verdictDir;
+  return { prior, verdict, pd, vd, concluded, shifted };
 }
 function shiftSection(word) {
   const shift = cognitiveShift(word);
   const pd = PRIOR_BELIEF_DEFS.find(d => d.key === priorBeliefOf(word)) || PRIOR_BELIEF_DEFS[0];
   const lines = ['## 認識の変容', ''];
-  if (shift.changed) {
+  if (shift.concluded) {
     const vd = VERDICT_DEFS.find(d => d.key === shift.verdict) || VERDICT_DEFS[0];
-    lines.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en})`, '');
+    const tag = shift.shifted ? '[認識の逆転 / epistemic shift]' : '[先入観の確証 / prior confirmed]';
+    lines.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en}) ${tag}`, '');
+  } else if (shift.shifted) {
+    const vd = VERDICT_DEFS.find(d => d.key === shift.verdict) || VERDICT_DEFS[0];
+    lines.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en}) [逆転の兆し / shift emerging]`, '');
   } else {
     lines.push(`${pd.ja} (${pd.en}) → 探究継続中 (ongoing)`, '');
   }
@@ -59,29 +70,32 @@ describe('priorBeliefOf', () => {
 });
 
 describe('cognitiveShift', () => {
-  it('marks no change when verdict is still open (inquiry ongoing)', () => {
+  it('not concluded when verdict is still open (inquiry ongoing)', () => {
     const s = cognitiveShift({ priorBelief: 'certain' });
-    expect(s.changed).toBe(false);
+    expect(s.concluded).toBe(false);
+    expect(s.shifted).toBe(false);
   });
 
-  it('marks a shift when prior and non-open verdict differ', () => {
+  it('marks a shift when a committed prior is reversed by a settled verdict', () => {
     const s = cognitiveShift({ priorBelief: 'certain', verdict: { status: 'suspended' } });
-    expect(s.changed).toBe(true);
+    expect(s.shifted).toBe(true);
+    expect(s.concluded).toBe(true);
     expect(s.prior).toBe('certain');
     expect(s.verdict).toBe('suspended');
   });
 
-  it('marks no shift when prior matches a non-open verdict (confirmed prior)', () => {
-    // curious → converging: different keys → changed=true; this tests the 'same' case instead
-    const s = cognitiveShift({ priorBelief: 'skeptical', verdict: { status: 'open' } });
-    expect(s.changed).toBe(false); // still open, never "same non-open"
+  it('converging is never concluded (in-progress), even when shifted', () => {
+    const s = cognitiveShift({ priorBelief: 'skeptical', verdict: { status: 'converging' } });
+    expect(s.concluded).toBe(false);
+    expect(s.shifted).toBe(true); // skeptical(deny) → converging(affirm) is a reversal underway
   });
 
   it('surfaces the correct defs for both sides', () => {
     const s = cognitiveShift({ priorBelief: 'agnostic', verdict: { status: 'answered' } });
     expect(s.pd.ja).toBe('無知');
     expect(s.vd.ja).toBe('解決');
-    expect(s.changed).toBe(true);
+    expect(s.concluded).toBe(true);
+    expect(s.shifted).toBe(false); // agnostic has no committed direction to reverse
   });
 });
 
@@ -93,10 +107,21 @@ describe('shiftSection (dossier)', () => {
     expect(out).toContain('好奇 (curious)');
   });
 
-  it('renders the prior → verdict arrow when verdict is settled', () => {
+  it('renders the prior → verdict arrow with epistemic-shift tag when settled and reversed', () => {
     const out = shiftSection({ priorBelief: 'certain', verdict: { status: 'suspended' } });
-    expect(out).toContain('確信 (certain) → 保留 (suspended)');
+    expect(out).toContain('確信 (certain) → 保留 (suspended) [認識の逆転 / epistemic shift]');
     expect(out).not.toContain('ongoing');
+  });
+
+  it('tags a settled-but-confirmed prior as prior confirmed', () => {
+    const out = shiftSection({ priorBelief: 'certain', verdict: { status: 'answered' } });
+    expect(out).toContain('[先入観の確証 / prior confirmed]');
+  });
+
+  it('tags a converging reversal as in-progress (shift emerging), not concluded', () => {
+    const out = shiftSection({ priorBelief: 'skeptical', verdict: { status: 'converging' } });
+    expect(out).toContain('[逆転の兆し / shift emerging]');
+    expect(out).not.toContain('prior confirmed');
   });
 
   it('includes the section header always', () => {

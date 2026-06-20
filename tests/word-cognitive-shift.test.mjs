@@ -19,13 +19,16 @@ const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 // ===== Mirror =====
 const PRIOR_DIRECTION = { certain: 'affirm', skeptical: 'deny', curious: 'open', agnostic: 'open' };
 const VERDICT_DIRECTION = { answered: 'affirm', converging: 'affirm', suspended: 'deny', open: 'open' };
+const SETTLED_VERDICTS = new Set(['answered', 'suspended']);
 function cognitiveShift(word) {
   const prior = (word.priorBelief || 'curious');
   const verdict = (word.verdict?.status || 'open');
   const priorDir = PRIOR_DIRECTION[prior] || 'open';
   const verdictDir = VERDICT_DIRECTION[verdict] || 'open';
-  const concluded = verdictDir !== 'open';
-  const shifted = concluded && priorDir !== 'open' && priorDir !== verdictDir;
+  // concluded = TERMINAL verdict only; converging is in-progress, not concluded.
+  const concluded = SETTLED_VERDICTS.has(verdict);
+  // shifted = directional contradiction, independent of terminality (skeptical→converging counts).
+  const shifted = priorDir !== 'open' && verdictDir !== 'open' && priorDir !== verdictDir;
   return { prior, verdict, concluded, shifted };
 }
 
@@ -36,8 +39,8 @@ describe('cognitiveShift — direction mapping', () => {
   it('concluded=true when verdict is answered', () => {
     expect(cognitiveShift({ priorBelief: 'curious', verdict: { status: 'answered' } }).concluded).toBe(true);
   });
-  it('concluded=true when verdict is converging', () => {
-    expect(cognitiveShift({ priorBelief: 'curious', verdict: { status: 'converging' } }).concluded).toBe(true);
+  it('concluded=false when verdict is converging (in-progress, not terminal)', () => {
+    expect(cognitiveShift({ priorBelief: 'curious', verdict: { status: 'converging' } }).concluded).toBe(false);
   });
   it('concluded=true when verdict is suspended', () => {
     expect(cognitiveShift({ priorBelief: 'curious', verdict: { status: 'suspended' } }).concluded).toBe(true);
@@ -87,15 +90,21 @@ describe('cognitiveShift wiring (index.html)', () => {
   it('cognitiveShift uses direction-aware comparison (concluded / shifted)', () => {
     expect(html).toContain('const priorDir=PRIOR_DIRECTION[prior]||\'open\'');
     expect(html).toContain('const verdictDir=VERDICT_DIRECTION[verdict]||\'open\'');
-    expect(html).toContain('const concluded=verdictDir!==\'open\'');
-    expect(html).toContain('const shifted=concluded&&priorDir!==\'open\'&&priorDir!==verdictDir');
+    // concluded is terminal-only (SETTLED_VERDICTS), NOT every non-open verdict —
+    // converging is in-progress and must not be marked concluded.
+    expect(html).toContain('const concluded=SETTLED_VERDICTS.has(verdict)');
+    expect(html).toContain('const shifted=priorDir!==\'open\'&&verdictDir!==\'open\'&&priorDir!==verdictDir');
+  });
+  it('no longer marks converging as concluded (verdictDir!==open is gone)', () => {
+    // The old `concluded=verdictDir!=='open'` swept converging in as a conclusion.
+    expect(html).not.toContain('const concluded=verdictDir!==\'open\'');
   });
   it('no longer uses the buggy prior!==verdict comparison', () => {
     // The old broken `changed:prior!==verdict&&verdict!=='open'` must be gone
     expect(html).not.toContain('changed:prior!==verdict&&verdict!==\'open\'');
   });
-  it('card shiftLine uses concluded not changed', () => {
-    expect(html).toContain('shift.concluded?');
+  it('card shiftLine shows the arrow when concluded OR shifted (converging reversal surfaces)', () => {
+    expect(html).toContain('(shift.concluded||shift.shifted)?');
     expect(html).not.toContain('shift.changed?');
   });
   it('card shiftLine adds shifted CSS class when shifted', () => {
@@ -105,6 +114,12 @@ describe('cognitiveShift wiring (index.html)', () => {
     expect(html).toContain('if(shift.concluded)');
     expect(html).toContain('[認識の逆転 / epistemic shift]');
     expect(html).toContain('[先入観の確証 / prior confirmed]');
+  });
+  it('dossier marks a converging reversal as in-progress, not concluded', () => {
+    // skeptical→converging is shifted but NOT concluded: it must read "shift emerging",
+    // never "prior confirmed" (the inquiry has not ended).
+    expect(html).toContain('else if(shift.shifted)');
+    expect(html).toContain('[逆転の兆し / shift emerging]');
   });
   it('JSON export uses concluded and shifted instead of changed', () => {
     expect(html).toContain('concluded:shift.concluded,shifted:shift.shifted');

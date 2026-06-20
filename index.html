@@ -2151,9 +2151,13 @@ function cognitiveShift(word){
   const vd=VERDICT_DEFS.find(d=>d.key===verdict)||VERDICT_DEFS[0];
   const priorDir=PRIOR_DIRECTION[prior]||'open';
   const verdictDir=VERDICT_DIRECTION[verdict]||'open';
-  const concluded=verdictDir!=='open';
-  // shifted = a committed prior was contradicted by the outcome (not just "a verdict was reached")
-  const shifted=concluded&&priorDir!=='open'&&priorDir!==verdictDir;
+  // concluded = a TERMINAL verdict was reached. 'converging' (収束中) is in-progress, not
+  // concluded — the prolonged-converging prompt exists precisely to push it toward closure,
+  // so it must not be stamped "prior confirmed" / "epistemic shift" as if the inquiry ended.
+  const concluded=SETTLED_VERDICTS.has(verdict);
+  // shifted = a committed prior was contradicted by the outcome direction. Independent of
+  // terminality: skeptical→converging is a real reversal-in-progress even before closure.
+  const shifted=priorDir!=='open'&&verdictDir!=='open'&&priorDir!==verdictDir;
   return{prior,verdict,pd,vd,concluded,shifted};
 }
 // 問いの彫琢(elenchus): 問いそのものが暫定的。論駁はしばしば問いの誤りを暴く。
@@ -2423,6 +2427,10 @@ const WordExporter={
         const vd=VERDICT_DEFS.find(d=>d.key===shift.verdict)||VERDICT_DEFS[0];
         const tag=shift.shifted?'[認識の逆転 / epistemic shift]':'[先入観の確証 / prior confirmed]';
         parts.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en}) ${tag}`,'');
+      }else if(shift.shifted){
+        // converging against a committed prior: reversal underway, not yet terminal.
+        const vd=VERDICT_DEFS.find(d=>d.key===shift.verdict)||VERDICT_DEFS[0];
+        parts.push(`${pd.ja} (${pd.en}) → ${vd.ja} (${vd.en}) [逆転の兆し / shift emerging]`,'');
       }else{
         parts.push(`${pd.ja} (${pd.en}) → 探究継続中 (ongoing)`,'');
       }
@@ -2867,7 +2875,7 @@ async function renderWords(){
 
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決を対比。変容があれば示す。
     const shift=cognitiveShift(w);
-    const shiftLine=shift.concluded?`<div class="word-shift${shift.shifted?' shifted':''}" title="${escapeAttr(currentLang==='ja'?t('word.shift'):t('word.shift'))}"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span><span class="word-shift-arrow"> → </span><span class="word-shift-verdict">${currentLang==='ja'?shift.vd.ja:shift.vd.en}</span></div>`:
+    const shiftLine=(shift.concluded||shift.shifted)?`<div class="word-shift${shift.shifted?' shifted':''}" title="${escapeAttr(currentLang==='ja'?t('word.shift'):t('word.shift'))}"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span><span class="word-shift-arrow"> → </span><span class="word-shift-verdict">${currentLang==='ja'?shift.vd.ja:shift.vd.en}</span></div>`:
       `<div class="word-shift"><span class="word-shift-prior">${currentLang==='ja'?shift.pd.ja:shift.pd.en}</span></div>`;
     // 裁決の変遷(弁証法): status を変えた軌跡。意見を変えた事実を可視化する。
     const vHist=(w.verdictHistory||[]);

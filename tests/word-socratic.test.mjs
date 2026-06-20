@@ -34,11 +34,17 @@ const TIER_DEFS = [
 function verdictOf(word) { return word.verdict?.status || 'open'; }
 function priorBeliefOf(word) { return word.priorBelief || 'curious'; }
 
+const PRIOR_DIRECTION = { certain: 'affirm', skeptical: 'deny', curious: 'open', agnostic: 'open' };
+const VERDICT_DIRECTION = { answered: 'affirm', converging: 'affirm', suspended: 'deny', open: 'open' };
 function cognitiveShift(word) {
   const prior = priorBeliefOf(word), verdict = verdictOf(word);
   const pd = PRIOR_BELIEF_DEFS.find(d => d.key === prior) || PRIOR_BELIEF_DEFS[0];
   const vd = VERDICT_DEFS.find(d => d.key === verdict) || VERDICT_DEFS[0];
-  return { prior, verdict, pd, vd, changed: prior !== verdict && verdict !== 'open' };
+  const priorDir = PRIOR_DIRECTION[prior] || 'open';
+  const verdictDir = VERDICT_DIRECTION[verdict] || 'open';
+  const concluded = SETTLED_VERDICTS.has(verdict);
+  const shifted = priorDir !== 'open' && verdictDir !== 'open' && priorDir !== verdictDir;
+  return { prior, verdict, pd, vd, concluded, shifted };
 }
 
 function verdictStale(word, events) {
@@ -136,25 +142,33 @@ describe('verdictStale', () => {
 
 // ===== cognitiveShift =====
 describe('cognitiveShift', () => {
-  it('reports changed=false when verdict is still open', () => {
+  it('reports concluded=false when verdict is still open', () => {
     const word = { priorBelief: 'curious', verdict: { status: 'open' } };
-    expect(cognitiveShift(word).changed).toBe(false);
+    expect(cognitiveShift(word).concluded).toBe(false);
   });
 
-  it('reports changed=true when prior differs from a settled verdict', () => {
+  it('reports shifted=true when a committed prior is reversed by a settled verdict', () => {
     const word = { priorBelief: 'skeptical', verdict: { status: 'answered' } };
     const shift = cognitiveShift(word);
-    expect(shift.changed).toBe(true);
+    expect(shift.shifted).toBe(true);
+    expect(shift.concluded).toBe(true);
     expect(shift.prior).toBe('skeptical');
     expect(shift.verdict).toBe('answered');
   });
 
-  it('reports changed=false when prior matches the current verdict key', () => {
-    // e.g. converging prior is not in PRIOR_BELIEF_DEFS — falls back to curious
-    // Let's test a case where prior === verdict
+  it('reports concluded=false but shifted=false for an open-direction prior at converging', () => {
+    // curious has no committed direction; converging is in-progress, not terminal.
     const word = { priorBelief: 'curious', verdict: { status: 'converging' } };
-    // curious !== converging and verdict !== open → changed = true
-    expect(cognitiveShift(word).changed).toBe(true);
+    const shift = cognitiveShift(word);
+    expect(shift.concluded).toBe(false);
+    expect(shift.shifted).toBe(false);
+  });
+
+  it('reports shifted=true (reversal in progress) for skeptical at converging, still not concluded', () => {
+    const word = { priorBelief: 'skeptical', verdict: { status: 'converging' } };
+    const shift = cognitiveShift(word);
+    expect(shift.shifted).toBe(true);
+    expect(shift.concluded).toBe(false);
   });
 
   it('defaults prior to curious when priorBelief is absent', () => {
@@ -259,10 +273,11 @@ describe('verdictStale / cognitiveShift / socraticPrompts wiring (index.html)', 
     expect(html).toContain('word.verdictAt||0');
   });
 
-  it('defines cognitiveShift with direction-aware concluded/shifted fields', () => {
+  it('defines cognitiveShift with terminal concluded + direction-aware shifted fields', () => {
     expect(html).toContain('function cognitiveShift(word)');
-    expect(html).toContain('const concluded=verdictDir!==\'open\'');
-    expect(html).toContain('const shifted=concluded&&priorDir!==\'open\'&&priorDir!==verdictDir');
+    // concluded is terminal-only; converging stays in-progress.
+    expect(html).toContain('const concluded=SETTLED_VERDICTS.has(verdict)');
+    expect(html).toContain('const shifted=priorDir!==\'open\'&&verdictDir!==\'open\'&&priorDir!==verdictDir');
   });
 
   it('defines socraticPrompts returning at most 3 prompts', () => {
