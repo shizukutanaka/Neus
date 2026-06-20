@@ -2252,9 +2252,11 @@ function socraticPrompts(word,events){
   const qs=(word.questions||[]);
   const openQs=openQuestions(word);
   // 優先順: 結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り
-  if(verdict==='answered'&&stale>0){
+  // verdictStale records staleness for ALL settled verdicts, so the challenge must fire for both.
+  if(SETTLED_VERDICTS.has(verdict)&&stale>0){
     // 反証条件があれば、漠然と「妥当か?」ではなく「その条件は現れたか?」と問える(鋭い論駁)。
     if(word.falsifier)out.push({key:'stale-falsifier',ja:`裁決後に${stale}件。あなたは「${word.falsifier}」なら覆ると述べた — それは現れたか?`,en:`${stale} new since your verdict. You said it changes if: "${word.falsifier}" — has it?`});
+    else if(verdict==='suspended')out.push({key:'stale-suspended',ja:`保留後に${stale}件の新情報。再検討の余地はあるか?`,en:`${stale} new item(s) arrived after suspension. Worth revisiting?`});
     else out.push({key:'stale',ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
   }
   // 反証条件を述べられない結論は知ではなく独断(可謬性の自己適用)。
@@ -2274,11 +2276,13 @@ function socraticPrompts(word,events){
 }
 // WORDSビュー俯瞰: 全探究の状態を一望する集計。裁決分布・要再検討・未確認・未収集・問答保留。純粋関数。
 function wordsOverview(words,all){
-  const o={total:words.length,answered:0,open:0,reexamine:0,unreviewed:0,prompts:0,uncollected:0};
+  const o={total:words.length,answered:0,converging:0,suspended:0,open:0,reexamine:0,unreviewed:0,prompts:0,uncollected:0};
   for(const w of words){
     const v=verdictOf(w);
     if(v==='answered')o.answered++;
-    if(v==='open')o.open++;
+    else if(v==='converging')o.converging++;
+    else if(v==='suspended')o.suspended++;
+    else o.open++;
     const tag='word:'+w.normalized;
     const items=all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived);
     if(verdictStale(w,items)>0)o.reexamine++;
@@ -2293,6 +2297,8 @@ function wordMatchesOv(w,all,filter){
   if(!filter)return true;
   const v=verdictOf(w);
   if(filter==='answered')return v==='answered';
+  if(filter==='converging')return v==='converging';
+  if(filter==='suspended')return v==='suspended';
   if(filter==='open')return v==='open';
   if(filter==='uncollected')return !w.lastCollectedAt;
   const tag='word:'+w.normalized;
@@ -2775,6 +2781,8 @@ async function renderWords(){
   const ov=wordsOverview(sorted,all);
   const ovChip=(key,label,alert)=>`<button class="word-ov-chip${alert?' ov-alert':''}${wordViewFilter===key?' ov-active':''}" data-wact="ovfilter" data-ov="${key}" aria-pressed="${wordViewFilter===key}">${label}</button>`;
   const ovChips=[ovChip('answered',`${currentLang==='ja'?'解決':'answered'} ${ov.answered}/${ov.total}`,false)];
+  if(ov.converging>0)ovChips.push(ovChip('converging',`${currentLang==='ja'?'収束中':'converging'} ${ov.converging}`,false));
+  if(ov.suspended>0)ovChips.push(ovChip('suspended',`${currentLang==='ja'?'保留':'suspended'} ${ov.suspended}`,false));
   if(ov.reexamine>0)ovChips.push(ovChip('reexamine',`${currentLang==='ja'?'要再検討':'re-examine'} ${ov.reexamine}`,true));
   if(ov.prompts>0)ovChips.push(ovChip('prompts',`${currentLang==='ja'?'問答':'prompts'} ${ov.prompts}`,false));
   if(ov.unreviewed>0)ovChips.push(ovChip('unreviewed',`${currentLang==='ja'?'未確認':'unreviewed'} ${ov.unreviewed}`,false));
@@ -3641,7 +3649,7 @@ async function openStatsModal(){
     <div class="stats-row"><span class="label">${t('stats.fts')}</span><span class="val">${fts.events} events / ${fts.words||0} words / ${fts.grams} grams</span></div>
     <div class="stats-row"><span class="label">${t('stats.summary')}</span><span class="val">${Summarizer.getDailyCount()}</span></div>
     <div class="stats-row"><span class="label">${t('stats.vault')}</span><span class="val">${vault.name?escapeHtml(vault.name)+' ('+vault.files+' files)':'-'}</span></div>
-    <div class="stats-row"><span class="label">${t('stats.words')}</span><span class="val">${wov.total} (${wov.answered} answered${wov.unreviewed>0?', '+wov.unreviewed+' unreviewed':''}${wov.reexamine>0?', '+wov.reexamine+' re-examine':''})</span></div>
+    <div class="stats-row"><span class="label">${t('stats.words')}</span><span class="val">${wov.total} (${wov.answered} answered${wov.converging>0?', '+wov.converging+' converging':''}${wov.suspended>0?', '+wov.suspended+' suspended':''}${wov.unreviewed>0?', '+wov.unreviewed+' unreviewed':''}${wov.reexamine>0?', '+wov.reexamine+' re-examine':''})</span></div>
     <div class="stats-row"><span class="label">${t('stats.keywords')}</span><span class="val">watch ${kw.watch.length} / block ${kw.block.length}</span></div>
     <div class="stats-row"><span class="label">${t('stats.interest')}</span><span class="val">${ip.vocab} ${t('stats.interest.words')}</span></div>
     ${ipPos.length>0?`<div class="stats-row"><span class="label">${t('stats.interest.like')}</span><span class="val" style="color:var(--warn);font-size:11px;text-align:right;">${ipPos.map(escapeHtml).join(', ')}</span></div>`:''}
