@@ -115,10 +115,12 @@ describe('signal-gap wiring (index.html)', () => {
     expect(html).toContain('const errs=word.lastErrors||{}');
   });
   it('records per-source errors on the word during collection', () => {
+    // fetchFeed returns a typed error per source; _collectOne records it as errors[label].
     expect(html).toContain("word.lastErrors=Object.keys(errors).length?errors:null");
-    expect(html).toContain("errors[label]='network'");
-    expect(html).toContain("errors[label]=`http_${res.status}`");
-    expect(html).toContain("errors[label]='parse'");
+    expect(html).toContain("return{label,source,error:'network'}");
+    expect(html).toContain("return{label,source,error:`http_${res.status}`}");
+    expect(html).toContain("return{label,source,error:'parse'}");
+    expect(html).toContain("errors[r.label]=r.error");
   });
   it('records Wikipedia failure even when a stale cached extract exists', () => {
     // Old code: `else if(!word.wiki?.extract)errors['Wikipedia']='fetch'` — if cached

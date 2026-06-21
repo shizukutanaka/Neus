@@ -123,7 +123,8 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 - 登録: WORDS ビューまたは modal で term を入力、収集ソースを選択して ADD
 - 既定ソース: `defaultSources()` が言語別に決定。`ja` は Wikipedia/News/Qiita/Zenn/Hatena を ON
   (Reddit/HN は OFF)、`en` は Wikipedia/News/Reddit/HN を ON。modal は開く時に同期、個別上書き可
-- 収集: 登録時 + POLL 時 + AutoSync 時に `WordCollector.collectAll()`
+- 収集: 登録時 + POLL 時 + AutoSync 時に `WordCollector.collectAll()`。各単語は
+  Wikipedia と全フィードを `Promise.all` で並列取得 (`fetchFeed` 単位)。語間は直列
   - 検索型 RSS (Google News / Reddit / HN / arXiv) は `/rss` 経由で検索フィードを取得し `parseFeed` で解析
   - JSON 検索 (Qiita) は公式 REST API v2 `qiita.com/api/v2/items?query=` を `/json` 経由で
     取得し、専用 `parse` で記事配列を raw に正規化 (全文検索、タグ非依存。ADR-0017)。

@@ -74,6 +74,18 @@ describe('collector guard wiring (index.html)', () => {
     expect(html).toContain('async function _collectOne(word)');
     expect(html).toContain('await _collectOne(w)');
   });
+  it('fetches Wikipedia and all feeds concurrently (independent I/O, not serial)', () => {
+    // Each feed is a fetchFeed unit; Wikipedia + feeds run under a single Promise.all
+    // so a word with N sources is one round-trip wide, not N deep.
+    expect(html).toContain('async function fetchFeed(word,key,q)');
+    expect(html).toContain('const keys=Object.keys(WORD_FEEDS).filter(k=>word.sources?.[k])');
+    expect(html).toContain('Promise.all(keys.map(k=>fetchFeed(word,k,q)))');
+    expect(html).toContain("word.sources?.wikipedia?fetchWiki(word):Promise.resolve(null)");
+  });
+  it('still publishes per-source inbound.error and accumulates the raw total', () => {
+    expect(html).toContain("Bus.publish('inbound.error',{source:r.source,error:r.error})");
+    expect(html).toContain('total+=r.items.length');
+  });
   it('wraps per-word _collectOne in try-catch so one failure does not abort the batch', () => {
     // A single bad word must not stop remaining words from being processed.
     expect(html).toContain("try{total+=await _collectOne(w);}catch(e){console.warn(");

@@ -1845,40 +1845,46 @@ const WordCollector=(()=>{
     for(const lang of langs){const w=await fetchWikiLang(word.term,lang);if(w)return w;}
     return null;
   }
+  // 1ソース分のフェッチ(並列実行の単位)。成功なら {label,source,items}、失敗なら {label,source,error}。
+  async function fetchFeed(word,key,q){
+    const feed=WORD_FEEDS[key],label=feed.label,isJson=feed.kind==='json';
+    const feedUrl=feed.build(q,word.lang||'en');
+    // wordTerm を付与すると正規化ハンドラが word: タグを付け、source.type を 'word' にする
+    const source={id:'word:'+word.id,type:'word',name:`${word.term} · ${label}`,url:feedUrl,wordTerm:word.normalized};
+    const proxyUrl=`${CONFIG.proxy}/${isJson?'json':'rss'}?url=${encodeURIComponent(feedUrl)}`;
+    // 一時的ネットワーク障害には1回だけリトライ(POLLの簡易版)
+    let res,netErr;
+    for(let attempt=0;attempt<2;attempt++){
+      if(attempt>0)await new Promise(r=>setTimeout(r,400));
+      try{res=await fetch(proxyUrl);netErr=null;break;}catch(e){netErr=e;}
+    }
+    if(netErr)return{label,source,error:'network'};
+    if(!res.ok)return{label,source,error:`http_${res.status}`};
+    // JSON ソースは専用 parse で raw に変換、RSS は既存の parseFeed を使う(どちらも {raw,source} に揃える)
+    try{const body=await res.text();const items=isJson?feed.parse(body).map(raw=>({raw,source})):RSSPoller.parseFeed(body,source);return{label,source,items};}
+    catch{return{label,source,error:'parse'};}
+  }
   // 1単語を収集(ロックなし内部実装): Wikipedia要約 + 有効な各検索フィードを取得し event パイプラインへ流す。
   async function _collectOne(word){
-    let total=0;
-    // 今回の収集で失敗したソースを記録。ソース種別(label)→エラーコード。
-    // これにより「沈黙(0件)」と「取得失敗」を区別できる(アポリアの誠実さ)。
+    // 今回の収集で失敗したソースを記録。label→エラーコード。「沈黙(0件)」と「取得失敗」を区別する。
     const errors={};
+    const q=encodeURIComponent((word.term||'').trim());
+    const keys=Object.keys(WORD_FEEDS).filter(k=>word.sources?.[k]);
+    // Wikipedia と各フィードは独立I/O。直列だと round-trip が積み上がるため並列取得する。
+    const [wiki,results]=await Promise.all([
+      word.sources?.wikipedia?fetchWiki(word):Promise.resolve(null),
+      Promise.all(keys.map(k=>fetchFeed(word,k,q))),
+    ]);
     if(word.sources?.wikipedia){
-      const wiki=await fetchWiki(word);
       if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
       // always record failure — a stale cached extract must not hide a fresh fetch error.
-      // signalGaps checks word.wiki?.extract separately and can show "errored but has cached data".
       else errors['Wikipedia']='fetch';
     }
-    const q=encodeURIComponent((word.term||'').trim());
-    for(const key of Object.keys(WORD_FEEDS)){
-      if(!word.sources?.[key])continue;
-      const feed=WORD_FEEDS[key],label=feed.label,isJson=feed.kind==='json';
-      const feedUrl=feed.build(q,word.lang||'en');
-      // wordTerm を付与すると正規化ハンドラが word: タグを付け、source.type を 'word' にする
-      const source={id:'word:'+word.id,type:'word',name:`${word.term} · ${label}`,url:feedUrl,wordTerm:word.normalized};
-      const proxyUrl=`${CONFIG.proxy}/${isJson?'json':'rss'}?url=${encodeURIComponent(feedUrl)}`;
-      // 一時的ネットワーク障害には1回だけリトライ(POLLの簡易版)
-      let res,netErr;
-      for(let attempt=0;attempt<2;attempt++){
-        if(attempt>0)await new Promise(r=>setTimeout(r,400));
-        try{res=await fetch(proxyUrl);netErr=null;break;}catch(e){netErr=e;}
-      }
-      if(netErr){errors[label]='network';Bus.publish('inbound.error',{source,error:'network'});continue;}
-      if(!res.ok){errors[label]=`http_${res.status}`;Bus.publish('inbound.error',{source,error:`http_${res.status}`});continue;}
-      let items;
-      // JSON ソースは専用 parse で raw に変換、RSS は既存の parseFeed を使う(どちらも {raw,source} に揃える)
-      try{const body=await res.text();items=isJson?feed.parse(body).map(raw=>({raw,source})):RSSPoller.parseFeed(body,source);}catch{errors[label]='parse';Bus.publish('inbound.error',{source,error:'parse'});continue;}
-      for(const raw of items)Bus.publish('inbound.fetched',raw);
-      total+=items.length;
+    let total=0;
+    for(const r of results){
+      if(r.error){errors[r.label]=r.error;Bus.publish('inbound.error',{source:r.source,error:r.error});continue;}
+      for(const raw of r.items)Bus.publish('inbound.fetched',raw);
+      total+=r.items.length;
     }
     // total は取得した生件数(重複排除・ブロック前)。fetched としてのみ意味を持つ。
     word.lastCollectedAt=Date.now();word.lastFetched=total;
