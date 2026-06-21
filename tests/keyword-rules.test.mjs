@@ -46,7 +46,7 @@ function applyRules(ev, rules) {
     if (r.action === 'delete') { skip = true; break; }
     if (r.action === 'archive') { ev.state.archived = true; ev.state.archivedAt = Date.now(); }
   }
-  if (!skip) {
+  if (!skip && !ev.state.archived) {
     for (const r of matched.watch) {
       if (r.action === 'star') ev.state.starred = true;
       if (r.action === 'highlight') ev.meta.score = Math.min(100, (ev.meta.score || 50) + 30);
@@ -228,6 +228,35 @@ describe('applyRules — block actions', () => {
     });
     expect(skip).toBe(true);
     expect(ev.state.starred).toBe(false); // watch未実行
+  });
+  it('block archive takes precedence: a block-archived event is not also starred', () => {
+    // A hidden (archived) but starred item is contradictory intent. Block wins.
+    const ev = fixtureEvent();
+    applyRules(ev, {
+      watch: [{ pattern: 'rust', mode: 'contains', scope: 'all', action: 'star' }],
+      block: [{ pattern: 'rust', mode: 'contains', scope: 'all', action: 'archive' }],
+    });
+    expect(ev.state.archived).toBe(true);
+    expect(ev.state.starred).toBe(false);   // watch star skipped
+  });
+  it('block archive also skips watch highlight/tag', () => {
+    const ev = fixtureEvent();
+    const before = ev.meta.score;
+    applyRules(ev, {
+      watch: [{ pattern: 'rust', mode: 'contains', scope: 'all', action: 'highlight' }],
+      block: [{ pattern: 'rust', mode: 'contains', scope: 'all', action: 'archive' }],
+    });
+    expect(ev.state.archived).toBe(true);
+    expect(ev.meta.score).toBe(before);     // no highlight boost on an archived item
+  });
+  it('watch still applies when the block rule does not match', () => {
+    const ev = fixtureEvent();
+    applyRules(ev, {
+      watch: [{ pattern: 'rust', mode: 'contains', scope: 'all', action: 'star' }],
+      block: [{ pattern: 'nomatch', mode: 'contains', scope: 'all', action: 'archive' }],
+    });
+    expect(ev.state.archived).toBe(false);
+    expect(ev.state.starred).toBe(true);    // block didn't fire, watch applies normally
   });
 });
 

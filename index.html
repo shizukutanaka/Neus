@@ -1560,7 +1560,9 @@ const KeywordRules=(()=>{
       if(r.action==='archive'){ev.state.archived=true;ev.state.archivedAt=Date.now();}
     }
     if(skip)return true;
-    for(const r of matched.watch){
+    // block 優先: block ルールがこの Event をアーカイブしたら watch アクション(star/highlight/tag)は
+    // 適用しない。隠す(archive)と強調する(star)が同時に効くのは矛盾した意図のため。
+    if(!ev.state.archived)for(const r of matched.watch){
       if(r.action==='star')ev.state.starred=true;
       if(r.action==='highlight')ev.meta.score=Math.min(100,(ev.meta.score||50)+30);
       if(r.action==='tag'){const tag=`watch:${r.pattern}`;if(!(ev.meta.autoTags||[]).includes(tag))ev.meta.autoTags=[...(ev.meta.autoTags||[]),tag];}
@@ -2653,7 +2655,8 @@ const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starr
 
 async function refreshCounts(){
   $('#cnt-inbox').textContent=await Store.countUnread();
-  $('#cnt-all').textContent=await Store.countAll();
+  // ALL ビューは {archived:false} で描画するので、バッジも非アーカイブ件数に揃える(countAll は総数)
+  $('#cnt-all').textContent=(await Store.countAll())-(await Store.countArchived());
   $('#cnt-starred').textContent=await Store.countStarred();
   $('#cnt-archived').textContent=await Store.countArchived();
   // LATER count: listEvents scan (no dedicated index, OK for <500 items)

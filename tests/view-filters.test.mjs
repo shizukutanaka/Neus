@@ -73,4 +73,11 @@ describe('view filter wiring (index.html)', () => {
   it('resets the keyboard cursor when a tag/source filter is applied', () => {
     expect(html).toContain('function applyFilter(type,value){activeFilter={type,value};kbCursor=-1;');
   });
+  it('ALL badge counts non-archived (matches the {archived:false} view, not countAll)', () => {
+    // countAll includes archived; the ALL view excludes it, so the badge subtracts archived.
+    expect(html).toContain('$(\'#cnt-all\').textContent=(await Store.countAll())-(await Store.countArchived());');
+  });
+  it('block-archive takes precedence over watch actions in KeywordRules.apply', () => {
+    expect(html).toContain('if(!ev.state.archived)for(const r of matched.watch){');
+  });
 });
