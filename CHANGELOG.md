@@ -6,6 +6,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+- **LATER ビューが機能していなかった**: `Store.listEvents` が `read`/`starred`/`archived` フィルタしか見ておらず `later` を無視していたため、LATER ビューは「後で読む」キューではなく非アーカイブの全件を表示し、LATER カウントも誤っていた。`later` フィルタを追加(`!!ev.state.later` で旧データの未設定も安全に not-later 扱い)。アーカイブ済みは LATER から外れ ARCHIVED に出る挙動は不変 / Fix the LATER view: listEvents ignored the later filter, so LATER showed all non-archived items
+- **タグ/ソース絞り込み時にキーボードカーソルをリセット**: `applyFilter` がフィルタ適用で再描画する際 `kbCursor` を据え置いていたため、j/k カーソルの位置表示が新しいリストとずれていた(範囲チェックがありクラッシュはしない)。ナビ切替と同様に `kbCursor=-1` にリセット / Reset the keyboard cursor when a tag/source filter is applied
+
 ### Changed
 - **単語収集を並列フェッチ化**: `_collectOne` は Wikipedia と各検索フィードを直列に取得していたため、ソースが多い単語ほど round-trip が積み上がり遅かった。1ソース分を `fetchFeed` ヘルパーに切り出し、Wikipedia と全フィードを単一の `Promise.all` で並列取得するよう変更(独立I/O)。エラー分類(network/http_/parse)・`inbound.error` 発行・生件数 total・lastErrors の意味は不変。語間は従来どおり直列で、同時接続はソース数(≤8)に収まる / Parallelize per-word collection (Wikipedia + all feeds via one Promise.all) instead of serial fetches
 - **新規 watchword の既定ソースを言語別に**: 日本語ソース(Qiita/Zenn/Hatena)が言語に関わらず常に既定 OFF で、日本語ユーザーは単語ごとに毎回 3 つ手動で有効化する必要があった。`defaultSources()` を追加し、`currentLang==='ja'` では Qiita/Zenn/Hatena を既定 ON・英語中心の Reddit/HN を OFF に、英語では従来どおりに切替。WORDS モーダルを開いた時もソースチェックボックスを言語既定に同期。Wikipedia/Google News は両言語で常時 ON。ユーザーは個別トグルで上書き可能 / Language-aware default sources for new watchwords (JA users get Qiita/Zenn/Hatena on by default)
