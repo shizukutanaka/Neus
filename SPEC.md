@@ -133,7 +133,9 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
   - 検索 RSS (Hatena=はてなブックマーク) は `b.hatena.ne.jp/search/text?q={term}&mode=rss` を
     `/rss` 経由で取得。単一プラットフォームではなく日本語Web全体の被ブックマーク記事を横断
   - Wikipedia 要約は `/json` 経由で取得 (Wikipedia/Wikimedia 許可リスト)
-  - 取得アイテムは `inbound.fetched` で既存パイプラインに投入、`word:{term}` を付与
+  - 取得アイテムは `inbound.fetched` で既存パイプラインに投入、`word:{term}` を付与。
+    ソースが `raw.tags` を提供する場合 (例 Qiita 記事タグ) は小文字化・重複排除・上限8件で
+    `autoTags` に取り込み、実タグで検索・フィルタ可能にする
 - 重複: 別単語が同記事を収集した場合、hash 重複として既存イベントに
   incoming の `word:X` タグを Set 合一でマージ (両単語のビューに出る)
 - 出力: 単語ごとに DOSSIER (Markdown) / JSON / Vault。Vault は `{Vault}/neus/words/{slug}.md`

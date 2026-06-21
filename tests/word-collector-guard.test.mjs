@@ -134,3 +134,38 @@ describe('cross-word dedup autoTag merge (index.html)', () => {
     expect(html).toContain('if(merged.length!==(existing.meta.autoTags||[]).length)');
   });
 });
+
+describe('source-provided content tags -> autoTags (modeled)', () => {
+  // Mirror of the inbound.fetched enrichment: word: tag first, then content tags
+  // (e.g. Qiita article tags), lowercased, de-duplicated, capped at 8.
+  function buildAutoTags(source, raw) {
+    const autoTags = source.wordTerm ? ['word:' + source.wordTerm] : [];
+    if (Array.isArray(raw.tags)) for (const t of raw.tags) { const tag = String(t).trim().toLowerCase(); if (tag && autoTags.length < 8 && !autoTags.includes(tag)) autoTags.push(tag); }
+    return autoTags;
+  }
+  it('prepends the word tag, then appends lowercased content tags', () => {
+    expect(buildAutoTags({ wordTerm: 'rust' }, { tags: ['WebAssembly', 'Performance'] }))
+      .toEqual(['word:rust', 'webassembly', 'performance']);
+  });
+  it('de-duplicates and ignores blanks', () => {
+    expect(buildAutoTags({ wordTerm: 'rust' }, { tags: ['Rust', 'rust', '', '  ', 'wasm'] }))
+      .toEqual(['word:rust', 'rust', 'wasm']);
+  });
+  it('caps total autoTags at 8', () => {
+    const many = Array.from({ length: 20 }, (_, i) => 'tag' + i);
+    expect(buildAutoTags({ wordTerm: 'x' }, { tags: many }).length).toBe(8);
+  });
+  it('handles a source with no tags field', () => {
+    expect(buildAutoTags({ wordTerm: 'rust' }, {})).toEqual(['word:rust']);
+    expect(buildAutoTags({}, {})).toEqual([]);
+  });
+});
+
+describe('content-tag enrichment wiring (index.html)', () => {
+  it('Qiita parse surfaces article tag names as raw.tags', () => {
+    expect(html).toContain('tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean)');
+  });
+  it('inbound.fetched merges raw.tags into autoTags (lowercase, dedupe, cap 8)', () => {
+    expect(html).toContain('if(Array.isArray(raw.tags))for(const t of raw.tags){const tag=String(t).trim().toLowerCase();if(tag&&autoTags.length<8&&!autoTags.includes(tag))autoTags.push(tag);}');
+  });
+});

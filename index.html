@@ -1802,9 +1802,10 @@ const WORD_FEEDS={
   // タグフィードより網羅的。kind:'json' は /json プロキシ + 専用 parse を使う分岐の目印。
   // 概要は rendered_body(HTML)を優先: body(Markdown)を剥がすと # * ` 等の記号が残るため。
   // タグ除去→エンティティ復号の順(順序を逆にすると &lt;x&gt; が偽タグ扱いで欠落する)。
+  // 記事タグ(最大5件)は raw.tags として渡し、正規化ハンドラが autoTags に取り込む。
   qiita: {label:'Qiita', kind:'json',
     build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||''}))},
+    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean)}))},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   zenn:  {label:'Zenn', build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},
@@ -1905,6 +1906,8 @@ Bus.subscribe('inbound.fetched',async({raw,source})=>{
   const hash=await sha256(raw.link+'|'+raw.title);
   // word由来のソースは word:{term} 自動タグを付与し、ソース種別を 'word' にする
   const autoTags=source.wordTerm?['word:'+source.wordTerm]:[];
+  // ソース提供のコンテンツタグ(例 Qiita 記事タグ)を取り込む。小文字化・重複排除・上限8件。
+  if(Array.isArray(raw.tags))for(const t of raw.tags){const tag=String(t).trim().toLowerCase();if(tag&&autoTags.length<8&&!autoTags.includes(tag))autoTags.push(tag);}
   const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:raw.link,hash};
   Bus.publish('event.normalized',ev);
 });

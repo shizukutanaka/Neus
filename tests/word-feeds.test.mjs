@@ -30,7 +30,7 @@ const decodeEntities = (s) => { if (!s || s.indexOf('&') < 0) return s; const ta
 const JSON_FEEDS = {
   qiita: { label: 'Qiita', kind: 'json',
     build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '' })) },
+    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean) })) },
 };
 // Zenn: tag/topic Atom feed (no official search API), routed through /rss.
 const TAG_FEEDS = {
@@ -130,6 +130,14 @@ describe('Qiita JSON search feed (official REST API v2)', () => {
   it('falls back to body when rendered_body is absent', () => {
     const sample = JSON.stringify([{ title: 'T', url: 'u', body: 'plain body text', created_at: '', user: { id: 'a' } }]);
     expect(JSON_FEEDS.qiita.parse(sample)[0].summary).toBe('plain body text');
+  });
+  it('surfaces the article tags as raw.tags (for autoTag enrichment)', () => {
+    const sample = JSON.stringify([{ title: 'T', url: 'u', created_at: '', user: { id: 'a' }, tags: [{ name: 'Rust' }, { name: 'WebAssembly' }] }]);
+    expect(JSON_FEEDS.qiita.parse(sample)[0].tags).toEqual(['Rust', 'WebAssembly']);
+  });
+  it('defaults to an empty tag list when the item has none', () => {
+    const sample = JSON.stringify([{ title: 'T', url: 'u', created_at: '', user: { id: 'a' } }]);
+    expect(JSON_FEEDS.qiita.parse(sample)[0].tags).toEqual([]);
   });
   it('caps the summary length and tolerates a missing title', () => {
     const sample = JSON.stringify([{ url: 'u', rendered_body: 'x'.repeat(900), created_at: '', user: { id: 'b' } }]);
