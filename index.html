@@ -1702,6 +1702,9 @@ const Bookmarklet={
 };
 
 // ===== RSS POLLER =======================================================
+// エンゲージメント信号(Qiita いいね / Hatena ブックマーク数等)を控えめなスコアブーストに
+// 変換する共有ヘルパー。基準50・対数スケール・上限+25。信号0は50で他ソースと同等。
+function engagementScore(n){return 50+Math.min(25,Math.round(Math.log10((n||0)+1)*12));}
 const RSSPoller=(()=>{
   // HTMLエンティティをデコード(タイトル等の &amp; &#39; 等)
   function decodeEntities(s){
@@ -1731,11 +1734,14 @@ const RSSPoller=(()=>{
         const mc=item.querySelector('content[url], thumbnail[url]');
         if(enc)media={url:enc.getAttribute('url'),type:enc.getAttribute('type')||''};
         else if(mc)media={url:mc.getAttribute('url'),type:mc.getAttribute('type')||''};
+        // Hatena ブックマーク数があればエンゲージメントスコアに反映(他フィードでは要素が無く no-op)
+        const bmc=Number(get('hatena\\:bookmarkcount'))||0;
         items.push({raw:{
           title,link:normalizeUrl(link),summary,
           publishedAt:pubDate?Date.parse(pubDate)||undefined:undefined,
           author:decodeEntities(get('author > name')||get('author')||get('dc\\:creator')||''),
           media,
+          ...(bmc>0?{score:engagementScore(bmc)}:{}),
         },source});
       }catch{/* skip malformed item, keep the rest */}
     }
@@ -1806,7 +1812,7 @@ const WORD_FEEDS={
   // likes_count をスコアの控えめなブースト(+0..25、対数)に使い、人気記事をダイジェスト上位へ。
   qiita: {label:'Qiita', kind:'json',
     build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:50+Math.min(25,Math.round(Math.log10((it.likes_count||0)+1)*12))}))},
+    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)}))},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   zenn:  {label:'Zenn', build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},

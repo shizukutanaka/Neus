@@ -137,8 +137,9 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
   - Wikipedia 要約は `/json` 経由で取得 (Wikipedia/Wikimedia 許可リスト)
   - 取得アイテムは `inbound.fetched` で既存パイプラインに投入、`word:{term}` を付与。
     ソースが `raw.tags` を提供する場合 (例 Qiita 記事タグ) は小文字化・重複排除・上限8件で
-    `autoTags` に取り込み、実タグで検索・フィルタ可能にする。`raw.score` を提供する場合
-    (例 Qiita の likes_count 由来、対数 +0..25) はイベント `meta.score` の初期値に使う
+    `autoTags` に取り込み、実タグで検索・フィルタ可能にする。エンゲージメント信号
+    (Qiita `likes_count` / Hatena `hatena:bookmarkcount`) は共有 `engagementScore()`
+    (基準50・対数・上限+25) で `meta.score` 初期値に変換し、人気記事を上位へ
 - 重複: 別単語が同記事を収集した場合、hash 重複として既存イベントに
   incoming の `word:X` タグを Set 合一でマージ (両単語のビューに出る)
 - 出力: 単語ごとに DOSSIER (Markdown) / JSON / Vault。Vault は `{Vault}/neus/words/{slug}.md`

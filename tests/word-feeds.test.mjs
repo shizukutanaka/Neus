@@ -27,10 +27,12 @@ const SEARCH_FEEDS = {
 // Mirror of index.html: prefer rendered_body (HTML) over body (Markdown); strip tags then
 // decode entities (textarea trick works under jsdom, matching RSSPoller.decodeEntities).
 const decodeEntities = (s) => { if (!s || s.indexOf('&') < 0) return s; const ta = document.createElement('textarea'); ta.innerHTML = s; return ta.value; };
+// Shared engagement -> score helper (mirror of index.html engagementScore).
+const engagementScore = (n) => 50 + Math.min(25, Math.round(Math.log10((n || 0) + 1) * 12));
 const JSON_FEEDS = {
   qiita: { label: 'Qiita', kind: 'json',
     build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean), score: 50 + Math.min(25, Math.round(Math.log10((it.likes_count || 0) + 1) * 12)) })) },
+    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean), score: engagementScore(it.likes_count) })) },
 };
 // Zenn: tag/topic Atom feed (no official search API), routed through /rss.
 const TAG_FEEDS = {
@@ -86,6 +88,29 @@ describe('Hatena Bookmark search feed (cross-platform JP aggregator)', () => {
   });
   it('produces a parseable URL for empty input (graceful, not crash)', () => {
     expect(() => new URL(SEARCH_FEEDS.hatena.build(encodeURIComponent('')))).not.toThrow();
+  });
+});
+
+describe('engagementScore — shared signal-to-score curve', () => {
+  it('returns 50 at zero/absent signal (parity with other sources)', () => {
+    expect(engagementScore(0)).toBe(50);
+    expect(engagementScore(undefined)).toBe(50);
+    expect(engagementScore(null)).toBe(50);
+  });
+  it('boosts logarithmically and caps at +25', () => {
+    expect(engagementScore(9)).toBe(62);     // log10(10)=1 -> +12
+    expect(engagementScore(99)).toBe(74);    // log10(100)=2 -> +24
+    expect(engagementScore(999)).toBe(75);   // +36 -> capped at +25
+    expect(engagementScore(1e9)).toBe(75);   // stays capped
+  });
+  it('is monotonic non-decreasing in the signal', () => {
+    let prev = -1;
+    for (const n of [0, 1, 5, 20, 80, 300, 5000]) { const s = engagementScore(n); expect(s).toBeGreaterThanOrEqual(prev); prev = s; }
+  });
+  it('Qiita likes and Hatena bookmarks map through the same curve', () => {
+    // A Qiita item with 99 likes and a Hatena item with 99 bookmarks get the same score.
+    const qiitaScore = JSON_FEEDS.qiita.parse(JSON.stringify([{ url: 'u', created_at: '', user: { id: 'a' }, likes_count: 99 }]))[0].score;
+    expect(qiitaScore).toBe(engagementScore(99));
   });
 });
 
@@ -253,8 +278,13 @@ describe('WORD_FEEDS source-drift guard (index.html)', () => {
     expect(html).toContain('return{fetchOne,fetchAll,parseFeed,decodeEntities}');
   });
   it('Qiita parse derives an engagement score and the handler honors raw.score', () => {
-    expect(html).toContain('score:50+Math.min(25,Math.round(Math.log10((it.likes_count||0)+1)*12))');
+    expect(html).toContain('score:engagementScore(it.likes_count)');
     expect(html).toContain('score:typeof raw.score===\'number\'?raw.score:50');
+  });
+  it('shares one engagementScore helper and parseFeed reads Hatena bookmark count', () => {
+    expect(html).toContain('function engagementScore(n){return 50+Math.min(25,Math.round(Math.log10((n||0)+1)*12));}');
+    expect(html).toContain("const bmc=Number(get('hatena\\\\:bookmarkcount'))||0;");
+    expect(html).toContain('...(bmc>0?{score:engagementScore(bmc)}:{}),');
   });
   it('exposes opt-in toggles in the watchword modal (default off, like arXiv)', () => {
     expect(html).toContain('id="wsrc-qiita"');
