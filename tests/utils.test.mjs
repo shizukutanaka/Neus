@@ -99,6 +99,20 @@ describe('normalizeUrl', () => {
   });
 });
 
+describe('dedup key uses the normalized URL (pipeline entry)', () => {
+  // inbound.fetched hashes sha256(normalizeUrl(raw.link)+'|'+title), so the same article
+  // fetched via different feeds (tracking params, fragment) collapses to one dedup key.
+  it('collapses tracking-param and fragment variants to one key', () => {
+    const a = normalizeUrl('https://ex.com/a?utm_source=x&id=1');
+    const b = normalizeUrl('https://ex.com/a?id=1#top');
+    expect(a).toBe(b);                 // identical normalized key -> identical hash -> dedup
+    expect(a).toBe('https://ex.com/a?id=1');
+  });
+  it('keeps genuinely different URLs distinct', () => {
+    expect(normalizeUrl('https://ex.com/a')).not.toBe(normalizeUrl('https://ex.com/b'));
+  });
+});
+
 describe('jaccard', () => {
   it('returns 1.0 for identical sets', () => {
     const A = new Set(['a', 'b', 'c']);

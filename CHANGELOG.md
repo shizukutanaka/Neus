@@ -7,6 +7,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Fixed
+- **重複排除の URL 正規化をパイプライン入口で一元化**: dedup ハッシュ `sha256(raw.link+'|'+title)` の `raw.link` が、RSS は `parseFeed` で正規化済みだが JSON ソース(Qiita)は未正規化だった。同一記事が trivial な URL 差(トラッキングパラメータ・フラグメント)で重複し得たため、`inbound.fetched` 入口で `normalizeUrl` を一元適用し、`url` と `hash` を揃えた(RSS は冪等のため不変、Qiita の正規 URL もハッシュ不変=既存データ移行影響なし)/ Normalize the URL once at the pipeline entry so cross-source dedup isn't defeated by tracking params/fragments (Qiita path was unnormalized)
 - **ALL ビューのバッジが件数不一致**: `cnt-all` は `countAll()`(アーカイブ込み総数)を表示する一方、ALL ビューは `{archived:false}` で描画していたため、アーカイブがあるとバッジが実表示より多く出ていた。バッジを `countAll()-countArchived()` に修正(`countAll` の他5箇所の「総数」用途は不変)/ Fix ALL badge to count non-archived items (matching the view), not the archived-inclusive total
 - **キーワードルール: block が watch より優先**: 同一 Event が block:archive と watch:star の両方に一致すると、アーカイブ(非表示)かつスター(強調)という矛盾状態になっていた。block ルールがアーカイブした Event には watch アクション(star/highlight/tag)を適用しないよう変更(delete が watch を飛ばす既存挙動と一貫)。block 不一致時は watch は従来どおり適用 / KeywordRules: a block-archived event is no longer also starred/highlighted (block precedence)
 - **LATER ビューが機能していなかった**: `Store.listEvents` が `read`/`starred`/`archived` フィルタしか見ておらず `later` を無視していたため、LATER ビューは「後で読む」キューではなく非アーカイブの全件を表示し、LATER カウントも誤っていた。`later` フィルタを追加(`!!ev.state.later` で旧データの未設定も安全に not-later 扱い)。アーカイブ済みは LATER から外れ ARCHIVED に出る挙動は不変 / Fix the LATER view: listEvents ignored the later filter, so LATER showed all non-archived items

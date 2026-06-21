@@ -1918,12 +1918,16 @@ const WordCollector=(()=>{
 
 // ===== PROCESSORS =======================================================
 Bus.subscribe('inbound.fetched',async({raw,source})=>{
-  const hash=await sha256(raw.link+'|'+raw.title);
+  // パイプライン入口で URL を正規化(fragment/トラッキングパラメータ除去)してから hash を取る。
+  // RSS は parseFeed で正規化済み(冪等)だが、JSON ソース(Qiita 等)や将来の経路でも
+  // 同一記事が trivial な URL 差で重複しないよう、ここで一元的に正規化し url/hash を揃える。
+  const link=normalizeUrl(raw.link||'');
+  const hash=await sha256(link+'|'+raw.title);
   // word由来のソースは word:{term} 自動タグを付与し、ソース種別を 'word' にする
   const autoTags=source.wordTerm?['word:'+source.wordTerm]:[];
   // ソース提供のコンテンツタグ(例 Qiita 記事タグ)を取り込む。小文字化・重複排除・上限8件。
   if(Array.isArray(raw.tags))for(const t of raw.tags){const tag=String(t).trim().toLowerCase();if(tag&&autoTags.length<8&&!autoTags.includes(tag))autoTags.push(tag);}
-  const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:typeof raw.score==='number'?raw.score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:raw.link,hash};
+  const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:typeof raw.score==='number'?raw.score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:link,hash};
   Bus.publish('event.normalized',ev);
 });
 

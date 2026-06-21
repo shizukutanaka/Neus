@@ -145,6 +145,13 @@ describe('cross-word dedup autoTag merge (index.html)', () => {
     // Avoid spurious writes when both events already share the same tags.
     expect(html).toContain('if(merged.length!==(existing.meta.autoTags||[]).length)');
   });
+  it('normalizes the URL at the pipeline entry before hashing (cross-source dedup)', () => {
+    // RSS links are normalized in parseFeed, but JSON sources (Qiita) and future paths
+    // were not. Normalize once here so trivial URL variants dedup, and url/hash stay consistent.
+    expect(html).toContain("const link=normalizeUrl(raw.link||'');");
+    expect(html).toContain("const hash=await sha256(link+'|'+raw.title);");
+    expect(html).toContain('links:[],url:link,hash};');
+  });
 });
 
 describe('source-provided content tags -> autoTags (modeled)', () => {
