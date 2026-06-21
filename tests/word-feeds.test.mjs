@@ -177,6 +177,53 @@ describe('Zenn tag feed (no official search API)', () => {
   });
 });
 
+describe('language-aware default sources (modeled)', () => {
+  // Mirror of defaultSources() in index.html.
+  const defaultSources = (lang) => lang === 'ja'
+    ? { wikipedia: true, news: true, reddit: false, hn: false, arxiv: false, qiita: true, zenn: true, hatena: true }
+    : { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false };
+
+  it('enables the Japanese sources by default for ja users', () => {
+    const ja = defaultSources('ja');
+    expect(ja.qiita).toBe(true);
+    expect(ja.zenn).toBe(true);
+    expect(ja.hatena).toBe(true);
+  });
+  it('drops English-centric Reddit/HN for ja users', () => {
+    const ja = defaultSources('ja');
+    expect(ja.reddit).toBe(false);
+    expect(ja.hn).toBe(false);
+  });
+  it('keeps the original English defaults for en users (JP sources off)', () => {
+    const en = defaultSources('en');
+    expect(en).toEqual({ wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false });
+  });
+  it('always enables the universal sources (Wikipedia + Google News)', () => {
+    for (const lang of ['ja', 'en']) {
+      expect(defaultSources(lang).wikipedia).toBe(true);
+      expect(defaultSources(lang).news).toBe(true);
+    }
+  });
+  it('declares the same source keys regardless of language', () => {
+    expect(Object.keys(defaultSources('ja')).sort()).toEqual(Object.keys(defaultSources('en')).sort());
+  });
+});
+
+describe('language-aware defaults wiring (index.html)', () => {
+  it('defines defaultSources() switching on currentLang', () => {
+    expect(html).toContain('function defaultSources()');
+    expect(html).toContain("return currentLang==='ja'");
+    expect(html).toContain('{wikipedia:true,news:true,reddit:false,hn:false,arxiv:false,qiita:true,zenn:true,hatena:true}');
+  });
+  it('word creation and import use defaultSources() (no hardcoded literal)', () => {
+    expect(html).toContain('sources:defaultSources()');
+    expect(html).not.toContain('sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false}');
+  });
+  it('the words modal syncs its source checkboxes to the language default on open', () => {
+    expect(html).toContain("const ds=defaultSources();for(const k of Object.keys(ds)){const cb=$('#wsrc-'+k);if(cb)cb.checked=ds[k];}");
+  });
+});
+
 describe('WORD_FEEDS source-drift guard (index.html)', () => {
   it('declares qiita (JSON search), zenn (tag feed) and hatena (search RSS) as collectable sources', () => {
     expect(html).toContain("qiita: {label:'Qiita', kind:'json',");

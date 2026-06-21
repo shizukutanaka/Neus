@@ -2136,6 +2136,14 @@ function renameWordPlan(word,newTerm,existingTaken){
   if(retag&&existingTaken)return{error:'conflict'};
   return{patch:{term,normalized},retag};
 }
+// 新規 watchword の既定ソース。言語に応じて切替える: 日本語ユーザーは Qiita/Zenn/Hatena を
+// 既定 ON(英語中心の Reddit/HN は OFF)。英語ユーザーは従来どおり。毎回 3 つ手動で有効化する
+// 手間を省く。ユーザーは個別トグルで上書き可能。
+function defaultSources(){
+  return currentLang==='ja'
+    ?{wikipedia:true,news:true,reddit:false,hn:false,arxiv:false,qiita:true,zenn:true,hatena:true}
+    :{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false};
+}
 // インポート用: ドシエJSON(schema 1/2)から word オブジェクトを安全に再構成。無効なら null。
 function wordFromImport(dump){
   if(!dump||dump.kind!=='word-dossier'||!dump.word)return null;
@@ -2147,7 +2155,7 @@ function wordFromImport(dump){
     id:uuid(),term,normalized:normalizeTerm(term),lang:w.lang||'en',
     note:w.note||'',questionHistory:Array.isArray(w.questionHistory)?w.questionHistory:[],
     priorBelief:w.priorBelief||'curious',
-    sources:(w.sources&&typeof w.sources==='object')?w.sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false},
+    sources:(w.sources&&typeof w.sources==='object')?w.sources:defaultSources(),
     enabled:w.enabled!==false,
     verdict:{status:w.verdict?.status||'open',note:w.verdict?.note||''},verdictAt:w.verdictAt||null,
     verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[],falsifier:typeof w.falsifier==='string'?w.falsifier:'',
@@ -2988,7 +2996,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:defaultSources(),enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     try{await WordCollector.collectOne(word);}catch(e){console.warn('[WordCollector] initial collect failed:',e);}finally{await refreshCounts();await renderView();}return;
@@ -3204,7 +3212,7 @@ $('#view').addEventListener('click',async(e)=>{
     const term=(rwBtn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
     if(await Store.findWordByTerm(normalized)){wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
-    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
+    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:defaultSources(),enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);await refreshCounts();
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
@@ -3556,7 +3564,7 @@ async function renderWordList(){
     </div>`;
   }).join('');
 }
-async function openWordsModal(){await renderWordList();$('#modal-words').classList.add('show');$('#word-input').focus();}
+async function openWordsModal(){const ds=defaultSources();for(const k of Object.keys(ds)){const cb=$('#wsrc-'+k);if(cb)cb.checked=ds[k];}await renderWordList();$('#modal-words').classList.add('show');$('#word-input').focus();}
 $('#btn-words').addEventListener('click',openWordsModal);
 $('#word-cancel').addEventListener('click',()=>{$('#modal-words').classList.remove('show');if(currentView==='words')renderView();});
 $('#modal-words').addEventListener('click',(e)=>{if(e.target.id==='modal-words'){$('#modal-words').classList.remove('show');if(currentView==='words')renderView();}});

@@ -6,6 +6,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+- **新規 watchword の既定ソースを言語別に**: 日本語ソース(Qiita/Zenn/Hatena)が言語に関わらず常に既定 OFF で、日本語ユーザーは単語ごとに毎回 3 つ手動で有効化する必要があった。`defaultSources()` を追加し、`currentLang==='ja'` では Qiita/Zenn/Hatena を既定 ON・英語中心の Reddit/HN を OFF に、英語では従来どおりに切替。WORDS モーダルを開いた時もソースチェックボックスを言語既定に同期。Wikipedia/Google News は両言語で常時 ON。ユーザーは個別トグルで上書き可能 / Language-aware default sources for new watchwords (JA users get Qiita/Zenn/Hatena on by default)
+
 ### Added
 - **収集アイテムのコンテンツタグ取り込み**: Qiita 記事は固有のタグ(最大5件、例 "Rust"/"WebAssembly")を持つが破棄していた。`parse` が `raw.tags` として渡し、`inbound.fetched` 正規化が `word:{term}` に続けて小文字化・重複排除・上限8件で `autoTags` に取り込むよう変更。収集記事が実タグで検索・フィルタ・関連付けの対象になる(汎用実装のため将来の JSON ソースにも適用) / Import source-provided content tags (e.g. Qiita article tags) into autoTags for searchability
 - **はてなブックマークを収集ソースに追加**: Qiita/Zenn は単一プラットフォームの記事に閉じるが、はてブは日本語Web全体の被ブックマーク記事を横断する全文検索 RSS(`b.hatena.ne.jp/search/text?q=...&mode=rss`)を提供する。検索語を verbatim で渡す検索フィードのため既存 `/rss` プロキシをそのまま再利用(ワーカー変更不要)。デフォルト OFF(arXiv と同じ opt-in)。なお note.com はタグ全文検索 RSS が貧弱、connpass はイベント主体かつ JSON 許可リスト拡張が必要なため今回は見送り / Add Hatena Bookmark full-text search RSS as a cross-platform Japanese aggregator source (reuses /rss, no Worker change)
