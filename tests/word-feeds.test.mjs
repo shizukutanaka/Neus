@@ -30,7 +30,7 @@ const decodeEntities = (s) => { if (!s || s.indexOf('&') < 0) return s; const ta
 const JSON_FEEDS = {
   qiita: { label: 'Qiita', kind: 'json',
     build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean) })) },
+    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean), score: 50 + Math.min(25, Math.round(Math.log10((it.likes_count || 0) + 1) * 12)) })) },
 };
 // Zenn: tag/topic Atom feed (no official search API), routed through /rss.
 const TAG_FEEDS = {
@@ -139,6 +139,17 @@ describe('Qiita JSON search feed (official REST API v2)', () => {
     const sample = JSON.stringify([{ title: 'T', url: 'u', created_at: '', user: { id: 'a' } }]);
     expect(JSON_FEEDS.qiita.parse(sample)[0].tags).toEqual([]);
   });
+  it('derives a gentle engagement score from likes_count (log-scaled, capped at +25)', () => {
+    const score = (likes) => JSON_FEEDS.qiita.parse(JSON.stringify([{ url: 'u', created_at: '', user: { id: 'a' }, likes_count: likes }]))[0].score;
+    expect(score(0)).toBe(50);     // no likes -> parity with other sources
+    expect(score(9)).toBe(62);     // log10(10)=1 -> +12
+    expect(score(99)).toBe(74);    // log10(100)=2 -> +24
+    expect(score(99999)).toBe(75); // capped at +25
+  });
+  it('defaults the score to 50 when likes_count is absent', () => {
+    const sample = JSON.stringify([{ title: 'T', url: 'u', created_at: '', user: { id: 'a' } }]);
+    expect(JSON_FEEDS.qiita.parse(sample)[0].score).toBe(50);
+  });
   it('caps the summary length and tolerates a missing title', () => {
     const sample = JSON.stringify([{ url: 'u', rendered_body: 'x'.repeat(900), created_at: '', user: { id: 'b' } }]);
     const r = JSON_FEEDS.qiita.parse(sample)[0];
@@ -240,6 +251,10 @@ describe('WORD_FEEDS source-drift guard (index.html)', () => {
   it('Qiita parse prefers rendered_body and decodes entities via the shared helper', () => {
     expect(html).toContain('RSSPoller.decodeEntities((it.rendered_body||it.body||\'\').replace(/<[^>]+>/g,\'\'))');
     expect(html).toContain('return{fetchOne,fetchAll,parseFeed,decodeEntities}');
+  });
+  it('Qiita parse derives an engagement score and the handler honors raw.score', () => {
+    expect(html).toContain('score:50+Math.min(25,Math.round(Math.log10((it.likes_count||0)+1)*12))');
+    expect(html).toContain('score:typeof raw.score===\'number\'?raw.score:50');
   });
   it('exposes opt-in toggles in the watchword modal (default off, like arXiv)', () => {
     expect(html).toContain('id="wsrc-qiita"');
