@@ -1798,10 +1798,12 @@ const WORD_FEEDS={
   hn:    {label:'Hacker News',  build:(q)=>`https://hnrss.org/newest?q=${q}&count=30`},
   arxiv: {label:'arXiv',        build:(q)=>`https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30`},
   // Qiita/Zenn はキーワード検索 RSS を提供しない。代わりにタグ/トピックの Atom フィードを使う。
-  // 用語をタグスラグ(小文字・空白はハイフン)へ正規化して当てる。一致タグが無ければ 404 が
-  // lastErrors に http_404 として記録され、signalGaps が「取得失敗」として誠実に表示する。
-  qiita: {label:'Qiita',        build:(q)=>`https://qiita.com/tags/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/\s+/g,'-'))}/feed`},
-  zenn:  {label:'Zenn',         build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/\s+/g,'-'))}/feed`},
+  // タグ命名規約はプラットフォームごとに異なるため正規化を分ける(どちらもハイフンは使わない):
+  //  Qiita タグ: 大小無視・`.`/`#`/`+` を保持・空白なし(例 "Next.js"->"next.js")。空白は除去。
+  //  Zenn トピック: 連結した小英数字(+日本語)のみ(例 "Next.js"->"nextjs")。記号・空白は除去。
+  // 一致タグが無ければ 404 が lastErrors に http_404 として記録され、signalGaps が誠実に表示する。
+  qiita: {label:'Qiita',        build:(q)=>`https://qiita.com/tags/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/\s+/g,''))}/feed`},
+  zenn:  {label:'Zenn',         build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},
 };
 const WordCollector=(()=>{
   // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを

@@ -123,8 +123,10 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 - 登録: WORDS ビューまたは modal で term を入力、収集ソースを選択して ADD
 - 収集: 登録時 + POLL 時 + AutoSync 時に `WordCollector.collectAll()`
   - 検索型 RSS (Google News / Reddit / HN / arXiv) は `/rss` 経由で検索フィードを取得し `parseFeed` で解析
-  - タグ型 Atom (Qiita / Zenn) は term をタグスラグ (小文字・ハイフン化) に正規化して
+  - タグ型 Atom (Qiita / Zenn) は term をプラットフォーム別にタグスラグへ正規化して
     `qiita.com/tags/{slug}/feed` / `zenn.dev/topics/{slug}/feed` を `/rss` 経由で取得。
+    どちらもハイフンは使わない: Qiita は小文字化し `.`/`#`/`+` を保持・空白除去
+    ("Next.js"->"next.js")、Zenn は小英数字+日本語のみ連結 ("Next.js"->"nextjs")。
     一致タグが無ければ 404 が `lastErrors` に http_404 として記録され「取得失敗」表示
   - Wikipedia 要約は `/json` 経由で取得 (Wikipedia/Wikimedia 許可リスト)
   - 取得アイテムは `inbound.fetched` で既存パイプラインに投入、`word:{term}` を付与

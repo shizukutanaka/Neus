@@ -7,7 +7,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
-- **Qiita / Zenn を収集ソースに追加**: 日本語技術用語の watchword で取得源が貧弱だった(英語ニュース・Reddit・HN が中心)。両プラットフォームはキーワード検索 RSS を提供しないため、タグ/トピックの Atom フィードを採用し、term を `lowercase + hyphen` のタグスラグへ正規化して `qiita.com/tags/{slug}/feed` / `zenn.dev/topics/{slug}/feed` を取得。一致タグが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。Worker の `/rss` プロキシは既存ガードで両ホストを通すため変更不要。デフォルトは OFF(arXiv と同じ opt-in 扱い、英語ユーザーに日本語コンテンツを押し付けない) / Add Qiita and Zenn as opt-in tag/topic feed sources for watchwords; honest 404 surfacing for non-existent tags
+- **Qiita / Zenn を収集ソースに追加**: 日本語技術用語の watchword で取得源が貧弱だった(英語ニュース・Reddit・HN が中心)。両プラットフォームはキーワード検索 RSS を提供しないため、タグ/トピックの Atom フィードを採用し `qiita.com/tags/{slug}/feed` / `zenn.dev/topics/{slug}/feed` を取得。一致タグが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。Worker の `/rss` プロキシは既存ガードで両ホストを通すため変更不要。デフォルトは OFF(arXiv と同じ opt-in 扱い、英語ユーザーに日本語コンテンツを押し付けない) / Add Qiita and Zenn as opt-in tag/topic feed sources for watchwords; honest 404 surfacing for non-existent tags
+
+### Changed
+- **Qiita / Zenn のタグスラグ正規化をプラットフォーム別に修正**: 当初は両者を共通の `空白->ハイフン` で正規化していたが、どちらのプラットフォームもタグ/トピックにハイフンを使わない。Qiita タグは小文字化し `.`/`#`/`+` を保持・空白除去("Next.js"->"next.js")、Zenn トピックは小英数字+日本語のみ連結("Next.js"->"nextjs")へ修正。単語1語のケースは挙動不変、複合語・ドット付き語の取得精度が向上 / Fix Qiita/Zenn tag-slug normalization to match each platform's actual convention (neither uses hyphens)
 
 ### Added (continued)
 - **仕様書 (SPEC.md)**: 現行 v0.12.0 を一次情報として定義する仕様書を新設。不変条件(I1-I8)・データモデル(InformationEvent / Watchword)・探究モデル・Worker API・セキュリティを集約し、長所/短所/改善点の監査結果を §10 に記録 / Add SPEC.md as the authoritative specification; documents invariants, data model, inquiry model, Worker API, and an audited strengths/weaknesses/improvements section

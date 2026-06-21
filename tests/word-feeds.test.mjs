@@ -13,7 +13,10 @@ const worker = readFileSync(join(__dirname, '..', '_worker.js'), 'utf8');
 // ===== Pure builders mirrored from WORD_FEEDS in index.html =====
 // Two flavors: keyword-search feeds embed the encoded query verbatim;
 // tag/topic feeds (Qiita, Zenn) slugify the term (lowercase, hyphenated).
-const tagSlug = (q) => encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/\s+/g, '-'));
+// Per-platform tag normalization (neither uses hyphens):
+//  Qiita: lowercase, keep . # +, drop spaces.   Zenn: lowercase alphanumeric (+JP) only.
+const qiitaSlug = (q) => encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/\s+/g, ''));
+const zennSlug = (q) => encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g, ''));
 const SEARCH_FEEDS = {
   news:   { label: 'Google News', build: (q, lang) => { const hl = lang === 'ja' ? 'ja' : 'en-US', gl = lang === 'ja' ? 'JP' : 'US', ceid = lang === 'ja' ? 'JP:ja' : 'US:en'; return `https://news.google.com/rss/search?q=${q}&hl=${hl}&gl=${gl}&ceid=${ceid}`; } },
   reddit: { label: 'Reddit',      build: (q) => `https://www.reddit.com/search.rss?q=${q}&sort=new` },
@@ -21,8 +24,8 @@ const SEARCH_FEEDS = {
   arxiv:  { label: 'arXiv',        build: (q) => `https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30` },
 };
 const TAG_FEEDS = {
-  qiita:  { label: 'Qiita', build: (q) => `https://qiita.com/tags/${tagSlug(q)}/feed` },
-  zenn:   { label: 'Zenn',  build: (q) => `https://zenn.dev/topics/${tagSlug(q)}/feed` },
+  qiita:  { label: 'Qiita', build: (q) => `https://qiita.com/tags/${qiitaSlug(q)}/feed` },
+  zenn:   { label: 'Zenn',  build: (q) => `https://zenn.dev/topics/${zennSlug(q)}/feed` },
 };
 const WORD_FEEDS = { ...SEARCH_FEEDS, ...TAG_FEEDS };
 
@@ -68,16 +71,31 @@ describe('WORD_FEEDS builders — Qiita / Zenn tag feeds', () => {
     expect(TAG_FEEDS.qiita.build(encodeURIComponent('rust'))).toBe('https://qiita.com/tags/rust/feed');
     expect(TAG_FEEDS.zenn.build(encodeURIComponent('rust'))).toBe('https://zenn.dev/topics/rust/feed');
   });
-  it('lowercases the term and joins multi-word terms with hyphens', () => {
+  it('lowercases single-token terms identically on both platforms', () => {
     expect(TAG_FEEDS.qiita.build(encodeURIComponent('WebGPU'))).toBe('https://qiita.com/tags/webgpu/feed');
-    expect(TAG_FEEDS.qiita.build(encodeURIComponent('Machine Learning'))).toBe('https://qiita.com/tags/machine-learning/feed');
-    expect(TAG_FEEDS.zenn.build(encodeURIComponent('Next JS'))).toBe('https://zenn.dev/topics/next-js/feed');
+    expect(TAG_FEEDS.zenn.build(encodeURIComponent('WebGPU'))).toBe('https://zenn.dev/topics/webgpu/feed');
+  });
+  it('Qiita keeps dots (tags like Next.js exist) but drops spaces', () => {
+    expect(TAG_FEEDS.qiita.build(encodeURIComponent('Next.js'))).toBe('https://qiita.com/tags/next.js/feed');
+    expect(TAG_FEEDS.qiita.build(encodeURIComponent('Machine Learning'))).toBe('https://qiita.com/tags/machinelearning/feed');
+  });
+  it('Zenn strips dots/spaces to a concatenated token (topics like nextjs)', () => {
+    expect(TAG_FEEDS.zenn.build(encodeURIComponent('Next.js'))).toBe('https://zenn.dev/topics/nextjs/feed');
+    expect(TAG_FEEDS.zenn.build(encodeURIComponent('Node.js'))).toBe('https://zenn.dev/topics/nodejs/feed');
+    expect(TAG_FEEDS.zenn.build(encodeURIComponent('Machine Learning'))).toBe('https://zenn.dev/topics/machinelearning/feed');
+  });
+  it('neither platform produces a hyphen in the slug', () => {
+    for (const term of ['Next.js', 'Machine Learning', 'create react app']) {
+      expect(decodeURIComponent(new URL(TAG_FEEDS.qiita.build(encodeURIComponent(term))).pathname)).not.toContain('-');
+      expect(decodeURIComponent(new URL(TAG_FEEDS.zenn.build(encodeURIComponent(term))).pathname)).not.toContain('-');
+    }
   });
   it('round-trips Japanese tags through percent-encoding without corruption', () => {
     const ja = encodeURIComponent('機械学習');
-    const url = TAG_FEEDS.qiita.build(ja);
-    expect(url.startsWith('https://qiita.com/tags/')).toBe(true);
-    expect(decodeURIComponent(new URL(url).pathname.split('/')[2])).toBe('機械学習');
+    for (const feed of [TAG_FEEDS.qiita, TAG_FEEDS.zenn]) {
+      const url = feed.build(ja);
+      expect(decodeURIComponent(new URL(url).pathname.split('/')[2])).toBe('機械学習');
+    }
   });
   it('produces a parseable URL for empty / whitespace input (graceful, not crash)', () => {
     // The collector still surfaces this as a 404 from the platform.
