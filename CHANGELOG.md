@@ -7,6 +7,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Added
+- **はてなブックマークを収集ソースに追加**: Qiita/Zenn は単一プラットフォームの記事に閉じるが、はてブは日本語Web全体の被ブックマーク記事を横断する全文検索 RSS(`b.hatena.ne.jp/search/text?q=...&mode=rss`)を提供する。検索語を verbatim で渡す検索フィードのため既存 `/rss` プロキシをそのまま再利用(ワーカー変更不要)。デフォルト OFF(arXiv と同じ opt-in)。なお note.com はタグ全文検索 RSS が貧弱、connpass はイベント主体かつ JSON 許可リスト拡張が必要なため今回は見送り / Add Hatena Bookmark full-text search RSS as a cross-platform Japanese aggregator source (reuses /rss, no Worker change)
 - **Qiita / Zenn を収集ソースに追加**: 日本語技術用語の watchword で取得源が貧弱だった(英語ニュース・Reddit・HN が中心)。両プラットフォームはキーワード検索 RSS を提供しないため、タグ/トピックの Atom フィードを採用し `qiita.com/tags/{slug}/feed` / `zenn.dev/topics/{slug}/feed` を取得。一致タグが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。Worker の `/rss` プロキシは既存ガードで両ホストを通すため変更不要。デフォルトは OFF(arXiv と同じ opt-in 扱い、英語ユーザーに日本語コンテンツを押し付けない) / Add Qiita and Zenn as opt-in tag/topic feed sources for watchwords; honest 404 surfacing for non-existent tags
 
 ### Changed

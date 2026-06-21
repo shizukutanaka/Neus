@@ -128,6 +128,8 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
   - タグ型 Atom (Zenn) は term をトピックスラグ (小英数字+日本語のみ連結、記号・空白除去。
     "Next.js"->"nextjs") に正規化し `zenn.dev/topics/{slug}/feed` を `/rss` 経由で取得。
     一致トピックが無ければ 404 が `lastErrors` に http_404 として記録され「取得失敗」表示
+  - 検索 RSS (Hatena=はてなブックマーク) は `b.hatena.ne.jp/search/text?q={term}&mode=rss` を
+    `/rss` 経由で取得。単一プラットフォームではなく日本語Web全体の被ブックマーク記事を横断
   - Wikipedia 要約は `/json` 経由で取得 (Wikipedia/Wikimedia 許可リスト)
   - 取得アイテムは `inbound.fetched` で既存パイプラインに投入、`word:{term}` を付与
 - 重複: 別単語が同記事を収集した場合、hash 重複として既存イベントに

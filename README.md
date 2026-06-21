@@ -94,8 +94,8 @@ npm run deploy
 
 ### 4. 単語ウォッチ(Watchword)
 
-- **WORDS**(メニュー)→ 単語を入力し、収集ソース(Wikipedia / Google News / Reddit / Hacker News / arXiv / Qiita / Zenn)を選んで **ADD**
-  - Qiita は公式 REST API v2 の全文キーワード検索(JSON、ワーカー `/json` 経由)、Zenn はトピックの Atom フィードを参照する(日本語技術用語に有効)。Zenn は一致トピックが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。デフォルトは OFF(arXiv と同じ opt-in 扱い)。詳細は `docs/adr/ADR-0017`
+- **WORDS**(メニュー)→ 単語を入力し、収集ソース(Wikipedia / Google News / Reddit / Hacker News / arXiv / Qiita / Zenn / Hatena)を選んで **ADD**
+  - 日本語ソース: Qiita は公式 REST API v2 の全文キーワード検索(JSON、ワーカー `/json` 経由)、Zenn はトピックの Atom フィード、Hatena(はてなブックマーク)は日本語Web全体の被ブックマーク記事を横断する全文検索 RSS。Zenn は一致トピックが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。いずれもデフォルトは OFF(arXiv と同じ opt-in 扱い)。詳細は `docs/adr/ADR-0017`
 - 登録時とPOLL時に自動収集。各ソースの検索フィードを取得し、`word:{単語}` タグ付きで保存
 - **WORDS** ビュー → 単語ごとにWikipedia定義 + 直近アイテム + 出力ボタン(DOSSIER MD / JSON / VAULT)
 - 出力先(Vault): `{Vault}/neus/words/{単語}-{id}.md`(語ごとに一意。"C++" と "C" のように同じ slug に正規化される語でも上書きされない)

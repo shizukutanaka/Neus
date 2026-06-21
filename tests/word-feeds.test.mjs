@@ -21,6 +21,7 @@ const SEARCH_FEEDS = {
   reddit: { label: 'Reddit',      build: (q) => `https://www.reddit.com/search.rss?q=${q}&sort=new` },
   hn:     { label: 'Hacker News',  build: (q) => `https://hnrss.org/newest?q=${q}&count=30` },
   arxiv:  { label: 'arXiv',        build: (q) => `https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30` },
+  hatena: { label: 'Hatena',      build: (q) => `https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&mode=rss` },
 };
 // Qiita: JSON full-text search via the official REST API v2 (ADR-0017), routed through /json.
 const JSON_FEEDS = {
@@ -65,6 +66,23 @@ describe('WORD_FEEDS builders — search feeds', () => {
     expect(new URL(SEARCH_FEEDS.reddit.build('x')).hostname).toBe('www.reddit.com');
     expect(new URL(SEARCH_FEEDS.hn.build('x')).hostname).toBe('hnrss.org');
     expect(new URL(SEARCH_FEEDS.arxiv.build('x')).hostname).toBe('export.arxiv.org');
+    expect(new URL(SEARCH_FEEDS.hatena.build('x')).hostname).toBe('b.hatena.ne.jp');
+  });
+});
+
+describe('Hatena Bookmark search feed (cross-platform JP aggregator)', () => {
+  // Full-text search RSS across the whole Japanese web's bookmarked links,
+  // complementing single-platform Qiita/Zenn. Reuses /rss (no Worker change).
+  it('builds a full-text search RSS URL sorted by recency', () => {
+    expect(SEARCH_FEEDS.hatena.build(encodeURIComponent('rust'))).toBe('https://b.hatena.ne.jp/search/text?q=rust&sort=recent&mode=rss');
+  });
+  it('passes the query verbatim (multiword + Japanese) and requests RSS', () => {
+    expect(SEARCH_FEEDS.hatena.build(encodeURIComponent('Machine Learning'))).toContain('q=Machine%20Learning');
+    expect(SEARCH_FEEDS.hatena.build(encodeURIComponent('機械学習'))).toContain('q=%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92');
+    expect(SEARCH_FEEDS.hatena.build('x')).toContain('mode=rss');
+  });
+  it('produces a parseable URL for empty input (graceful, not crash)', () => {
+    expect(() => new URL(SEARCH_FEEDS.hatena.build(encodeURIComponent('')))).not.toThrow();
   });
 });
 
@@ -131,11 +149,13 @@ describe('Zenn tag feed (no official search API)', () => {
 });
 
 describe('WORD_FEEDS source-drift guard (index.html)', () => {
-  it('declares qiita (JSON search) and zenn (tag feed) as collectable sources', () => {
+  it('declares qiita (JSON search), zenn (tag feed) and hatena (search RSS) as collectable sources', () => {
     expect(html).toContain("qiita: {label:'Qiita', kind:'json',");
     expect(html).toContain('https://qiita.com/api/v2/items?query=');
     expect(html).toContain('zenn:  {label:');
     expect(html).toContain('https://zenn.dev/topics/');
+    expect(html).toContain("hatena:{label:'Hatena',");
+    expect(html).toContain('https://b.hatena.ne.jp/search/text?q=');
   });
   it('routes JSON-kind feeds through /json and RSS feeds through /rss', () => {
     expect(html).toContain("`${CONFIG.proxy}/${isJson?'json':'rss'}?url=${encodeURIComponent(feedUrl)}`");
@@ -144,12 +164,14 @@ describe('WORD_FEEDS source-drift guard (index.html)', () => {
   it('exposes opt-in toggles in the watchword modal (default off, like arXiv)', () => {
     expect(html).toContain('id="wsrc-qiita"');
     expect(html).toContain('id="wsrc-zenn"');
+    expect(html).toContain('id="wsrc-hatena"');
     // Defaults: the literal default-sources object must NOT enable them
-    expect(html).toContain('arxiv:false,qiita:false,zenn:false');
+    expect(html).toContain('arxiv:false,qiita:false,zenn:false,hatena:false');
   });
-  it('the per-word modal source list includes both', () => {
+  it('the per-word modal source list includes all three', () => {
     expect(html).toContain("{key:'qiita',label:'Qiita'}");
     expect(html).toContain("{key:'zenn',label:'Zenn'}");
+    expect(html).toContain("{key:'hatena',label:'Hatena'}");
   });
 });
 
@@ -189,7 +211,7 @@ describe('Wikipedia language fallback order', () => {
 
 describe('source drift guard (index.html / _worker.js)', () => {
   it('index.html declares the expected feed hosts', () => {
-    for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary', 'qiita.com/api/v2/items', 'zenn.dev/topics/']) {
+    for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary', 'qiita.com/api/v2/items', 'zenn.dev/topics/', 'b.hatena.ne.jp/search/text']) {
       expect(html, `missing feed host: ${frag}`).toContain(frag);
     }
   });

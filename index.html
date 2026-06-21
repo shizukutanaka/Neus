@@ -640,6 +640,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
       <label><input type="checkbox" id="wsrc-arxiv"> arXiv</label>
       <label><input type="checkbox" id="wsrc-qiita"> Qiita</label>
       <label><input type="checkbox" id="wsrc-zenn"> Zenn</label>
+      <label><input type="checkbox" id="wsrc-hatena"> Hatena</label>
     </div>
     <div class="row">
       <button class="primary" id="word-add" type="button">ADD</button>
@@ -1805,6 +1806,9 @@ const WORD_FEEDS={
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   zenn:  {label:'Zenn', build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},
+  // はてなブックマーク: 全文検索 RSS。単一プラットフォームではなく日本語Web全体の被ブックマーク
+  // 記事を横断的に拾う(Qiita/Zenn を補完)。検索語は verbatim(検索エンジン側が処理)。RSSのため /rss 流用。
+  hatena:{label:'Hatena', build:(q)=>`https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&mode=rss`},
 };
 const WordCollector=(()=>{
   // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを
@@ -2138,7 +2142,7 @@ function wordFromImport(dump){
     id:uuid(),term,normalized:normalizeTerm(term),lang:w.lang||'en',
     note:w.note||'',questionHistory:Array.isArray(w.questionHistory)?w.questionHistory:[],
     priorBelief:w.priorBelief||'curious',
-    sources:(w.sources&&typeof w.sources==='object')?w.sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false},
+    sources:(w.sources&&typeof w.sources==='object')?w.sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false},
     enabled:w.enabled!==false,
     verdict:{status:w.verdict?.status||'open',note:w.verdict?.note||''},verdictAt:w.verdictAt||null,
     verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[],falsifier:typeof w.falsifier==='string'?w.falsifier:'',
@@ -2979,7 +2983,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(await Store.findWordByTerm(normalized)){await renderView();return;}
     btn.disabled=true;
     const now=Date.now();
-    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
+    const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     try{await WordCollector.collectOne(word);}catch(e){console.warn('[WordCollector] initial collect failed:',e);}finally{await refreshCounts();await renderView();}return;
@@ -3195,7 +3199,7 @@ $('#view').addEventListener('click',async(e)=>{
     const term=(rwBtn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
     if(await Store.findWordByTerm(normalized)){wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
-    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
+    const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false},enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);await refreshCounts();
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
     wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
@@ -3521,7 +3525,7 @@ $('#modal-keywords').addEventListener('click',(e)=>{if(e.target.id==='modal-keyw
 async function renderWordList(){
   const words=(await Store.listWords()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   if(words.length===0){$('#word-list').innerHTML=`<div style="color:var(--fg-3);">${currentLang==='ja'?'なし':'none'}</div>`;return;}
-  const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'},{key:'qiita',label:'Qiita'},{key:'zenn',label:'Zenn'}];
+  const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'},{key:'qiita',label:'Qiita'},{key:'zenn',label:'Zenn'},{key:'hatena',label:'Hatena'}];
   // 実際に保存されているアイテム数で表示(重複排除後)。WORDSビューと一致させる。
   const all=await Store.allEvents();
   const countFor=(w)=>{const tag='word:'+w.normalized;return all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).length;};
@@ -3558,7 +3562,7 @@ async function addWord(){
   if(!term){toast(currentLang==='ja'?'単語を入力':'enter a word','err');return;}
   const normalized=normalizeTerm(term);
   if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
-  const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked,qiita:$('#wsrc-qiita').checked,zenn:$('#wsrc-zenn').checked};
+  const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked,qiita:$('#wsrc-qiita').checked,zenn:$('#wsrc-zenn').checked,hatena:$('#wsrc-hatena').checked};
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   const note=$('#word-note').value.trim();
   const priorBelief=$('#word-prior').value||'curious';
