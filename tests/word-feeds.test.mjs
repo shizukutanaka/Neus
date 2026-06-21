@@ -24,10 +24,13 @@ const SEARCH_FEEDS = {
   hatena: { label: 'Hatena',      build: (q) => `https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&mode=rss` },
 };
 // Qiita: JSON full-text search via the official REST API v2 (ADR-0017), routed through /json.
+// Mirror of index.html: prefer rendered_body (HTML) over body (Markdown); strip tags then
+// decode entities (textarea trick works under jsdom, matching RSSPoller.decodeEntities).
+const decodeEntities = (s) => { if (!s || s.indexOf('&') < 0) return s; const ta = document.createElement('textarea'); ta.innerHTML = s; return ta.value; };
 const JSON_FEEDS = {
   qiita: { label: 'Qiita', kind: 'json',
     build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: (it.body || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '' })) },
+    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '' })) },
 };
 // Zenn: tag/topic Atom feed (no official search API), routed through /rss.
 const TAG_FEEDS = {
@@ -99,19 +102,37 @@ describe('Qiita JSON search feed (official REST API v2)', () => {
   });
   it('parses the API item array into normalized raw events', () => {
     const sample = JSON.stringify([
-      { title: 'Rust入門', url: 'https://qiita.com/a/items/1', body: '# H\nRust is <b>great</b>.   ', created_at: '2026-01-02T03:04:05+09:00', user: { id: 'alice' } },
-      { title: 'Async', url: 'https://qiita.com/a/items/2', body: '', created_at: 'not-a-date', user: null },
+      { title: 'Rust入門', url: 'https://qiita.com/a/items/1', rendered_body: '<h1>H</h1><p>Rust is <b>great</b>.</p>   ', body: '# H\nRust is **great**.', created_at: '2026-01-02T03:04:05+09:00', user: { id: 'alice' } },
+      { title: 'Async', url: 'https://qiita.com/a/items/2', rendered_body: '', body: '', created_at: 'not-a-date', user: null },
     ]);
     const raws = JSON_FEEDS.qiita.parse(sample);
     expect(raws).toHaveLength(2);
     expect(raws[0]).toMatchObject({ title: 'Rust入門', link: 'https://qiita.com/a/items/1', author: 'alice' });
-    expect(raws[0].summary).toBe('# H Rust is great.');            // HTML stripped, whitespace collapsed
+    expect(raws[0].summary).toBe('HRust is great.');             // tags stripped (no space injection — correct for JP prose)
     expect(raws[0].publishedAt).toBe(Date.parse('2026-01-02T03:04:05+09:00'));
     expect(raws[1].publishedAt).toBeUndefined();                   // unparseable date -> undefined (no fabrication)
     expect(raws[1].author).toBe('');                              // missing user handled
   });
+  it('prefers rendered_body (HTML) over body (Markdown) so summaries are not markdown noise', () => {
+    // Regression: stripping HTML tags from the Markdown `body` left # * ` [text](url) in
+    // the snippet. Use rendered_body (real HTML) so the stripped result is clean prose.
+    const sample = JSON.stringify([{ title: 'T', url: 'u', rendered_body: '<p>clean prose here</p>', body: '## clean `prose` **here** [x](y)', created_at: '', user: { id: 'a' } }]);
+    const r = JSON_FEEDS.qiita.parse(sample)[0];
+    expect(r.summary).toBe('clean prose here');
+    expect(r.summary).not.toContain('#');
+    expect(r.summary).not.toContain('`');
+    expect(r.summary).not.toContain('[x]');
+  });
+  it('decodes HTML entities AFTER stripping tags (so &lt;x&gt; is not lost as a fake tag)', () => {
+    const sample = JSON.stringify([{ title: 'T', url: 'u', rendered_body: '<p>a &amp; b &lt;tag&gt; c</p>', created_at: '', user: { id: 'a' } }]);
+    expect(JSON_FEEDS.qiita.parse(sample)[0].summary).toBe('a & b <tag> c');
+  });
+  it('falls back to body when rendered_body is absent', () => {
+    const sample = JSON.stringify([{ title: 'T', url: 'u', body: 'plain body text', created_at: '', user: { id: 'a' } }]);
+    expect(JSON_FEEDS.qiita.parse(sample)[0].summary).toBe('plain body text');
+  });
   it('caps the summary length and tolerates a missing title', () => {
-    const sample = JSON.stringify([{ url: 'u', body: 'x'.repeat(900), created_at: '', user: { id: 'b' } }]);
+    const sample = JSON.stringify([{ url: 'u', rendered_body: 'x'.repeat(900), created_at: '', user: { id: 'b' } }]);
     const r = JSON_FEEDS.qiita.parse(sample)[0];
     expect(r.title).toBe('(untitled)');
     expect(r.summary.length).toBe(500);
@@ -160,6 +181,10 @@ describe('WORD_FEEDS source-drift guard (index.html)', () => {
   it('routes JSON-kind feeds through /json and RSS feeds through /rss', () => {
     expect(html).toContain("`${CONFIG.proxy}/${isJson?'json':'rss'}?url=${encodeURIComponent(feedUrl)}`");
     expect(html).toContain('isJson?feed.parse(body).map(raw=>({raw,source})):RSSPoller.parseFeed(body,source)');
+  });
+  it('Qiita parse prefers rendered_body and decodes entities via the shared helper', () => {
+    expect(html).toContain('RSSPoller.decodeEntities((it.rendered_body||it.body||\'\').replace(/<[^>]+>/g,\'\'))');
+    expect(html).toContain('return{fetchOne,fetchAll,parseFeed,decodeEntities}');
   });
   it('exposes opt-in toggles in the watchword modal (default off, like arXiv)', () => {
     expect(html).toContain('id="wsrc-qiita"');

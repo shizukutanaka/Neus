@@ -124,7 +124,9 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 - 収集: 登録時 + POLL 時 + AutoSync 時に `WordCollector.collectAll()`
   - 検索型 RSS (Google News / Reddit / HN / arXiv) は `/rss` 経由で検索フィードを取得し `parseFeed` で解析
   - JSON 検索 (Qiita) は公式 REST API v2 `qiita.com/api/v2/items?query=` を `/json` 経由で
-    取得し、専用 `parse` で記事配列を raw に正規化 (全文検索、タグ非依存。ADR-0017)
+    取得し、専用 `parse` で記事配列を raw に正規化 (全文検索、タグ非依存。ADR-0017)。
+    概要は `rendered_body` (HTML) を優先しタグ除去→エンティティ復号の順で清書
+    (Markdown の `body` だと記法ノイズが残るため。`RSSPoller.decodeEntities` を共有)
   - タグ型 Atom (Zenn) は term をトピックスラグ (小英数字+日本語のみ連結、記号・空白除去。
     "Next.js"->"nextjs") に正規化し `zenn.dev/topics/{slug}/feed` を `/rss` 経由で取得。
     一致トピックが無ければ 404 が `lastErrors` に http_404 として記録され「取得失敗」表示

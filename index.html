@@ -1786,7 +1786,7 @@ const RSSPoller=(()=>{
     let total=0;for(const s of sources)total+=await fetchOne(s);
     toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
   }
-  return{fetchOne,fetchAll,parseFeed};
+  return{fetchOne,fetchAll,parseFeed,decodeEntities};
 })();
 
 // ===== WORD COLLECTOR ===================================================
@@ -1800,9 +1800,11 @@ const WORD_FEEDS={
   arxiv: {label:'arXiv',        build:(q)=>`https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30`},
   // Qiita: 公式 REST API v2 の全文検索(JSON、ADR-0017)。タグ一致に限らず本文も拾うため
   // タグフィードより網羅的。kind:'json' は /json プロキシ + 専用 parse を使う分岐の目印。
+  // 概要は rendered_body(HTML)を優先: body(Markdown)を剥がすと # * ` 等の記号が残るため。
+  // タグ除去→エンティティ復号の順(順序を逆にすると &lt;x&gt; が偽タグ扱いで欠落する)。
   qiita: {label:'Qiita', kind:'json',
     build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:(it.body||'').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||''}))},
+    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||''}))},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   zenn:  {label:'Zenn', build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},
