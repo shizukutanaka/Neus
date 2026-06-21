@@ -11,11 +11,10 @@ const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 const worker = readFileSync(join(__dirname, '..', '_worker.js'), 'utf8');
 
 // ===== Pure builders mirrored from WORD_FEEDS in index.html =====
-// Two flavors: keyword-search feeds embed the encoded query verbatim;
-// tag/topic feeds (Qiita, Zenn) slugify the term (lowercase, hyphenated).
-// Per-platform tag normalization (neither uses hyphens):
-//  Qiita: lowercase, keep . # +, drop spaces.   Zenn: lowercase alphanumeric (+JP) only.
-const qiitaSlug = (q) => encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/\s+/g, ''));
+// Three flavors: keyword-search RSS feeds embed the encoded query verbatim;
+// Qiita uses the official JSON REST API v2 (full-text search via /json);
+// Zenn uses a tag/topic Atom feed (no official search API), slugified.
+// Zenn topic normalization (no hyphens; lowercase alphanumeric + Japanese, separators stripped).
 const zennSlug = (q) => encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g, ''));
 const SEARCH_FEEDS = {
   news:   { label: 'Google News', build: (q, lang) => { const hl = lang === 'ja' ? 'ja' : 'en-US', gl = lang === 'ja' ? 'JP' : 'US', ceid = lang === 'ja' ? 'JP:ja' : 'US:en'; return `https://news.google.com/rss/search?q=${q}&hl=${hl}&gl=${gl}&ceid=${ceid}`; } },
@@ -23,9 +22,15 @@ const SEARCH_FEEDS = {
   hn:     { label: 'Hacker News',  build: (q) => `https://hnrss.org/newest?q=${q}&count=30` },
   arxiv:  { label: 'arXiv',        build: (q) => `https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30` },
 };
+// Qiita: JSON full-text search via the official REST API v2 (ADR-0017), routed through /json.
+const JSON_FEEDS = {
+  qiita: { label: 'Qiita', kind: 'json',
+    build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=20`,
+    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: (it.body || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '' })) },
+};
+// Zenn: tag/topic Atom feed (no official search API), routed through /rss.
 const TAG_FEEDS = {
-  qiita:  { label: 'Qiita', build: (q) => `https://qiita.com/tags/${qiitaSlug(q)}/feed` },
-  zenn:   { label: 'Zenn',  build: (q) => `https://zenn.dev/topics/${zennSlug(q)}/feed` },
+  zenn: { label: 'Zenn', build: (q) => `https://zenn.dev/topics/${zennSlug(q)}/feed` },
 };
 const WORD_FEEDS = { ...SEARCH_FEEDS, ...TAG_FEEDS };
 
@@ -63,57 +68,78 @@ describe('WORD_FEEDS builders — search feeds', () => {
   });
 });
 
-describe('WORD_FEEDS builders — Qiita / Zenn tag feeds', () => {
-  // Qiita and Zenn expose tag/topic Atom feeds, NOT keyword-search RSS.
-  // The watchword is mapped to a tag slug; non-existent tags 404 and surface
-  // through lastErrors as http_404 (honest "no such tag" signal).
-  it('produces a tag-feed URL on the canonical host/path', () => {
-    expect(TAG_FEEDS.qiita.build(encodeURIComponent('rust'))).toBe('https://qiita.com/tags/rust/feed');
+describe('Qiita JSON search feed (official REST API v2)', () => {
+  it('builds a query-search API URL (full-text, not tag-limited)', () => {
+    expect(JSON_FEEDS.qiita.build(encodeURIComponent('rust'))).toBe('https://qiita.com/api/v2/items?query=rust&per_page=20');
+  });
+  it('passes the raw query verbatim (search engine handles case/multiword)', () => {
+    expect(JSON_FEEDS.qiita.build(encodeURIComponent('Machine Learning'))).toContain('query=Machine%20Learning');
+    expect(JSON_FEEDS.qiita.build(encodeURIComponent('機械学習'))).toContain('query=%E6%A9%9F%E6%A2%B0%E5%AD%A6%E7%BF%92');
+  });
+  it('targets qiita.com (must be on the Worker /json allowlist)', () => {
+    expect(new URL(JSON_FEEDS.qiita.build('x')).hostname).toBe('qiita.com');
+  });
+  it('parses the API item array into normalized raw events', () => {
+    const sample = JSON.stringify([
+      { title: 'Rust入門', url: 'https://qiita.com/a/items/1', body: '# H\nRust is <b>great</b>.   ', created_at: '2026-01-02T03:04:05+09:00', user: { id: 'alice' } },
+      { title: 'Async', url: 'https://qiita.com/a/items/2', body: '', created_at: 'not-a-date', user: null },
+    ]);
+    const raws = JSON_FEEDS.qiita.parse(sample);
+    expect(raws).toHaveLength(2);
+    expect(raws[0]).toMatchObject({ title: 'Rust入門', link: 'https://qiita.com/a/items/1', author: 'alice' });
+    expect(raws[0].summary).toBe('# H Rust is great.');            // HTML stripped, whitespace collapsed
+    expect(raws[0].publishedAt).toBe(Date.parse('2026-01-02T03:04:05+09:00'));
+    expect(raws[1].publishedAt).toBeUndefined();                   // unparseable date -> undefined (no fabrication)
+    expect(raws[1].author).toBe('');                              // missing user handled
+  });
+  it('caps the summary length and tolerates a missing title', () => {
+    const sample = JSON.stringify([{ url: 'u', body: 'x'.repeat(900), created_at: '', user: { id: 'b' } }]);
+    const r = JSON_FEEDS.qiita.parse(sample)[0];
+    expect(r.title).toBe('(untitled)');
+    expect(r.summary.length).toBe(500);
+  });
+  it('throws on malformed JSON so the collector records a parse error', () => {
+    expect(() => JSON_FEEDS.qiita.parse('not json')).toThrow();
+  });
+});
+
+describe('Zenn tag feed (no official search API)', () => {
+  it('produces a topic-feed URL on the canonical host/path', () => {
     expect(TAG_FEEDS.zenn.build(encodeURIComponent('rust'))).toBe('https://zenn.dev/topics/rust/feed');
   });
-  it('lowercases single-token terms identically on both platforms', () => {
-    expect(TAG_FEEDS.qiita.build(encodeURIComponent('WebGPU'))).toBe('https://qiita.com/tags/webgpu/feed');
-    expect(TAG_FEEDS.zenn.build(encodeURIComponent('WebGPU'))).toBe('https://zenn.dev/topics/webgpu/feed');
-  });
-  it('Qiita keeps dots (tags like Next.js exist) but drops spaces', () => {
-    expect(TAG_FEEDS.qiita.build(encodeURIComponent('Next.js'))).toBe('https://qiita.com/tags/next.js/feed');
-    expect(TAG_FEEDS.qiita.build(encodeURIComponent('Machine Learning'))).toBe('https://qiita.com/tags/machinelearning/feed');
-  });
-  it('Zenn strips dots/spaces to a concatenated token (topics like nextjs)', () => {
+  it('strips dots/spaces to a concatenated lowercase token (topics like nextjs)', () => {
     expect(TAG_FEEDS.zenn.build(encodeURIComponent('Next.js'))).toBe('https://zenn.dev/topics/nextjs/feed');
     expect(TAG_FEEDS.zenn.build(encodeURIComponent('Node.js'))).toBe('https://zenn.dev/topics/nodejs/feed');
     expect(TAG_FEEDS.zenn.build(encodeURIComponent('Machine Learning'))).toBe('https://zenn.dev/topics/machinelearning/feed');
   });
-  it('neither platform produces a hyphen in the slug', () => {
+  it('never produces a hyphen in the slug', () => {
     for (const term of ['Next.js', 'Machine Learning', 'create react app']) {
-      expect(decodeURIComponent(new URL(TAG_FEEDS.qiita.build(encodeURIComponent(term))).pathname)).not.toContain('-');
       expect(decodeURIComponent(new URL(TAG_FEEDS.zenn.build(encodeURIComponent(term))).pathname)).not.toContain('-');
     }
   });
-  it('round-trips Japanese tags through percent-encoding without corruption', () => {
-    const ja = encodeURIComponent('機械学習');
-    for (const feed of [TAG_FEEDS.qiita, TAG_FEEDS.zenn]) {
-      const url = feed.build(ja);
-      expect(decodeURIComponent(new URL(url).pathname.split('/')[2])).toBe('機械学習');
-    }
+  it('round-trips Japanese topics through percent-encoding without corruption', () => {
+    const url = TAG_FEEDS.zenn.build(encodeURIComponent('機械学習'));
+    expect(decodeURIComponent(new URL(url).pathname.split('/')[2])).toBe('機械学習');
   });
   it('produces a parseable URL for empty / whitespace input (graceful, not crash)', () => {
-    // The collector still surfaces this as a 404 from the platform.
-    expect(() => new URL(TAG_FEEDS.qiita.build(encodeURIComponent('   ')))).not.toThrow();
+    expect(() => new URL(TAG_FEEDS.zenn.build(encodeURIComponent('   ')))).not.toThrow();
     expect(() => new URL(TAG_FEEDS.zenn.build(encodeURIComponent('')))).not.toThrow();
   });
-  it('targets the expected hosts', () => {
-    expect(new URL(TAG_FEEDS.qiita.build('x')).hostname).toBe('qiita.com');
+  it('targets zenn.dev', () => {
     expect(new URL(TAG_FEEDS.zenn.build('x')).hostname).toBe('zenn.dev');
   });
 });
 
 describe('WORD_FEEDS source-drift guard (index.html)', () => {
-  it('declares qiita and zenn as collectable sources', () => {
-    expect(html).toContain('qiita: {label:');
+  it('declares qiita (JSON search) and zenn (tag feed) as collectable sources', () => {
+    expect(html).toContain("qiita: {label:'Qiita', kind:'json',");
+    expect(html).toContain('https://qiita.com/api/v2/items?query=');
     expect(html).toContain('zenn:  {label:');
-    expect(html).toContain('https://qiita.com/tags/');
     expect(html).toContain('https://zenn.dev/topics/');
+  });
+  it('routes JSON-kind feeds through /json and RSS feeds through /rss', () => {
+    expect(html).toContain("`${CONFIG.proxy}/${isJson?'json':'rss'}?url=${encodeURIComponent(feedUrl)}`");
+    expect(html).toContain('isJson?feed.parse(body).map(raw=>({raw,source})):RSSPoller.parseFeed(body,source)');
   });
   it('exposes opt-in toggles in the watchword modal (default off, like arXiv)', () => {
     expect(html).toContain('id="wsrc-qiita"');
@@ -163,7 +189,7 @@ describe('Wikipedia language fallback order', () => {
 
 describe('source drift guard (index.html / _worker.js)', () => {
   it('index.html declares the expected feed hosts', () => {
-    for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary', 'qiita.com/tags/', 'zenn.dev/topics/']) {
+    for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary', 'qiita.com/api/v2/items', 'zenn.dev/topics/']) {
       expect(html, `missing feed host: ${frag}`).toContain(frag);
     }
   });

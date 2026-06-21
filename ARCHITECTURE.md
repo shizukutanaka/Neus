@@ -192,7 +192,7 @@ Word = {
 | endpoint | 制約 |
 |---|---|
 | `GET /rss?url=` | Content-Type が xml/rss/atom。Conditional GET 転送 |
-| `GET /json?url=` | host が `*.wikipedia.org \| *.wikimedia.org` 限定 (SSRF + 任意JSON中継防止) |
+| `GET /json?url=` | host が `*.wikipedia.org \| *.wikimedia.org \| qiita.com` 限定 (SSRF + 任意JSON中継防止、ADR-0017) |
 | `GET /` | ヘルスチェック |
 
 共通: http(s) のみ / `PRIVATE_HOST_RE` で private IP 拒否 (IPv4-mapped IPv6 の hex 正規化形も照合) /
@@ -247,6 +247,7 @@ Word = {
 | ADR-0014 | PWA UX / スワイプ |
 | ADR-0015 | Conditional GET |
 | ADR-0016 | Watchword Collector(`/json` 許可リスト) |
+| ADR-0017 | Qiita/Zenn ソース追加(Qiita 検索API を `/json` 許可) |
 
 ## 将来の方針
 

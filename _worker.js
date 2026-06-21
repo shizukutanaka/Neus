@@ -17,8 +17,9 @@
  */
 
 const RSS_CONTENT_RE = /xml|rss|atom|application\/feed/i;
-// /json はWikipedia等の信頼ドメインのみ許可(任意JSONの汎用プロキシ化を防ぐ)
-const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org)$/i;
+// /json は信頼ドメインのみ許可(任意JSONの汎用プロキシ化を防ぐ)。
+// wikipedia/wikimedia: 単語の定義カード。qiita.com: 公式 REST API v2 の全文検索(ADR-0017)。
+const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org|qiita\.com)$/i;
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const TIMEOUT_MS = 15000;
 

@@ -195,8 +195,8 @@ describe('Worker security invariants', () => {
 });
 
 describe('JSON_HOST_ALLOW — /json endpoint host allowlist', () => {
-  // Mirror of _worker.js JSON_HOST_ALLOW regex
-  const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org)$/i;
+  // Mirror of _worker.js JSON_HOST_ALLOW regex (wikipedia/wikimedia + qiita.com per ADR-0017)
+  const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org|qiita\.com)$/i;
 
   const allowed = [
     'en.wikipedia.org',
@@ -205,6 +205,7 @@ describe('JSON_HOST_ALLOW — /json endpoint host allowlist', () => {
     'commons.wikimedia.org',
     'wikimedia.org',
     'upload.wikimedia.org',
+    'qiita.com',          // ADR-0017: Qiita REST API v2 full-text search
   ];
 
   allowed.forEach(host => {
@@ -221,6 +222,9 @@ describe('JSON_HOST_ALLOW — /json endpoint host allowlist', () => {
     'wikipedia.org.attacker.com',
     'api.openai.com',
     'api.anthropic.com',
+    'notqiita.com',           // suffix-anchor must not match a lookalike
+    'qiita.com.attacker.com', // trailing-domain attack
+    'zenn.dev',               // Zenn is NOT on the JSON allowlist (tag-feed via /rss only)
     'localhost',
     '127.0.0.1',
     '',
@@ -232,8 +236,13 @@ describe('JSON_HOST_ALLOW — /json endpoint host allowlist', () => {
     });
   });
 
-  it('is case-insensitive (Wikipedia.ORG)', () => {
+  it('allows a qiita.com subdomain via the (^|.) anchor', () => {
+    expect(JSON_HOST_ALLOW.test('api.qiita.com')).toBe(true);
+  });
+
+  it('is case-insensitive (Wikipedia.ORG / Qiita.COM)', () => {
     expect(JSON_HOST_ALLOW.test('en.Wikipedia.ORG')).toBe(true);
+    expect(JSON_HOST_ALLOW.test('Qiita.COM')).toBe(true);
   });
 });
 
