@@ -97,7 +97,7 @@ npm run deploy
 - **WORDS**(メニュー)→ 単語を入力し、収集ソース(Wikipedia / Google News / Reddit / Hacker News / arXiv)を選んで **ADD**
 - 登録時とPOLL時に自動収集。各ソースの検索フィードを取得し、`word:{単語}` タグ付きで保存
 - **WORDS** ビュー → 単語ごとにWikipedia定義 + 直近アイテム + 出力ボタン(DOSSIER MD / JSON / VAULT)
-- 出力先(Vault): `{Vault}/neus/words/{単語}.md`
+- 出力先(Vault): `{Vault}/neus/words/{単語}-{id}.md`(語ごとに一意。"C++" と "C" のように同じ slug に正規化される語でも上書きされない)
 
 > 収集ソースのうちWikipedia(JSON)はワーカーの `GET /json?url=`(Wikipedia/Wikimedia限定の許可リスト)経由。その他はRSS検索フィードのため既存 `/rss` プロキシをそのまま使用。
 

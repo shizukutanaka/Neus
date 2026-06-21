@@ -237,3 +237,30 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
 
 > 注: ShareTarget が watchword 収集を起動しない点、KeywordRules が word イベントも
 > 一律処理する点は設計上の意図であり短所としない (§6.2/§6.4 の通り)。
+
+### 10.4 第2次監査 (round 15) — データ保全
+
+新規に発見・修正したデータ保全上の欠陥。
+
+- W4: **要約予算カウンタの揮発** — `Summarizer.dailyCount` がメモリ上のみで、
+  リロードで 0 に戻る。日次予算 (BYOK 課金上限) がページ再読込だけで回避できた。
+  → C5: カウンタを IndexedDB (`summary-budget`) に永続化。起動時 `Summarizer.load()` で
+  復元し、加算ごとに保存。日付が変われば自動リセット。
+- W5: **インポートの破壊的先行削除** — JSON 復元は既存データを全削除した後にレコードを
+  書き込むが、検証は `app==='neus'` と events 配列の有無のみ。不正な (将来スキーマ等)
+  バックアップだと旧データを失った上で壊れたレコードが入りクラッシュ源になる。
+  ロールバックは存在しない。
+  → C6: 退避前に全 event/word の構造 (id・content・source・state・meta /
+  id・normalized) を検証し、不正なら削除せず中止。
+- W6: **Vault ドシエのファイル名衝突** — `exportWordDossier` が `{slug}.md` を用いるため、
+  別語が同じ slug に正規化される (例 "C++" と "C" → `c.md`) と後勝ちで上書きし、
+  前者のドシエを失う。
+  → C7: ファイル名を `{slug}-{id8}.md` とし語 id で一意化。README の出力先表記も更新。
+
+#### round 15 で検討したが修正しなかった項目
+
+- **KeywordRules 正規表現の評価時失敗**: 保存時に `new RegExp` を検証済みで、評価時も
+  try-catch で `false` を返すため評価ループは壊れない。保存後に不正化するのは DB 破損等の
+  例外的状況のみ。console.warn 追加は毎イベントのログ汚染を招くため見送り。
+- **dedup の Jaccard が O(n^2)**: 24h ウィンドウ内の近傍比較は件数増で重くなるが、
+  正当性の欠陥ではなく性能課題。別途 ADR で窓の上限化を検討する。

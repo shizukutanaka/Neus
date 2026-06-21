@@ -13,6 +13,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **ドキュメントの版ずれ解消**: `ARCHITECTURE.md` を v0.2.0 → v0.12.0 に更新(words store・探究モデル・`source.type:'word'`・`/json` endpoint・ADR 0009-0016・モジュール一覧)。`README.md` のファイル構成と検証コマンドの古い数値を現行へ修正 / Bring ARCHITECTURE.md and README.md up to date with the watchword/inquiry subsystems
 
 ### Fixed
+- **要約予算のリロード回避を封鎖**: `Summarizer` の日次カウンタがメモリ上のみで、ページリロードで 0 に戻り日次予算(BYOK 課金上限)が再読込だけで回避できた。カウンタを IndexedDB (`summary-budget`) に永続化し、起動時に復元・加算ごとに保存・日付変化で自動リセット / Persist the daily summary budget counter so a page reload no longer resets BYOK spend
+- **インポートの破壊的先行削除を防止**: JSON 復元が既存データを全削除した後にレコードを書き込むのに、検証が浅く(`app==='neus'` と events 配列のみ)、不正なバックアップだと旧データを失った上で壊れたレコードが入った。退避前に全 event/word の構造を検証し、不正なら削除せず中止 / Validate every record's shape before the destructive wipe on import (no rollback exists)
+- **Vault ドシエのファイル名衝突を解消**: `exportWordDossier` が `{slug}.md` を使うため、別語が同じ slug に正規化されると(例 "C++" と "C")後勝ちで上書きし前者のドシエを失った。`{slug}-{id8}.md` とし語 id で一意化 / Make vault dossier filenames unique per word id to stop silent slug-collision overwrites
 - **単語カード件数バッジの曖昧さ**: 検索結果の `wordResultHtml` がラベルなしの `lastFetched` 数値だけを表示し、裁決ピルや match% と区別できず a11y ラベルも無かった。`title` / `aria-label` で「収集時の取得件数」であることを明示(実在件数は WORDS モーダルが `countFor` で別途表示)。`publishedAt||timestamp` の日付フォールバック規約を回帰テストで固定し、parse 時に日付を捏造しないことを保証 / Label the ambiguous fetched-count badge; pin the publishedAt date-fallback convention with regression tests
 
 ### Added (continued from prior rounds)

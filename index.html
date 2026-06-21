@@ -1250,10 +1250,12 @@ const VaultWriter=(()=>{
     return count;
   }
 
-  // 単語ドシエを Vault の neus/words/{slug}.md に直接書き出す
+  // 単語ドシエを Vault の neus/words/{slug}-{id8}.md に直接書き出す。
+  // 別語が同じ slug に正規化される(例 "C++" と "C")と、term だけのファイル名では
+  // 後勝ちで上書きされ前者のドシエを失う。安定した語 id の先頭8桁を付けて一意化する。
   async function exportWordDossier(word,md){
     const root=await ensureWriteAccess();if(!root)return false;
-    const fh=await getOrCreateFileHandle(root,['neus','words'],`${wordSlug(word.term)}.md`);
+    const fh=await getOrCreateFileHandle(root,['neus','words'],`${wordSlug(word.term)}-${word.id.slice(0,8)}.md`);
     const w=await fh.createWritable();await w.write(md);await w.close();
     return true;
   }
@@ -2051,22 +2053,27 @@ Bus.subscribe('event.stored',async(ev)=>{
 
 // ===== SUMMARIZER =======================================================
 const Summarizer=(()=>{
-  let dailyCount=0;let dailyKey=new Date().toISOString().slice(0,10);
-  function resetIfNewDay(){const today=new Date().toISOString().slice(0,10);if(today!==dailyKey){dailyKey=today;dailyCount=0;}}
+  let dailyCount=0;let dailyKey=new Date().toISOString().slice(0,10);let loaded=false;
+  // 予算カウンタは IndexedDB に永続化する。これが無いとリロードで dailyCount が 0 に
+  // 戻り、日次予算(BYOK 課金上限)がページ再読込だけで回避できてしまう。
+  async function persist(){await Store.putSetting('summary-budget',{key:dailyKey,count:dailyCount});}
+  async function load(){const b=await Store.getSetting('summary-budget');const today=new Date().toISOString().slice(0,10);if(b&&b.key===today){dailyKey=today;dailyCount=b.count||0;}else{dailyKey=today;dailyCount=0;}loaded=true;}
+  async function resetIfNewDay(){const today=new Date().toISOString().slice(0,10);if(today!==dailyKey){dailyKey=today;dailyCount=0;await persist();}}
   async function callAnthropic(prompt,s){const res=await fetch(CONFIG.byokDefaults.anthropic.endpoint,{method:'POST',headers:{'content-type':'application/json','x-api-key':s,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.anthropic.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`anthropic_${res.status}`);return((await res.json()).content?.[0]?.text||'');}
   async function callOpenAI(prompt,s){const res=await fetch(CONFIG.byokDefaults.openai.endpoint,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.openai.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`openai_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
   async function callGemini(prompt,s){const model=(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.gemini.model;const url=CONFIG.byokDefaults.gemini.endpoint.replace('{model}',model)+`?key=${encodeURIComponent(s)}`;const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:400}})});if(!res.ok)throw new Error(`gemini_${res.status}`);return((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'');}
   async function summarize(ev){
-    resetIfNewDay();const s=await Store.getSetting('byok');
+    if(!loaded)await load();
+    await resetIfNewDay();const s=await Store.getSetting('byok');
     if(!s?.enabled)return null;
     const apiKey=await getApiKey();if(!apiKey)return null;
     if(s.budget&&dailyCount>=s.budget){Bus.publish('summarizer.budget-exceeded',{});return null;}
     const prompt=CONFIG.summaryPrompt.replace('{title}',ev.content.title).replace('{content}',(ev.content.body||ev.content.snippet||'').slice(0,4000));
     let text;
     try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){Bus.publish('summarizer.error',{ev,error:err.message});return null;}
-    dailyCount++;return text.trim();
+    dailyCount++;await persist();return text.trim();
   }
-  return{summarize,getDailyCount:()=>dailyCount};
+  return{summarize,getDailyCount:()=>dailyCount,load};
 })();
 
 Bus.subscribe('event.tagged',async(ev)=>{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;ev.content.summary=sum;await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.summarized',ev);});
@@ -3730,6 +3737,12 @@ $('#restore-file').addEventListener('change',async(e)=>{
   let dump;
   try{dump=JSON.parse(await file.text());}catch{toast('invalid JSON','err');return;}
   if(dump.app!=='neus'||!Array.isArray(dump.events)){toast('not a Neus backup','err');return;}
+  // 退避前に全レコードの形を検証する。検証を後回しにすると既存データを消した後で
+  // 不正なレコードに当たり、両方を失う(復元はロールバック不能)。
+  const validEvent=(ev)=>!!ev&&typeof ev.id==='string'&&!!ev.content&&!!ev.source&&!!ev.state&&!!ev.meta;
+  const validWord=(w)=>!!w&&typeof w.id==='string'&&typeof w.normalized==='string';
+  if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}
+  if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast('backup has malformed words','err');return;}
   if(!await confirmAsync(t('backup.confirm')))return;
   // 既存データ削除
   const existing=await Store.allEvents();
@@ -4165,6 +4178,7 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
 
     // 各モジュール初期化
     await KeywordRules.load();
+    await Summarizer.load();
     await InterestProfile.load();
     await FTSIndex.rebuild();
     Perf.mark('fts');
