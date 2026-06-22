@@ -1034,6 +1034,9 @@ function normalizeUrl(url){
 const HE={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 const escapeHtml=(s)=>String(s).replace(/[&<>"']/g,c=>HE[c]);
 const escapeAttr=escapeHtml;
+// YAML スカラーを二重引用符で安全に包む。フィードのタイトル/ソース名に含まれる `:` や改行が
+// frontmatter を壊す/キー注入するのを防ぐ。MarkdownExporter と WordExporter で共有。
+const yamlScalar=(s)=>'"'+String(s??'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
 
 function tokenize(text){
   if(!text)return[];
@@ -1212,9 +1215,16 @@ const VaultWriter=(()=>{
     return dir.getFileHandle(fileName,{create:true});
   }
 
+  // 書き込み失敗時は writable を abort する(createWritable は close まで原本を差し替えないため
+  // 原本破損はしないが、開いたままのストリームを確実に片付け、エラーを呼び出し元へ伝播させる)。
+  async function writeFile(fh,content){
+    const w=await fh.createWritable();
+    try{await w.write(content);await w.close();}
+    catch(e){try{await w.abort();}catch{}throw e;}
+  }
   async function writeNote(root,ev,md){
     const fh=await getOrCreateFileHandle(root,['neus'],`${ev.id}.md`);
-    const w=await fh.createWritable();await w.write(md);await w.close();
+    await writeFile(fh,md);
   }
 
   async function appendDaily(root,lines){
@@ -1224,18 +1234,20 @@ const VaultWriter=(()=>{
     const header=existing?'':(`# ${date}\n\n## Neus\n\n`);
     const content=existing+header+lines.join('\n')+'\n';
     const fh=await root.getFileHandle(`${date}.md`,{create:true});
-    const w=await fh.createWritable();await w.write(content);await w.close();
+    await writeFile(fh,content);
   }
 
   async function exportEvent(ev){
     const root=await ensureWriteAccess();if(!root)return false;
-    const md=MarkdownExporter.toMarkdown(ev);
-    await writeNote(root,ev,md);
-    const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
-    await appendDaily(root,[`- [${ev.content.title}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`]);
-    ev.state.exported=true;ev.state.exportedAt=Date.now();
-    await Store.putEvent(ev);FTSIndex.add(ev);
-    return true;
+    try{
+      const md=MarkdownExporter.toMarkdown(ev);
+      await writeNote(root,ev,md);
+      const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
+      await appendDaily(root,[`- [${ev.content.title}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`]);
+      ev.state.exported=true;ev.state.exportedAt=Date.now();
+      await Store.putEvent(ev);FTSIndex.add(ev);
+      return true;
+    }catch(e){console.warn('[VaultWriter] export failed:',e);return false;}
   }
 
   async function exportBatch(events){
@@ -1259,7 +1271,7 @@ const VaultWriter=(()=>{
   async function exportWordDossier(word,md){
     const root=await ensureWriteAccess();if(!root)return false;
     const fh=await getOrCreateFileHandle(root,['neus','words'],`${wordSlug(word.term)}-${word.id.slice(0,8)}.md`);
-    const w=await fh.createWritable();await w.write(md);await w.close();
+    await writeFile(fh,md);
     return true;
   }
 
@@ -2124,7 +2136,7 @@ const MarkdownExporter={
   toMarkdown(ev){
     const tags=[...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])];
     const vaultLinks=(ev.links||[]).filter(l=>l.startsWith('vault:')).map(l=>l.slice(6));
-    const fm=['---',`neus_id: ${ev.id}`,`source: ${ev.source.name}`,`source_url: ${ev.source.url||''}`,ev.publishedAt?`published_at: ${isoDate(ev.publishedAt)}`:null,`ingested_at: ${isoDate(ev.timestamp)}`,`tags: [${tags.join(', ')}]`,`score: ${ev.meta.score}`,`hash: ${ev.hash}`,'---'].filter(Boolean).join('\n');
+    const fm=['---',`neus_id: ${ev.id}`,`source: ${yamlScalar(ev.source.name)}`,`source_url: ${yamlScalar(ev.source.url||'')}`,ev.publishedAt?`published_at: ${isoDate(ev.publishedAt)}`:null,`ingested_at: ${isoDate(ev.timestamp)}`,`tags: [${tags.map(yamlScalar).join(', ')}]`,`score: ${ev.meta.score}`,`hash: ${ev.hash}`,'---'].filter(Boolean).join('\n');
     const parts=[fm,'',`# ${ev.content.title}`,''];
     if(ev.user?.quote)parts.push(`> ${ev.user.quote.split('\n').join('\n> ')}`,'');
     if(ev.user?.note)parts.push(`**メモ**: ${ev.user.note}`,'');
@@ -2434,7 +2446,7 @@ const WordExporter={
   },
   toDossier(word,events,others=[]){
     // YAML scalar: wrap in double-quotes and escape backslash, quote, newline.
-    const ys=s=>'"'+String(s||'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
+    const ys=yamlScalar;
     const srcList=[...(word.sources?.wikipedia?['Wikipedia']:[]),...Object.keys(WORD_FEEDS).filter(k=>word.sources?.[k]).map(k=>WORD_FEEDS[k].label)].join(', ')||'-';
     const fresh=newSinceReview(events,word.reviewedAt);
     const gaps=signalGaps(word,events);
@@ -3590,23 +3602,28 @@ $('#word-cancel').addEventListener('click',()=>{$('#modal-words').classList.remo
 $('#modal-words').addEventListener('click',(e)=>{if(e.target.id==='modal-words'){$('#modal-words').classList.remove('show');if(currentView==='words')renderView();}});
 $('#view').addEventListener('click',(e)=>{if(e.target.id==='empty-words')openWordsModal();});
 
+let addingWord=false;
 async function addWord(){
+  if(addingWord)return; // 同期ガード: 二重クリック/Enter連打で同じ normalized が二重登録されるのを防ぐ
   const term=$('#word-input').value.trim();
   if(!term){toast(currentLang==='ja'?'単語を入力':'enter a word','err');return;}
-  const normalized=normalizeTerm(term);
-  if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
   const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked,qiita:$('#wsrc-qiita').checked,zenn:$('#wsrc-zenn').checked,hatena:$('#wsrc-hatena').checked};
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
-  const note=$('#word-note').value.trim();
-  const priorBelief=$('#word-prior').value||'curious';
-  const now=Date.now();
-  const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
-  await Store.putWord(word);FTSIndex.addWord(word);
-  $('#word-input').value='';$('#word-note').value='';
-  await renderWordList();await refreshCounts();
-  toast(currentLang==='ja'?'登録しました — 収集中...':'registered — collecting...','ok');
-  await WordCollector.collectOne(word);
-  await renderWordList();await refreshCounts();
+  addingWord=true;
+  try{
+    const normalized=normalizeTerm(term);
+    if(await Store.findWordByTerm(normalized)){toast(currentLang==='ja'?'登録済み':'already registered','err');return;}
+    const note=$('#word-note').value.trim();
+    const priorBelief=$('#word-prior').value||'curious';
+    const now=Date.now();
+    const word={id:uuid(),term,normalized,note,lang:currentLang,priorBelief,sources,enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
+    await Store.putWord(word);FTSIndex.addWord(word);
+    $('#word-input').value='';$('#word-note').value='';
+    await renderWordList();await refreshCounts();
+    toast(currentLang==='ja'?'登録しました — 収集中...':'registered — collecting...','ok');
+    await WordCollector.collectOne(word);
+    await renderWordList();await refreshCounts();
+  }finally{addingWord=false;}
 }
 $('#word-add').addEventListener('click',addWord);
 $('#word-input').addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();addWord();}});
