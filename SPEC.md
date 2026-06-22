@@ -156,6 +156,7 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 | `SETTLED_VERDICTS` | 終端は `answered` と `suspended` のみ。`converging` は終端でない |
 | `cognitiveShift` | 事前信念の方向と裁決の方向が逆転したか (`shifted`) / 探究が終端に達したか (`concluded`) |
 | `falsifier` | 反証条件。これが観測されたら結論を覆す |
+| `falsifierHits` | 反証候補。反証条件と各収集物を文字bigram被覆率(≥0.5、言語非依存)で照合し、宣言した反証条件に該当しうるアイテムを能動検出。WORDSビュー/ドシエに表示し、`falsifier-seen` プロンプトを最優先発火 |
 | `questions` | 未解決の問い (アポリア)。`resolvedAt` の無いものを数える |
 | `socraticPrompts` | 状況に応じ最大3件の問い直しを提示 |
 | `newSinceReview` | `reviewedAt` 以降に収集されたアイテム = 答えの変化 |

@@ -156,6 +156,11 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-vtrail{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;font-family:var(--font-mono);font-size:10px;color:var(--fg-3);margin:0 0 8px;}
 .word-vtrail-arrow{color:var(--line);}
 .word-falsifier{font-size:12px;color:var(--fg-2);margin:0 0 8px;border-left:2px solid var(--line);padding-left:8px;}
+.word-fwatch{margin:0 0 12px;padding:8px 12px;border-left:2px solid var(--warn);background:var(--bg-2);border-radius:0 var(--radius) var(--radius) 0;}
+.word-fwatch-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--warn);display:block;margin-bottom:4px;}
+.word-fwatch ul{margin:0;padding:0;list-style:none;}
+.word-fwatch li{font-size:12px;padding:2px 0;line-height:1.5;}
+.word-fwatch-score{font-family:var(--font-mono);font-size:10px;color:var(--fg-3);}
 #word-prior{font-family:var(--font-mono);font-size:13px;margin-bottom:8px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);width:100%;}
 .word-elenchus{margin:0 0 12px;padding:8px 12px;border-left:2px solid var(--accent-line);background:var(--bg-2);border-radius:0 var(--radius) var(--radius) 0;}
 .word-elenchus-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--fg-3);display:block;margin-bottom:4px;}
@@ -801,6 +806,7 @@ const DICT={
     'word.prior':'出発点の認識',
     'word.shift':'認識の変容',
     'word.elenchus':'問答(システムからの問い)',
+    'word.fwatch':'反証候補(あなたの反証条件に該当しうる)',
     'word.verdict':'裁決',
     'word.verdict.cycle':'裁決を変更',
     'word.q.add':'問いを追加',
@@ -901,6 +907,7 @@ const DICT={
     'word.prior':'Starting belief',
     'word.shift':'Cognitive shift',
     'word.elenchus':'Elenchus (questions for you)',
+    'word.fwatch':'Possible falsifier (may match your stated condition)',
     'word.verdict':'Verdict',
     'word.verdict.cycle':'Cycle verdict',
     'word.q.add':'Add question',
@@ -2324,6 +2331,28 @@ function signalGaps(word,events){
   }
   return {active,silent,errored};
 }
+// 反証候補(Falsifier Watch): 反証条件は「何があれば結論を覆すか」の宣言だが、これまで
+// 受動的なテキストにすぎなかった。システムは証拠を集め続け、反証条件の文も知っているのに、
+// 両者を接続していなかった — 人に手動確認を促すだけだった。反証条件の文字bigram集合と
+// 各収集物の重なり(被覆率)で、宣言した反証条件に該当しうるアイテムを能動的に検出する。
+// 言語非依存(CJKも空白区切りも文字bigramで扱える)。純粋関数。
+function fsBigrams(text){
+  const s=String(text||'').toLowerCase().replace(/\s+/g,'');
+  const g=new Set();for(let i=0;i<s.length-1;i++)g.add(s.slice(i,i+2));return g;
+}
+function falsifierHits(word,events){
+  const f=(word.falsifier||'').trim();if(f.length<4)return[];
+  const fg=fsBigrams(f);if(fg.size<3)return[];
+  const hits=[];
+  for(const ev of events||[]){
+    const eg=fsBigrams([ev.content?.title,ev.content?.snippet,ev.content?.summary].filter(Boolean).join(' '));
+    if(eg.size===0)continue;
+    let inter=0;for(const b of fg)if(eg.has(b))inter++;
+    const cov=inter/fg.size;
+    if(cov>=0.5)hits.push({ev,score:cov});
+  }
+  return hits.sort((a,b)=>b.score-a.score).slice(0,3);
+}
 // 問答(elenchus): 探究の構造そのものから、システムが探究者へ問いを投げ返す。
 // ソクラテスの助産術 — 答えを与えず、矛盾と空白を問いとして突きつける。純粋関数。
 function socraticPrompts(word,events){
@@ -2340,9 +2369,14 @@ function socraticPrompts(word,events){
   const unreviewed=newSinceReview(events,word.reviewedAt).length;
   const qs=(word.questions||[]);
   const openQs=openQuestions(word);
+  // 最優先: 宣言した反証条件に該当しうる証拠が実際に届いたなら、それが最も鋭い論駁。
+  // 漠然と「現れたか?」ではなく「該当する N 件がここにある」と具体的に突きつける。
+  const fhits=falsifierHits(word,events);
+  if(fhits.length&&word.falsifier)out.push({key:'falsifier-seen',ja:`収集物 ${fhits.length} 件があなたの反証条件「${word.falsifier}」に該当しうる。結論を見直すべきか?`,en:`${fhits.length} collected item(s) may match your falsifier "${word.falsifier}". Re-examine the verdict?`});
   // 優先順: 結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り
   // verdictStale records staleness for ALL settled verdicts, so the challenge must fire for both.
-  if(SETTLED_VERDICTS.has(verdict)&&stale>0){
+  // 具体的な該当(falsifier-seen)が出ているなら、漠然とした stale 系プロンプトは抑制する。
+  if(SETTLED_VERDICTS.has(verdict)&&stale>0&&!fhits.length){
     // 反証条件があれば、漠然と「妥当か?」ではなく「その条件は現れたか?」と問える(鋭い論駁)。
     if(word.falsifier)out.push({key:'stale-falsifier',ja:`裁決後に${stale}件。あなたは「${word.falsifier}」なら覆ると述べた — それは現れたか?`,en:`${stale} new since your verdict. You said it changes if: "${word.falsifier}" — has it?`});
     else if(verdict==='suspended')out.push({key:'stale-suspended',ja:`保留後に${stale}件の新情報。再検討の余地はあるか?`,en:`${stale} new item(s) arrived after suspension. Worth revisiting?`});
@@ -2505,6 +2539,11 @@ const WordExporter={
     }
     // 反証条件(可謬性): 何があれば結論を覆すか。知と独断を分かつ境界。
     if(word.falsifier)parts.push('## 反証条件','',`覆る条件 / changes if: ${word.falsifier}`,'');
+    // 反証候補(Falsifier Watch): 宣言した反証条件に該当しうる収集物。ドシエにも残し往復可能に。
+    if(word.falsifier){
+      const fw=falsifierHits(word,events);
+      if(fw.length)parts.push('## 反証候補 / possible falsifier evidence','',fw.map(h=>`- [${h.ev.content.title||'(untitled)'}](${h.ev.url||''}) — ${Math.round(h.score*100)}%`).join('\n'),'');
+    }
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決の対比。探究が自己認識を変えたかを記録。
     {
       const pd=PRIOR_BELIEF_DEFS.find(d=>d.key===priorBeliefOf(word))||PRIOR_BELIEF_DEFS[0];
@@ -2961,6 +3000,9 @@ async function renderWords(){
     }).join('')}</ul>`:'';
     const qPh=escapeAttr(currentLang==='ja'?'未解決の問いを追加...':'Add an open question...');
     const qAdd=`<div class="word-q-add"><input type="text" placeholder="${qPh}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} への未解決の問い`:`open question for ${w.term}`)}" enterkeyhint="done" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'問いを追加':'add question')}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
+    // 反証候補(Falsifier Watch): 宣言した反証条件に該当しうる収集物を能動的に提示する。
+    const fwatch=w.falsifier?falsifierHits(w,items):[];
+    const fwatchBlock=fwatch.length?`<div class="word-fwatch" title="${escapeAttr(currentLang==='ja'?'あなたが覆ると述べた条件に該当しうる証拠':'evidence that may match your stated falsifier')}"><span class="word-fwatch-label">${t('word.fwatch')}</span><ul>${fwatch.map(h=>`<li><a href="${escapeAttr(h.ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(h.ev.content.title||'(untitled)')}</a> <span class="word-fwatch-score">${Math.round(h.score*100)}%</span></li>`).join('')}</ul></div>`:'';
     // 問答(elenchus): システムが探究の構造から問いを投げ返す。
     const prompts=socraticPrompts(w,items);
     const elenchusBlock=prompts.length?`<div class="word-elenchus"><span class="word-elenchus-label">${t('word.elenchus')}</span><ul>${prompts.map(p=>`<li>${escapeHtml(currentLang==='ja'?p.ja:p.en)}</li>`).join('')}</ul></div>`:'';
@@ -2994,6 +3036,7 @@ async function renderWords(){
       ${verdictNoteRow}
       ${falsifierLine}
       ${falsifierRow}
+      ${fwatchBlock}
       ${provLine}
       ${gapLine}
       ${errLine}

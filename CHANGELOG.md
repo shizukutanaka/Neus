@@ -6,6 +6,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+- **反証候補 (Falsifier Watch)**: ソクラテス式問答から導いた新機能。システムは探究者に反証条件(「何があれば結論を覆すか」=最も鋭い論駁)を述べさせるのに、述べられた反証条件は受動的なテキストにすぎず、収集し続ける証拠と接続されていなかった — 人に手動確認を促すだけだった。反証条件の文字bigram集合と各収集物の被覆率(言語非依存、CJKも可)で、宣言した反証条件に該当しうるアイテムを能動検出。WORDSビューに `word-fwatch` ブロック(該当アイテム + 一致率)、最優先の `falsifier-seen` 問答プロンプト(具体的該当があれば漠然とした stale 系を抑制)、ドシエの `## 反証候補` セクションを追加。反証条件が「証拠を監視する能動センサー」になる / Falsifier Watch: actively scan collected evidence against the user's stated falsifier and surface possible matches (language-agnostic bigram coverage)
+
 ### Fixed
 - **健全なソースが自動無効化され得た(SourceFailTracker)**: 失敗カウンタは `inbound.fetched`(アイテム取得)でしかリセットされず、更新の少ないフィード(常に 304 Not Modified や 0 件)はカウンタが下がらなかった。散発的な一時失敗が累積し、連続失敗の意図に反して健全なソースが `sourceMaxFails` 回で自動無効化され得た。健全なフェッチ(304 / 2xx の0件 / アイテム有り)で `source.ok` を発行し、それでカウンタをリセットするよう変更。連続失敗のみが無効化につながる本来の意味論を回復 / Stop auto-disabling healthy but rarely-updating feeds: reset the fail counter on any successful fetch (304/empty/items), not just when items arrive
 - **Markdown 書き出しの YAML frontmatter インジェクション**: イベント書き出しの frontmatter は `source`/`source_url`/`tags` を生のまま埋め込んでいたため、フィードのタイトルやソース名によくある `:`・改行・カンマが YAML を壊したり任意キーを注入し得た(単語ドシエ側は `ys()` で対策済みだった)。共有の `yamlScalar()` エスケーパを新設し両エクスポータで使用。値は二重引用符で包み `\` `"` 改行をエスケープ / Escape YAML frontmatter scalars in the event exporter (shared yamlScalar); a colon/newline in a feed title no longer corrupts or injects into exported notes
