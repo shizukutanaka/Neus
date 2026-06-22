@@ -1399,7 +1399,10 @@ const SourceFailTracker=(()=>{
       fails.delete(source.id);
     }
   });
-  Bus.subscribe('inbound.fetched',({source})=>{fails.delete(source.id);});
+  // 成功フェッチ(304/空/アイテム有り のいずれも健全)で失敗カウンタをリセットする。
+  // inbound.fetched だけだと、更新の少ないフィード(常に304や0件)がカウンタを下げられず、
+  // 散発的な一時失敗が累積して健全なソースが自動無効化されてしまう(連続失敗の意図に反する)。
+  Bus.subscribe('source.ok',({source})=>{fails.delete(source.id);});
   return{};
 })();
 
@@ -1777,15 +1780,17 @@ const RSSPoller=(()=>{
       catch(e){lastErr=e;}
     }
     if(lastErr){Bus.publish('inbound.error',{source,error:'network'});return 0;}
-    // 304 Not Modified: 変更なし。取得スキップ(最大の節約)
-    if(res.status===304){return 0;}
+    // 304 Not Modified: 変更なし。取得スキップ(最大の節約)。健全な応答なので失敗カウンタをリセット。
+    if(res.status===304){Bus.publish('source.ok',{source});return 0;}
     // 5xx はサーバー一時障害の可能性 → リトライ済みでなければ1回だけ追加リトライ
     if(res.status>=500&&res.status<600){
       await new Promise(r=>setTimeout(r,500));
       try{res=await fetch(proxyUrl,opts);}catch{Bus.publish('inbound.error',{source,error:'network'});return 0;}
-      if(res.status===304)return 0;
+      if(res.status===304){Bus.publish('source.ok',{source});return 0;}
     }
     if(!res.ok){Bus.publish('inbound.error',{source,error:`http_${res.status}`});return 0;}
+    // 2xx 応答 = ソース健全(0件でも)。失敗カウンタをリセット。
+    Bus.publish('source.ok',{source});
     // 検証子を保存(次回のConditional GET用)
     const etag=res.headers.get('etag');const lastMod=res.headers.get('last-modified');
     if(etag||lastMod){

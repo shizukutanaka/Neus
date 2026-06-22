@@ -7,6 +7,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ## [Unreleased]
 
 ### Fixed
+- **健全なソースが自動無効化され得た(SourceFailTracker)**: 失敗カウンタは `inbound.fetched`(アイテム取得)でしかリセットされず、更新の少ないフィード(常に 304 Not Modified や 0 件)はカウンタが下がらなかった。散発的な一時失敗が累積し、連続失敗の意図に反して健全なソースが `sourceMaxFails` 回で自動無効化され得た。健全なフェッチ(304 / 2xx の0件 / アイテム有り)で `source.ok` を発行し、それでカウンタをリセットするよう変更。連続失敗のみが無効化につながる本来の意味論を回復 / Stop auto-disabling healthy but rarely-updating feeds: reset the fail counter on any successful fetch (304/empty/items), not just when items arrive
 - **Markdown 書き出しの YAML frontmatter インジェクション**: イベント書き出しの frontmatter は `source`/`source_url`/`tags` を生のまま埋め込んでいたため、フィードのタイトルやソース名によくある `:`・改行・カンマが YAML を壊したり任意キーを注入し得た(単語ドシエ側は `ys()` で対策済みだった)。共有の `yamlScalar()` エスケーパを新設し両エクスポータで使用。値は二重引用符で包み `\` `"` 改行をエスケープ / Escape YAML frontmatter scalars in the event exporter (shared yamlScalar); a colon/newline in a feed title no longer corrupts or injects into exported notes
 - **Vault 書き込み失敗時の後始末とエラー伝播**: `createWritable→write→close` が未保護で、`write` 失敗時に writable を片付けず、`exportEvent` の失敗が「書出失敗」トーストに反映されなかった(createWritable は close まで原本を差し替えないため原本破損はしない)。共通 `writeFile` で失敗時に `abort` し、`exportEvent` は false を返すよう変更 / Abort the writable on write failure and surface vault export errors as a failed result
 - **単語の二重登録レース**: `addWord` が `findWordByTerm` チェックと `putWord` の間に同期ガードを持たず、二重クリック/Enter連打で同じ normalized キーの単語が2件作られ得た。同期フラグ `addingWord` で再入を防止(空入力チェックの後・最初の await の前にロック)/ Guard addWord against double-submit creating duplicate watchwords
