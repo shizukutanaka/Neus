@@ -2,6 +2,12 @@
 // Mirrors wordSlug + WordExporter.toDossier in index.html.
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 const isoDate = (ms) => new Date(ms).toISOString();
 const wordSlug = (s) => (s || 'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'word';
@@ -73,6 +79,11 @@ function aggregateTags(events) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
 }
 
+// Mirrored from safeHref/mdLink/mdImgLink in index.html
+function safeHref(url) { try { const p = new URL(url || '').protocol; return (p === 'https:' || p === 'http:') ? url : '#'; } catch { return '#'; } }
+const mdLink = (title, url) => { const safe = url ? safeHref(url) : ''; const esc = s => (s || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]'); return safe && safe !== '#' ? `[${esc(title)}](<${safe}>)` : `**${esc(title)}**`; };
+const mdImgLink = (alt, url) => { const safe = url ? safeHref(url) : ''; return safe && safe !== '#' ? `![${(alt || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]')}](<${safe}>)` : ''; };
+
 // Mirrored from WordExporter.toDossier
 const ys = s => '"' + String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 function toDossier(word, events, others = []) {
@@ -88,8 +99,8 @@ function toDossier(word, events, others = []) {
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
     parts.push(wikiCanonTitle ? `## 定義 (${wikiCanonTitle})` : '## 定義', '', word.wiki.extract, '');
-    if (word.wiki.thumbnail) parts.push(`![thumbnail](${word.wiki.thumbnail})`);
-    if (word.wiki.url) parts.push(`[Wikipedia](${word.wiki.url})`, '');
+    if (word.wiki.thumbnail) parts.push(mdImgLink('thumbnail', word.wiki.thumbnail));
+    if (word.wiki.url) parts.push(mdLink('Wikipedia', word.wiki.url), '');
   }
   const tiers = tierBreakdown(events);
   if (tiers.length) {
@@ -104,7 +115,7 @@ function toDossier(word, events, others = []) {
     parts.push(`## 新着 (${fresh.length})`, '');
     for (const ev of fresh) {
       const d = ev.publishedAt ? isoDate(ev.publishedAt).slice(0, 10) : '';
-      parts.push(`- [${ev.content.title}](${ev.url || ''})${d ? ` — ${d}` : ''}`);
+      parts.push(`- ${mdLink(ev.content.title, ev.url)}${d ? ` — ${d}` : ''}`);
     }
     parts.push('');
   }
@@ -115,7 +126,7 @@ function toDossier(word, events, others = []) {
     parts.push(`### ${name}`, '');
     for (const ev of list) {
       const d = ev.publishedAt ? isoDate(ev.publishedAt).slice(0, 10) : '';
-      parts.push(`- [${ev.content.title}](${ev.url || ''})${d ? ` — ${d}` : ''}`);
+      parts.push(`- ${mdLink(ev.content.title, ev.url)}${d ? ` — ${d}` : ''}`);
       if (ev.content.snippet) parts.push(`  - ${ev.content.snippet.slice(0, 200)}`);
     }
     parts.push('');
@@ -152,13 +163,13 @@ describe('WordExporter.toDossier', () => {
     const md = toDossier(word, events);
     expect(md).toContain('## 定義');
     expect(md).toContain('WebGPU is a web graphics API.');
-    expect(md).toContain('[Wikipedia](https://en.wikipedia.org/wiki/WebGPU)');
+    expect(md).toContain('[Wikipedia](<https://en.wikipedia.org/wiki/WebGPU>)');
   });
 
   it('includes a thumbnail image line when wiki.thumbnail is set', () => {
     const w = { ...word, wiki: { ...word.wiki, thumbnail: 'https://upload.wikimedia.org/thumb/x.png' } };
     const md = toDossier(w, events);
-    expect(md).toContain('![thumbnail](https://upload.wikimedia.org/thumb/x.png)');
+    expect(md).toContain('![thumbnail](<https://upload.wikimedia.org/thumb/x.png>)');
   });
 
   it('omits the thumbnail line when wiki.thumbnail is absent', () => {
@@ -194,7 +205,7 @@ describe('WordExporter.toDossier', () => {
     const md = toDossier(word, events);
     expect(md).toContain('### Google News');
     expect(md).toContain('### Hacker News');
-    expect(md).toContain('- [WebGPU ships](https://ex.com/a) — 2026-01-02');
+    expect(md).toContain('- [WebGPU ships](<https://ex.com/a>) — 2026-01-02');
     expect(md).toContain('  - A summary.');
   });
 
@@ -231,6 +242,51 @@ describe('WordExporter.toDossier', () => {
     const md = toDossier(w, []);
     expect(md).toContain('intent: "line one\\nline two"');
     expect(md).not.toContain('intent: line one');
+  });
+});
+
+describe('mdLink / mdImgLink (modeled)', () => {
+  it('wraps URL in angle brackets so parens in Wikipedia URLs are safe', () => {
+    expect(mdLink('Python', 'https://en.wikipedia.org/wiki/Python_(programming_language)')).toBe(
+      '[Python](<https://en.wikipedia.org/wiki/Python_(programming_language)>)'
+    );
+  });
+  it('escapes ] in title so bracket-heavy paper titles do not break the link', () => {
+    expect(mdLink('GPT-4 [Technical Report]', 'https://arxiv.org/abs/2303.08774')).toBe(
+      '[GPT-4 \\[Technical Report\\]](<https://arxiv.org/abs/2303.08774>)'
+    );
+  });
+  it('falls back to bold text when URL is absent', () => {
+    expect(mdLink('Untitled', '')).toBe('**Untitled**');
+    expect(mdLink('Untitled', undefined)).toBe('**Untitled**');
+  });
+  it('falls back to bold text for javascript: URLs (XSS defence)', () => {
+    expect(mdLink('Click me', 'javascript:alert(1)')).toBe('**Click me**');
+  });
+  it('mdImgLink produces an image with angle-bracket URL', () => {
+    expect(mdImgLink('thumbnail', 'https://upload.wikimedia.org/img.png')).toBe(
+      '![thumbnail](<https://upload.wikimedia.org/img.png>)'
+    );
+  });
+  it('mdImgLink returns empty string for unsafe URL', () => {
+    expect(mdImgLink('thumbnail', 'javascript:void(0)')).toBe('');
+  });
+});
+
+describe('mdLink wiring (index.html)', () => {
+  it('defines mdLink as a helper', () => {
+    expect(html).toContain('const mdLink=');
+    expect(html).toContain('const mdImgLink=');
+  });
+  it('uses mdLink in MarkdownExporter for the source URL', () => {
+    expect(html).toContain("mdLink('原文を開く',ev.url)");
+  });
+  it('uses mdLink in toDossier item lists (not raw bracket syntax)', () => {
+    expect(html).not.toContain('`- [${ev.content.title}](${ev.url');
+    expect(html).toContain('`- ${mdLink(ev.content.title,ev.url)}');
+  });
+  it('uses mdImgLink for wiki thumbnail in toDossier', () => {
+    expect(html).toContain("mdImgLink('thumbnail',word.wiki.thumbnail)");
   });
 });
 
@@ -289,10 +345,10 @@ describe('WordExporter.toDossier — intent + delta', () => {
     const md = toDossier(word, events);
     expect(md).toContain('unreviewed: 1');
     expect(md).toContain('## 新着 (1)');
-    expect(md).toContain('- [fresh item](https://ex.com/n) — 2026-01-03');
+    expect(md).toContain('- [fresh item](<https://ex.com/n>) — 2026-01-03');
     // The reviewed (old) item is absent from 新着 but still present in 収集アイテム
     expect(md.split('## 収集アイテム')[0]).not.toContain('old item');
-    expect(md).toContain('- [old item](https://ex.com/o)');
+    expect(md).toContain('- [old item](<https://ex.com/o>)');
   });
 
   it('omits the 新着 section and reports zero when all items are reviewed', () => {

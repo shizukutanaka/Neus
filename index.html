@@ -1046,6 +1046,11 @@ const safeHref=(url)=>{try{const p=new URL(url||'').protocol;return(p==='https:'
 // YAML スカラーを二重引用符で安全に包む。フィードのタイトル/ソース名に含まれる `:` や改行が
 // frontmatter を壊す/キー注入するのを防ぐ。MarkdownExporter と WordExporter で共有。
 const yamlScalar=(s)=>'"'+String(s??'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
+// Markdown link builder. Escapes [ and ] in the title so they don't break CommonMark link
+// syntax. Wraps the URL in <> so parentheses in URLs (e.g. Wikipedia disambiguation pages)
+// are handled correctly. Falls back to bold text when the URL is absent or unsafe.
+const mdLink=(title,url)=>{const safe=url?safeHref(url):'';const esc=(s)=>(s||'').replace(/\[/g,'\\[').replace(/\]/g,'\\]');return safe&&safe!=='#'?`[${esc(title)}](<${safe}>)`:`**${esc(title)}**`;};
+const mdImgLink=(alt,url)=>{const safe=url?safeHref(url):'';return safe&&safe!=='#'?`![${(alt||'').replace(/\[/g,'\\[').replace(/\]/g,'\\]')}](<${safe}>)`:'';};
 
 function tokenize(text){
   if(!text)return[];
@@ -1391,7 +1396,7 @@ const NetworkMonitor=(()=>{
   window.addEventListener('offline',()=>{online=false;applyOfflineUI();});
   window.addEventListener('online',()=>{
     online=true;applyOfflineUI();
-    RSSPoller.fetchAll().then(()=>refreshCounts()).then(()=>renderView());
+    RSSPoller.fetchAll().then(()=>WordCollector.collectAll()).then(()=>refreshCounts()).then(()=>renderView());
   });
   return{isOnline:()=>online};
 })();
@@ -2159,7 +2164,7 @@ const MarkdownExporter={
     if(ev.content.summary)parts.push('## 要約','',ev.content.summary,'');
     if(ev.content.snippet)parts.push('## 抜粋','',ev.content.snippet,'');
     if(vaultLinks.length){parts.push('## 関連ノート','');vaultLinks.forEach(p=>parts.push(`- [[${p.split('/').pop().replace(/\.md$/,'')}]]`));parts.push('');}
-    if(ev.url)parts.push(`[原文を開く](${ev.url})`);
+    if(ev.url)parts.push(mdLink('原文を開く',ev.url));
     return parts.join('\n');
   },
   async copy(ev){try{await navigator.clipboard.writeText(this.toMarkdown(ev));toast('markdown copied','ok');}catch{toast('clipboard denied','err');}}
@@ -2512,8 +2517,8 @@ const WordExporter={
     }
     if(word.wiki?.extract){
       parts.push(wikiCanonTitle?`## 定義 (${wikiCanonTitle})`:'## 定義','',word.wiki.extract,'');
-      if(word.wiki.thumbnail)parts.push(`![thumbnail](${word.wiki.thumbnail})`);
-      if(word.wiki.url)parts.push(`[Wikipedia](${word.wiki.url})`,'');
+      if(word.wiki.thumbnail)parts.push(mdImgLink('thumbnail',word.wiki.thumbnail));
+      if(word.wiki.url)parts.push(mdLink('Wikipedia',word.wiki.url),'');
     }
     // 出所(知の階層): 研究 > 報道 > 議論。何を「知り」何を「聞いた」かを区別する。
     const tiers=tierBreakdown(events);
@@ -2546,7 +2551,7 @@ const WordExporter={
     // 反証候補(Falsifier Watch): 宣言した反証条件に該当しうる収集物。ドシエにも残し往復可能に。
     if(word.falsifier){
       const fw=falsifierHits(word,events);
-      if(fw.length)parts.push('## 反証候補 / possible falsifier evidence','',fw.map(h=>`- [${h.ev.content.title||'(untitled)'}](${h.ev.url||''}) — ${Math.round(h.score*100)}%`).join('\n'),'');
+      if(fw.length)parts.push('## 反証候補 / possible falsifier evidence','',fw.map(h=>`- ${mdLink(h.ev.content.title||'(untitled)',h.ev.url)} — ${Math.round(h.score*100)}%`).join('\n'),'');
     }
     // 認識の変容(γνῶθι σεαυτόν): 登録時の先入観と現在の裁決の対比。探究が自己認識を変えたかを記録。
     {
@@ -2575,7 +2580,7 @@ const WordExporter={
       parts.push(`## 新着 (${fresh.length})`,'');
       for(const ev of fresh){
         const d=ev.publishedAt?isoDate(ev.publishedAt).slice(0,10):'';
-        parts.push(`- [${ev.content.title}](${ev.url||''})${d?` — ${d}`:''}`);
+        parts.push(`- ${mdLink(ev.content.title,ev.url)}${d?` — ${d}`:''}`);
       }
       parts.push('');
     }
@@ -2607,7 +2612,7 @@ const WordExporter={
       parts.push(`### ${name}`,'');
       for(const ev of list){
         const d=ev.publishedAt?isoDate(ev.publishedAt).slice(0,10):'';
-        parts.push(`- [${ev.content.title}](${ev.url||''})${d?` — ${d}`:''}`);
+        parts.push(`- ${mdLink(ev.content.title,ev.url)}${d?` — ${d}`:''}`);
         if(ev.content.snippet)parts.push(`  - ${ev.content.snippet.slice(0,200)}`);
       }
       parts.push('');
@@ -3307,7 +3312,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(e.target.closest('a'))return;
   // ソース名クリックでフィルタ適用
   const srcEl=e.target.closest('[data-filter-source]');
-  if(srcEl){e.stopPropagation();const card=e.target.closest('.card');if(card){const ev=await Store.getEvent(card.dataset.id);if(ev)applyFilter('source',ev.source.id,ev.source.name);}return;}
+  if(srcEl){e.stopPropagation();const card=e.target.closest('.card');if(card){const ev=await Store.getEvent(card.dataset.id);if(ev)applyFilter('source',ev.source.name);}return;}
   // タグクリックでフィルタ適用
   const tagEl=e.target.closest('.tag');
   if(tagEl){e.stopPropagation();const txt=tagEl.textContent.replace(/^[#~]/,'').trim();applyFilter('tag',txt,txt);return;}

@@ -81,3 +81,41 @@ describe('view filter wiring (index.html)', () => {
     expect(html).toContain('if(!ev.state.archived)for(const r of matched.watch){');
   });
 });
+
+describe('source filter display (index.html)', () => {
+  // Bug: clicking a source label called applyFilter('source', ev.source.id, ev.source.name).
+  // applyFilter only accepts two args; the UUID was stored as activeFilter.value and shown
+  // verbatim in the filter bar. Fix: pass ev.source.name so the label is human-readable.
+  it('source click passes source.name (not source.id) to applyFilter', () => {
+    // The old pattern passed ev.source.id as the second arg
+    expect(html).not.toContain("applyFilter('source',ev.source.id");
+    // The new pattern passes ev.source.name
+    expect(html).toContain("applyFilter('source',ev.source.name)");
+  });
+  it('matchesFilter accepts both id and name matches for backward compatibility', () => {
+    expect(html).toContain("ev.source.id===activeFilter.value||ev.source.name===activeFilter.value");
+  });
+});
+
+// Mirror of matchesFilter for unit-testing matching logic
+function matchesSourceFilter(activeFilter, ev) {
+  if (!activeFilter) return true;
+  if (activeFilter.type === 'source') return ev.source.id === activeFilter.value || ev.source.name === activeFilter.value;
+  return true;
+}
+
+describe('source filter matching (modeled)', () => {
+  const ev = { source: { id: 'uuid-1234', name: 'Hacker News' }, meta: { userTags: [], autoTags: [] }, state: {} };
+  it('matches by source name', () => {
+    expect(matchesSourceFilter({ type: 'source', value: 'Hacker News' }, ev)).toBe(true);
+  });
+  it('still matches by source id for backward compat', () => {
+    expect(matchesSourceFilter({ type: 'source', value: 'uuid-1234' }, ev)).toBe(true);
+  });
+  it('does not match an unrelated source', () => {
+    expect(matchesSourceFilter({ type: 'source', value: 'Reddit' }, ev)).toBe(false);
+  });
+  it('passes all events when no filter is active', () => {
+    expect(matchesSourceFilter(null, ev)).toBe(true);
+  });
+});
