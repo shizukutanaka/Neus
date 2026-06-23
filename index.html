@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-OlbElySA1YqS5G/vv8/evzF5cE4p2TR8anG/+H3Fglw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-MJ3L8FaofG2BBwdl8sUEdP7lywiy9SWcWPRCf/RnxYs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1450,7 +1450,7 @@ const StorageGuard=(()=>{
     const all=await Store.allEvents();
     const candidates=all.filter(ev=>ev.state.archived&&ev.state.exportedAt).sort((a,b)=>(a.state.archivedAt||0)-(b.state.archivedAt||0));
     const toDelete=candidates.slice(0,Math.max(1,Math.ceil(candidates.length*0.1)));
-    for(const ev of toDelete){FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);}
+    for(const ev of toDelete){try{await Store.deleteEvent(ev.id);FTSIndex.remove(ev.id);}catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}}
     if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err');
   }
   Bus.subscribe('event.stored',()=>check());
@@ -1687,20 +1687,22 @@ const AutoSync=(()=>{
 if('serviceWorker'in navigator){
   navigator.serviceWorker.addEventListener('message',async(e)=>{
     if(e.data?.type==='periodic-poll-request'){
-      // SWは取得をトリガしただけなので、メインスレッドでPOLL実行
-      const before=await Store.countAll();
-      await RSSPoller.fetchAll();
-      await WordCollector.collectAll();
-      const after=await Store.countAll();
-      const fetched=after-before;
-      const s=await AutoSync.getSettings();
-      if(s.notify&&fetched>0&&Notification.permission==='granted'){
-        new Notification(currentLang==='ja'?'Neus 新着':'Neus new items',{
-          body:currentLang==='ja'?`${fetched}件の新着があります`:`${fetched} new event(s)`,
-          icon:'/icon-192.png',tag:'neus-new',
-        });
-      }
-      await refreshCounts();await renderView();
+      try{
+        // SWは取得をトリガしただけなので、メインスレッドでPOLL実行
+        const before=await Store.countAll();
+        await RSSPoller.fetchAll();
+        await WordCollector.collectAll();
+        const after=await Store.countAll();
+        const fetched=after-before;
+        const s=await AutoSync.getSettings();
+        if(s.notify&&fetched>0&&Notification.permission==='granted'){
+          new Notification(currentLang==='ja'?'Neus 新着':'Neus new items',{
+            body:currentLang==='ja'?`${fetched}件の新着があります`:`${fetched} new event(s)`,
+            icon:'/icon-192.png',tag:'neus-new',
+          });
+        }
+        await refreshCounts();await renderView();
+      }catch(err){console.error('[SW message] periodic-poll-request failed:',err);}
     }
   });
 }
@@ -1716,6 +1718,7 @@ const ShareTarget={
   },
   async ingest(url,title){
     let nu;try{nu=normalizeUrl(url);}catch{nu=url;}
+    if(safeHref(nu)==='#'){toast(currentLang==='ja'?'無効なURL':'invalid url','err');return;}
     const displayTitle=title||nu;
     const hash=await sha256(nu+'|'+displayTitle);
     const existing=await Store.findByHash(hash);
@@ -2032,9 +2035,11 @@ const TagLearner=(()=>{
     return[...out].slice(0,3);
   }
   async function rebuild(){
-    const all=await Store.allEvents();const tagWords=new Map();const tagFreq=new Map();
-    for(const ev of all){const tokens=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet)]);for(const tag of(ev.meta.userTags||[])){tagFreq.set(tag,(tagFreq.get(tag)||0)+1);let wmap=tagWords.get(tag);if(!wmap)tagWords.set(tag,wmap=new Map());for(const t of tokens)wmap.set(t,(wmap.get(t)||0)+1);}}
-    model=new Map();for(const[tag,freq]of tagFreq){if(freq<CONFIG.tagLearnMinFreq)continue;const wmap=tagWords.get(tag);model.set(tag,new Set([...wmap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0])));}
+    try{
+      const all=await Store.allEvents();const tagWords=new Map();const tagFreq=new Map();
+      for(const ev of all){const tokens=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet)]);for(const tag of(ev.meta.userTags||[])){tagFreq.set(tag,(tagFreq.get(tag)||0)+1);let wmap=tagWords.get(tag);if(!wmap)tagWords.set(tag,wmap=new Map());for(const t of tokens)wmap.set(t,(wmap.get(t)||0)+1);}}
+      model=new Map();for(const[tag,freq]of tagFreq){if(freq<CONFIG.tagLearnMinFreq)continue;const wmap=tagWords.get(tag);model.set(tag,new Set([...wmap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0])));}
+    }catch(err){console.warn('[TagLearner.rebuild]',err);model=new Map();}
     dirty=false;
   }
   async function suggest(ev){

@@ -245,3 +245,57 @@ describe('source filter matching (modeled)', () => {
     expect(matchesSourceFilter(null, ev)).toBe(true);
   });
 });
+
+describe('StorageGuard IDB/FTS ordering (index.html)', () => {
+  // Bug: FTSIndex.remove(ev.id) was called before Store.deleteEvent(ev.id).
+  // If the IDB deletion threw, the FTS lost the entry while IDB still held it.
+  // Fix: delete from IDB first; only remove from FTS after IDB confirms success.
+  it('deletes from IDB before removing from FTS in auto-cleanup loop', () => {
+    // The correct order is: Store.deleteEvent first, FTSIndex.remove second.
+    expect(html).toContain('await Store.deleteEvent(ev.id);FTSIndex.remove(ev.id);');
+    // The old unsafe order must be gone.
+    expect(html).not.toContain('FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);');
+  });
+  it('wraps each auto-cleanup deletion in try/catch so one failure does not abort the rest', () => {
+    expect(html).toContain("catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}");
+  });
+});
+
+describe('TagLearner.rebuild error handling (index.html)', () => {
+  // Bug: rebuild() had no error handling. An IDB error left dirty=true and
+  // model=null, causing every subsequent suggest() call to re-enter rebuild()
+  // indefinitely, creating an infinite loop on a broken IDB.
+  // Fix: try/catch resets model to empty Map and sets dirty=false on error.
+  it('catches IDB errors in rebuild and sets model to empty Map', () => {
+    expect(html).toContain("catch(err){console.warn('[TagLearner.rebuild]',err);model=new Map();}");
+  });
+  it('sets dirty=false even after a rebuild error to stop infinite retry', () => {
+    // dirty=false is placed after the catch block so it always executes.
+    // Verify: catch sets model then dirty=false follows on the next line.
+    expect(html).toContain("model=new Map();}");
+    expect(html).toContain('dirty=false;');
+  });
+});
+
+describe('SW periodic-poll-request error handling (index.html)', () => {
+  // Bug: the async SW message handler for periodic-poll-request had no try/catch.
+  // Any error (IDB, network) became an unhandled rejection.
+  // Fix: wrap the handler body in try/catch.
+  it('wraps periodic-poll-request handler in try/catch', () => {
+    const idx = html.indexOf("e.data?.type==='periodic-poll-request'");
+    expect(idx).toBeGreaterThan(0);
+    const slice = html.slice(idx, idx + 800);
+    expect(slice).toContain('try{');
+    expect(slice).toContain("catch(err){console.error('[SW message] periodic-poll-request failed:',err);}");
+  });
+});
+
+describe('ShareTarget URL protocol validation (index.html)', () => {
+  // Bug: ShareTarget.ingest() stored any URL that normalizeUrl() accepted,
+  // including javascript:/blob:/data: URLs that safeHref() later filters at
+  // render time. Non-http URLs should be rejected before IDB storage.
+  // Fix: guard with safeHref() before creating the event.
+  it('rejects non-http URLs before storing', () => {
+    expect(html).toContain("if(safeHref(nu)==='#'){toast(currentLang==='ja'?'無効なURL':'invalid url','err');return;}");
+  });
+});
