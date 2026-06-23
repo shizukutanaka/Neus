@@ -54,3 +54,17 @@ if (!headerRe.test(headers)) {
 const patched = headers.replace(headerRe, `  ${newCSP}`);
 writeFileSync('_headers', patched);
 console.log('\n_headers updated with hash-based CSP (unsafe-inline removed from script-src)');
+
+// Also sync the <meta http-equiv="Content-Security-Policy"> in index.html.
+// frame-ancestors is not supported in <meta>; omit it to avoid silent non-enforcement.
+const metaCSP = newCSP
+  .replace('Content-Security-Policy: ', '')
+  .replace(/;\s*frame-ancestors\s+[^;]+/, '');
+const metaRe = /(<meta\s+http-equiv="Content-Security-Policy"\s+content=")[^"]*(")/;
+if (!metaRe.test(html)) {
+  console.error('ERROR: <meta http-equiv="Content-Security-Policy"> not found in index.html');
+  process.exit(1);
+}
+const patchedHtml = html.replace(metaRe, `$1${metaCSP}$2`);
+writeFileSync('index.html', patchedHtml);
+console.log('index.html meta CSP updated to match _headers (frame-ancestors omitted)');
