@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-MJ3L8FaofG2BBwdl8sUEdP7lywiy9SWcWPRCf/RnxYs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-CXWMSe34b1h6W+97QhaLK565skO0+OGrSE71s3+Tk9s='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1271,14 +1271,16 @@ const VaultWriter=(()=>{
     const root=await ensureWriteAccess();if(!root)return 0;
     const dailyLines=[];let count=0;
     for(const ev of events){
-      const md=MarkdownExporter.toMarkdown(ev);
-      await writeNote(root,ev,md);
-      const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
-      dailyLines.push(`- [${mdEsc(ev.content.title)}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`);
-      ev.state.exported=true;ev.state.exportedAt=Date.now();
-      await Store.putEvent(ev);FTSIndex.add(ev);count++;
+      try{
+        const md=MarkdownExporter.toMarkdown(ev);
+        await writeNote(root,ev,md);
+        const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
+        dailyLines.push(`- [${mdEsc(ev.content.title)}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`);
+        ev.state.exported=true;ev.state.exportedAt=Date.now();
+        await Store.putEvent(ev);FTSIndex.add(ev);count++;
+      }catch(e){console.warn('[VaultWriter] batch item failed:',ev.id,e);}
     }
-    if(dailyLines.length)await appendDaily(root,dailyLines);
+    if(dailyLines.length)try{await appendDaily(root,dailyLines);}catch(e){console.warn('[VaultWriter] appendDaily failed:',e);}
     return count;
   }
 
@@ -1401,7 +1403,7 @@ const NetworkMonitor=(()=>{
   window.addEventListener('offline',()=>{online=false;applyOfflineUI();});
   window.addEventListener('online',()=>{
     online=true;applyOfflineUI();
-    RSSPoller.fetchAll().then(()=>WordCollector.collectAll()).then(()=>refreshCounts()).then(()=>renderView());
+    RSSPoller.fetchAll().then(()=>WordCollector.collectAll()).then(()=>refreshCounts()).then(()=>renderView()).catch(err=>console.error('[NetworkMonitor] online handler:',err));
   });
   return{isOnline:()=>online};
 })();
@@ -3515,7 +3517,7 @@ async function openDetailModal(ev){
     <h2 class="detail-title"><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
     ${summary}${snippet}${vaultHtml}
     <h4>USER TAGS</h4>
-    <div class="tag-input-row" id="user-tags-row">${renderTagChips(tags)}<input type="text" id="tag-input" placeholder="add tag + Enter"></div>
+    <div class="tag-input-row" id="user-tags-row">${renderTagChips(tags)}<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter"></div>
     ${autoTags.length?`<h4>AUTO TAGS</h4><div class="tag-input-row" id="auto-tags-row">${autoTags.map((t,i)=>`<span class="tag-chip" data-auto-promote="${i}" data-auto-tag="${escapeAttr(t)}" style="cursor:pointer;">${escapeHtml(t)}</span>`).join('')}</div>`:''}
     <h4>USER QUOTE</h4><textarea id="user-quote" placeholder="抜粋・引用">${escapeHtml(ev.user?.quote||'')}</textarea>
     <h4>USER NOTE</h4><textarea id="user-note" placeholder="自分のメモ">${escapeHtml(ev.user?.note||'')}</textarea>
@@ -3527,7 +3529,7 @@ async function openDetailModal(ev){
       <button id="detail-save" class="primary" type="button">SAVE</button>
     </div>`;
   $('#modal-detail').classList.add('show');
-  const refreshTagsRow=()=>{$('#user-tags-row').innerHTML=renderTagChips(tags)+'<input type="text" id="tag-input" placeholder="add tag + Enter">';bindTagInput();};
+  const refreshTagsRow=()=>{$('#user-tags-row').innerHTML=renderTagChips(tags)+'<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter">';bindTagInput();};
   function bindTagInput(){$('#tag-input').addEventListener('keydown',(e)=>{if(e.key!=='Enter'||!e.target.value.trim())return;e.preventDefault();const nt=e.target.value.trim().toLowerCase();if(!tags.includes(nt))tags.push(nt);e.target.value='';refreshTagsRow();});}
   bindTagInput();
   $('#detail-card').addEventListener('click',(e)=>{
@@ -3586,11 +3588,13 @@ $('#vault-select').addEventListener('click',async()=>{const name=await VaultMatc
 $('#vault-rescan').addEventListener('click',async()=>{if(!VaultMatcher.isReady()){toast(currentLang==='ja'?'先にVaultを選択':'select vault first','err');return;}toast(currentLang==='ja'?'スキャン中...':'scanning...');await VaultMatcher.scan();updateVaultStatus();toast(`scanned ${VaultMatcher.stats().files} files`,'ok');});
 $('#vault-export-all').addEventListener('click',async()=>{
   toast(currentLang==='ja'?'スター済みを書出中...':'exporting starred...');
-  const events=await Store.listEvents({filter:{starred:true},limit:1000});
-  if(events.length===0){toast(currentLang==='ja'?'スター済みなし':'no starred events');return;}
-  const count=await VaultWriter.exportBatch(events);
-  if(count>0)toast(currentLang==='ja'?`${count}件を書出完了`:`exported ${count} events`,'ok');else toast('vault export failed','err');
-  await renderView();await refreshCounts();
+  try{
+    const events=await Store.listEvents({filter:{starred:true},limit:1000});
+    if(events.length===0){toast(currentLang==='ja'?'スター済みなし':'no starred events');return;}
+    const count=await VaultWriter.exportBatch(events);
+    if(count>0)toast(currentLang==='ja'?`${count}件を書出完了`:`exported ${count} events`,'ok');else toast('vault export failed','err');
+    await renderView();await refreshCounts();
+  }catch(e){console.error('[vault-export-all]',e);toast('vault export failed','err');}
 });
 $('#vault-clear').addEventListener('click',async()=>{await VaultMatcher.clear();updateVaultStatus();toast('vault disconnected','ok');});
 $('#modal-vault').addEventListener('click',(e)=>{if(e.target.id==='modal-vault')$('#modal-vault').classList.remove('show');});
