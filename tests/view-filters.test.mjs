@@ -80,6 +80,16 @@ describe('view filter wiring (index.html)', () => {
   it('block-archive takes precedence over watch actions in KeywordRules.apply', () => {
     expect(html).toContain('if(!ev.state.archived)for(const r of matched.watch){');
   });
+  it('count methods never use boolean IDBKeyRange (booleans are not valid IDB keys)', () => {
+    // Regression: an earlier "perf" change used index().count(IDBKeyRange.only(true)) on
+    // boolean fields. Booleans are not valid IndexedDB keys, so those indexes are empty in
+    // real browsers and the badges always read 0 (fake-indexeddb masked this in tests).
+    expect(html).not.toMatch(/IDBKeyRange\.only\((?:true|false)\)/);
+  });
+  it('countStarred/countArchived scan getAll and filter in JS', () => {
+    expect(html).toContain("async countStarred(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>e.state.starred).length;}");
+    expect(html).toContain("async countArchived(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>e.state.archived).length;}");
+  });
 });
 
 describe('keyboard cursor + wordViewFilter reset safety (index.html)', () => {

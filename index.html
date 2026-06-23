@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-0AayYghx9NH56mD0fKAOTF/NzqQURK4kTMRJI0yCwF8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-56xH7rsRb1E4/DQEWZmBNQTp5oDKa4LDRjzmiCLY/tc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1148,11 +1148,14 @@ const Store=(()=>{
       return new Promise((resolve,reject)=>{const req=idx.openCursor(IDBKeyRange.lowerBound(since),'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c)return resolve(results);results.push(c.value);c.continue();};req.onerror=()=>reject(req.error);});
     },
     async countAll(){return r2p(tx(['events']).objectStore('events').count());},
-    // Use the read index to avoid a full getAll; filter out archived in JS (no compound index).
-    async countUnread(){const unread=await r2p(tx(['events']).objectStore('events').index('read').getAll(IDBKeyRange.only(false)));return unread.filter(e=>!e.state.archived).length;},
-    // starred/archived have perfect single-field indexes → O(1) count, no getAll.
-    async countStarred(){return r2p(tx(['events']).objectStore('events').index('starred').count(IDBKeyRange.only(true)));},
-    async countArchived(){return r2p(tx(['events']).objectStore('events').index('archived').count(IDBKeyRange.only(true)));},
+    // NOTE: read/starred/archived are boolean fields. Booleans are NOT valid IndexedDB
+    // keys (per spec), so an index on them indexes zero records and count(only(true))
+    // returns 0 in real browsers (fake-indexeddb is lenient and hides this). We therefore
+    // scan getAll() and filter in JS. refreshCounts() does a single combined scan to
+    // avoid repeating the full scan per badge.
+    async countUnread(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>!e.state.read&&!e.state.archived).length;},
+    async countStarred(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>e.state.starred).length;},
+    async countArchived(){const all=await r2p(tx(['events']).objectStore('events').getAll());return all.filter(e=>e.state.archived).length;},
     async putSource(src){return r2p(tx(['sources'],'readwrite').objectStore('sources').put(src));},
     async getSource(id){return r2p(tx(['sources']).objectStore('sources').get(id));},
     async listSources(){return r2p(tx(['sources']).objectStore('sources').getAll());},
@@ -2767,19 +2770,24 @@ async function refreshCounts(){
   // Guard all callers (~15 call sites) at once: an IDB error here must not become
   // an unhandled rejection that aborts the awaiting handler (poll, search, actions).
   try{
-    // Run the four IDB count queries in parallel; countArchived is used twice (ALL badge + ARCHIVED badge).
-    const[unread,total,archived,starred,later,words]= await Promise.all([
-      Store.countUnread(),Store.countAll(),Store.countArchived(),Store.countStarred(),
-      Store.listEvents({filter:{later:true,archived:false},limit:1000}),
-      Store.listWords(),
-    ]);
+    // Single full scan derives every event badge in JS (booleans can't be IDB-indexed),
+    // run in parallel with the words list. Avoids the 4-separate-getAll redundancy.
+    const[all,words]=await Promise.all([Store.allEvents(),Store.listWords()]);
+    let unread=0,archived=0,starred=0,later=0;
+    for(const e of all){
+      if(e.state.archived)archived++;
+      if(e.state.starred)starred++;
+      if(!e.state.read&&!e.state.archived)unread++;
+      if(e.state.later&&!e.state.archived)later++;
+    }
+    const total=all.length;
     $('#cnt-inbox').textContent=unread;
     // ALL ビューは {archived:false} で描画するので、バッジも非アーカイブ件数に揃える(countAll は総数)
     $('#cnt-all').textContent=total-archived;
     $('#cnt-starred').textContent=starred;
     $('#cnt-archived').textContent=archived;
-    // LATER count: listEvents scan (no dedicated index, OK for <500 items)
-    $('#cnt-later').textContent=later.length;
+    // LATER count: derived from the same scan
+    $('#cnt-later').textContent=later;
     $('#cnt-words').textContent=words.length;
     $('#cnt-search').textContent=searchResults.length;
   }catch(err){console.error('[refreshCounts]',err);}
@@ -3119,7 +3127,10 @@ async function renderWords(){
 }
 
 // WORDSビューの単語アクション(収集/フィルタ/出力)
-$('#view').addEventListener('click',async(e)=>{
+// IDB書き込みを伴うアクションが多数。失敗時の未捕捉リジェクトを防ぐため、本体を名前付き
+// 関数に委譲し単一の .catch() でまとめて保護する(大ハンドラの再インデントを避ける)。
+$('#view').addEventListener('click',(e)=>{handleWordAction(e).catch(err=>{console.error('[word-action]',err);toast(currentLang==='ja'?'操作に失敗しました':'action failed','err');});});
+async function handleWordAction(e){
   const btn=e.target.closest('button[data-wact]');
   if(!btn)return;
   e.stopPropagation();
@@ -3267,7 +3278,7 @@ $('#view').addEventListener('click',async(e)=>{
   if(act==='md')return WordExporter.downloadMd(word);
   if(act==='json')return WordExporter.downloadJson(word);
   if(act==='vault')return WordExporter.toVault(word);
-});
+}
 
 // 問い入力欄でEnter → 追加(マウスを使わずキーボードのみで問いを登録できる対等性)
 $('#view').addEventListener('keydown',(e)=>{
