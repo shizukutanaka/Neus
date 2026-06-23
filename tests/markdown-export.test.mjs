@@ -74,6 +74,27 @@ describe('MarkdownExporter frontmatter is injection-safe (modeled)', () => {
   });
 });
 
+describe('mdEsc / vault daily link title escaping (index.html)', () => {
+  // Bug: vault daily note links used raw ev.content.title inside [title](path).
+  // Titles with ] (e.g. "GPT-4 [Technical Report]") break CommonMark link syntax.
+  // Fix: extract mdEsc helper and apply it to the title in exportEvent/exportBatch.
+  it('defines a standalone mdEsc helper (shared by mdLink, mdImgLink, VaultWriter)', () => {
+    expect(html).toContain('const mdEsc=');
+  });
+  it('VaultWriter.exportEvent uses mdEsc on the event title in the daily note link', () => {
+    expect(html).toContain('`- [${mdEsc(ev.content.title)}](neus/${ev.id})');
+  });
+  it('VaultWriter.exportBatch uses mdEsc on titles in daily note lines', () => {
+    // Appears in dailyLines.push(...)
+    const occ = html.split('`- [${mdEsc(ev.content.title)}](neus/${ev.id})').length - 1;
+    expect(occ).toBeGreaterThanOrEqual(2);
+  });
+  it('mdLink uses mdEsc (no longer duplicates the inline esc function)', () => {
+    expect(html).toContain('mdEsc(title)}](<${safe}>)');
+    expect(html).not.toContain("const esc=(s)=>(s||'')");
+  });
+});
+
 describe('export/storage robustness wiring (index.html)', () => {
   it('MarkdownExporter escapes source/source_url/tags with yamlScalar', () => {
     expect(html).toContain('source: ${yamlScalar(ev.source.name)}');

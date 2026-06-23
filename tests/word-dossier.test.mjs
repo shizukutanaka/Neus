@@ -79,10 +79,11 @@ function aggregateTags(events) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
 }
 
-// Mirrored from safeHref/mdLink/mdImgLink in index.html
+// Mirrored from safeHref/mdEsc/mdLink/mdImgLink in index.html
 function safeHref(url) { try { const p = new URL(url || '').protocol; return (p === 'https:' || p === 'http:') ? url : '#'; } catch { return '#'; } }
-const mdLink = (title, url) => { const safe = url ? safeHref(url) : ''; const esc = s => (s || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]'); return safe && safe !== '#' ? `[${esc(title)}](<${safe}>)` : `**${esc(title)}**`; };
-const mdImgLink = (alt, url) => { const safe = url ? safeHref(url) : ''; return safe && safe !== '#' ? `![${(alt || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]')}](<${safe}>)` : ''; };
+const mdEsc = (s) => (s || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+const mdLink = (title, url) => { const safe = url ? safeHref(url) : ''; return safe && safe !== '#' ? `[${mdEsc(title)}](<${safe}>)` : `**${mdEsc(title)}**`; };
+const mdImgLink = (alt, url) => { const safe = url ? safeHref(url) : ''; return safe && safe !== '#' ? `![${mdEsc(alt)}](<${safe}>)` : ''; };
 
 // Mirrored from WordExporter.toDossier
 const ys = s => '"' + String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';

@@ -1049,8 +1049,9 @@ const yamlScalar=(s)=>'"'+String(s??'').replace(/\\/g,'\\\\').replace(/"/g,'\\"'
 // Markdown link builder. Escapes [ and ] in the title so they don't break CommonMark link
 // syntax. Wraps the URL in <> so parentheses in URLs (e.g. Wikipedia disambiguation pages)
 // are handled correctly. Falls back to bold text when the URL is absent or unsafe.
-const mdLink=(title,url)=>{const safe=url?safeHref(url):'';const esc=(s)=>(s||'').replace(/\[/g,'\\[').replace(/\]/g,'\\]');return safe&&safe!=='#'?`[${esc(title)}](<${safe}>)`:`**${esc(title)}**`;};
-const mdImgLink=(alt,url)=>{const safe=url?safeHref(url):'';return safe&&safe!=='#'?`![${(alt||'').replace(/\[/g,'\\[').replace(/\]/g,'\\]')}](<${safe}>)`:'';};
+const mdEsc=(s)=>(s||'').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
+const mdLink=(title,url)=>{const safe=url?safeHref(url):'';return safe&&safe!=='#'?`[${mdEsc(title)}](<${safe}>)`:`**${mdEsc(title)}**`;};
+const mdImgLink=(alt,url)=>{const safe=url?safeHref(url):'';return safe&&safe!=='#'?`![${mdEsc(alt)}](<${safe}>)`:'';};
 
 function tokenize(text){
   if(!text)return[];
@@ -1259,7 +1260,7 @@ const VaultWriter=(()=>{
       const md=MarkdownExporter.toMarkdown(ev);
       await writeNote(root,ev,md);
       const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
-      await appendDaily(root,[`- [${ev.content.title}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`]);
+      await appendDaily(root,[`- [${mdEsc(ev.content.title)}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`]);
       ev.state.exported=true;ev.state.exportedAt=Date.now();
       await Store.putEvent(ev);FTSIndex.add(ev);
       return true;
@@ -1273,7 +1274,7 @@ const VaultWriter=(()=>{
       const md=MarkdownExporter.toMarkdown(ev);
       await writeNote(root,ev,md);
       const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
-      dailyLines.push(`- [${ev.content.title}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`);
+      dailyLines.push(`- [${mdEsc(ev.content.title)}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`);
       ev.state.exported=true;ev.state.exportedAt=Date.now();
       await Store.putEvent(ev);FTSIndex.add(ev);count++;
     }
