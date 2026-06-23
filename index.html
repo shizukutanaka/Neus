@@ -1410,9 +1410,10 @@ const SourceFailTracker=(()=>{
     if(typeof source.id==='string'&&source.id.startsWith('word:'))return;
     const n=(fails.get(source.id)||0)+1;fails.set(source.id,n);
     if(n>=CONFIG.sourceMaxFails){
-      const s=await Store.findSourceByUrl(source.url);
-      if(s&&s.enabled!==false){s.enabled=false;await Store.putSource(s);}
-      toast(`${source.name}: auto-disabled (${CONFIG.sourceMaxFails} failures)`,'err');
+      try{const s=await Store.findSourceByUrl(source.url);
+        if(s&&s.enabled!==false){s.enabled=false;await Store.putSource(s);}
+        toast(`${source.name}: auto-disabled (${CONFIG.sourceMaxFails} failures)`,'err');
+      }catch(err){console.warn('[SourceFailTracker]',err);}
       fails.delete(source.id);
     }
   });
@@ -1953,17 +1954,19 @@ const WordCollector=(()=>{
 
 // ===== PROCESSORS =======================================================
 Bus.subscribe('inbound.fetched',async({raw,source})=>{
-  // パイプライン入口で URL を正規化(fragment/トラッキングパラメータ除去)してから hash を取る。
-  // RSS は parseFeed で正規化済み(冪等)だが、JSON ソース(Qiita 等)や将来の経路でも
-  // 同一記事が trivial な URL 差で重複しないよう、ここで一元的に正規化し url/hash を揃える。
-  const link=normalizeUrl(raw.link||'');
-  const hash=await sha256(link+'|'+raw.title);
-  // word由来のソースは word:{term} 自動タグを付与し、ソース種別を 'word' にする
-  const autoTags=source.wordTerm?['word:'+source.wordTerm]:[];
-  // ソース提供のコンテンツタグ(例 Qiita 記事タグ)を取り込む。小文字化・重複排除・上限8件。
-  if(Array.isArray(raw.tags))for(const t of raw.tags){const tag=String(t).trim().toLowerCase();if(tag&&autoTags.length<8&&!autoTags.includes(tag))autoTags.push(tag);}
-  const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:typeof raw.score==='number'?raw.score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:link,hash};
-  Bus.publish('event.normalized',ev);
+  try{
+    // パイプライン入口で URL を正規化(fragment/トラッキングパラメータ除去)してから hash を取る。
+    // RSS は parseFeed で正規化済み(冪等)だが、JSON ソース(Qiita 等)や将来の経路でも
+    // 同一記事が trivial な URL 差で重複しないよう、ここで一元的に正規化し url/hash を揃える。
+    const link=normalizeUrl(raw.link||'');
+    const hash=await sha256(link+'|'+raw.title);
+    // word由来のソースは word:{term} 自動タグを付与し、ソース種別を 'word' にする
+    const autoTags=source.wordTerm?['word:'+source.wordTerm]:[];
+    // ソース提供のコンテンツタグ(例 Qiita 記事タグ)を取り込む。小文字化・重複排除・上限8件。
+    if(Array.isArray(raw.tags))for(const t of raw.tags){const tag=String(t).trim().toLowerCase();if(tag&&autoTags.length<8&&!autoTags.includes(tag))autoTags.push(tag);}
+    const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:typeof raw.score==='number'?raw.score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:link,hash};
+    Bus.publish('event.normalized',ev);
+  }catch(err){console.error('[inbound.fetched]',err);Bus.publish('inbound.error',{source,error:'normalize'});}
 });
 
 Bus.subscribe('event.normalized',async(ev)=>{
@@ -2123,7 +2126,7 @@ const InterestProfile=(()=>{
   return{load,learn,scoreBoost,stats,topWords,reset,evWords};
 })();
 
-Bus.subscribe('event.stored',async(ev)=>{
+Bus.subscribe('event.stored',async(ev)=>{try{
   let changed=false;
   if(ev.meta.autoTags.length===0){const tags=await TagLearner.suggest(ev);if(tags.length>0){ev.meta.autoTags=tags;changed=true;}}
   // 暗黙の興味学習によるスコア補正(star/archiveの行動履歴から)
@@ -2131,7 +2134,7 @@ Bus.subscribe('event.stored',async(ev)=>{
   if(boost!==0){ev.meta.score=Math.max(0,Math.min(100,(ev.meta.score||50)+boost));ev.meta.interestBoost=boost;changed=true;}
   if(VaultMatcher.isReady()){const matches=VaultMatcher.matchEvent(ev);if(matches.length>0){ev.links=[...new Set([...ev.links,...matches.map(m=>`vault:${m.path}`)])];changed=true;}}
   if(changed){await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.tagged',ev);}
-});
+}catch(err){console.error('[event.stored]',err);}});
 
 // ===== SUMMARIZER =======================================================
 const Summarizer=(()=>{
@@ -2158,7 +2161,7 @@ const Summarizer=(()=>{
   return{summarize,getDailyCount:()=>dailyCount,load};
 })();
 
-Bus.subscribe('event.tagged',async(ev)=>{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;ev.content.summary=sum;await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.summarized',ev);});
+Bus.subscribe('event.tagged',async(ev)=>{try{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;ev.content.summary=sum;await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.summarized',ev);}catch(err){console.error('[event.tagged]',err);}});
 Bus.subscribe('summarizer.error',({ev,error})=>{console.warn('[Summarizer]',error);if(error?.includes('401')||error?.includes('403'))toast('BYOK key invalid','err');});
 Bus.subscribe('summarizer.budget-exceeded',()=>toast('daily summary budget reached','err'));
 
@@ -3528,7 +3531,12 @@ async function openSourcesModal(){
   $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
 }
 $('#btn-sources').addEventListener('click',openSourcesModal);
-$('#btn-poll').addEventListener('click',()=>RSSPoller.fetchAll().then(()=>WordCollector.collectAll()).then(()=>refreshCounts()).then(()=>renderView()));
+let polling=false;
+$('#btn-poll').addEventListener('click',async()=>{
+  if(polling)return;polling=true;
+  try{await RSSPoller.fetchAll();await WordCollector.collectAll();await refreshCounts();await renderView();}
+  finally{polling=false;}
+});
 
 // オーバーフローメニュー(ヘッダーのモバイル集約)
 (function(){
@@ -4240,9 +4248,12 @@ const Onboarding=(()=>{
 })();
 
 // ===== AUTO REFRESH =====================================================
-Bus.subscribe('event.stored',()=>{refreshCounts();renderView();});
-Bus.subscribe('event.summarized',()=>renderView());
-Bus.subscribe('event.tagged',()=>renderView());
+// Debounce coalesces bursts of events (e.g. 50 articles from a poll) into one render.
+const scheduleRefreshCounts=debounce(()=>refreshCounts(),80);
+const scheduleRenderView=debounce(()=>renderView(),80);
+Bus.subscribe('event.stored',()=>{scheduleRefreshCounts();scheduleRenderView();});
+Bus.subscribe('event.summarized',()=>scheduleRenderView());
+Bus.subscribe('event.tagged',()=>scheduleRenderView());
 
 // ===== SERVICE WORKER ===================================================
 if('serviceWorker'in navigator){

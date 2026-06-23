@@ -120,6 +120,55 @@ describe('event.normalized pipeline error handling (index.html)', () => {
   });
 });
 
+describe('poll button double-submit guard (index.html)', () => {
+  // Bug: clicking POLL rapidly started multiple concurrent fetchAll/collectAll chains.
+  // Fix: polling flag with finally-clear guards against overlapping poll runs.
+  it('declares polling in-flight flag', () => {
+    expect(html).toContain('let polling=false;');
+  });
+  it('returns early if a poll is already in flight', () => {
+    expect(html).toContain('if(polling)return;polling=true;');
+  });
+  it('resets polling flag in finally block', () => {
+    expect(html).toContain('finally{polling=false;}');
+  });
+});
+
+describe('Bus subscriber error handling (index.html)', () => {
+  // Bug: inbound.fetched, event.stored, event.tagged, and SourceFailTracker
+  // async callbacks had no try/catch. IDB/network errors silently swallowed articles.
+  it('inbound.fetched handler is wrapped in try/catch', () => {
+    expect(html).toContain("catch(err){console.error('[inbound.fetched]',err);Bus.publish('inbound.error',{source,error:'normalize'});}");
+  });
+  it('event.stored (tagging) handler is wrapped in try/catch', () => {
+    // The async event.stored subscriber that calls TagLearner.suggest
+    expect(html).toContain("Bus.subscribe('event.stored',async(ev)=>{try{");
+    expect(html).toContain("catch(err){console.error('[event.stored]',err);}");
+  });
+  it('event.tagged (Summarizer) handler is wrapped in try/catch', () => {
+    expect(html).toContain("Bus.subscribe('event.tagged',async(ev)=>{try{");
+    expect(html).toContain("catch(err){console.error('[event.tagged]',err);}");
+  });
+  it('SourceFailTracker wraps Store calls in try/catch', () => {
+    expect(html).toContain("catch(err){console.warn('[SourceFailTracker]',err);}");
+  });
+});
+
+describe('auto-refresh debouncing (index.html)', () => {
+  // Bug: Bus.subscribe('event.stored') called renderView() directly on every event,
+  // causing up to N concurrent renderView() calls during an N-article poll.
+  // Fix: debounce schedules a single render 80ms after the last event.
+  it('uses debounced scheduleRenderView for event.stored auto-refresh', () => {
+    expect(html).toContain('const scheduleRenderView=debounce(()=>renderView(),80);');
+  });
+  it('uses debounced scheduleRefreshCounts for badge updates', () => {
+    expect(html).toContain('const scheduleRefreshCounts=debounce(()=>refreshCounts(),80);');
+  });
+  it('event.stored subscriber uses the scheduled variants', () => {
+    expect(html).toContain("Bus.subscribe('event.stored',()=>{scheduleRefreshCounts();scheduleRenderView();});");
+  });
+});
+
 describe('InterestProfile time-based decay (index.html)', () => {
   // Bug: CONFIG.interestDecay (0.98) was declared but never applied.
   // Old interest signals accumulated indefinitely, making recent actions no more
