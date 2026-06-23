@@ -203,13 +203,17 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain("${_busy?'..':t('word.collectall')}");
   });
   it('resets aria-busy to false in the digest view', () => {
-    expect(html).toContain("view.innerHTML=await renderDigest();\n    view.setAttribute('aria-busy','false');return;");
+    // Indentation-agnostic: digest branch renders then clears aria-busy before returning.
+    expect(html).toMatch(/view\.innerHTML=await renderDigest\(\);\s*view\.setAttribute\('aria-busy','false'\);return;/);
   });
   it('resets aria-busy to false in the search view (no query and with results paths)', () => {
-    // no-query path
-    expect(html).toContain("view.setAttribute('aria-busy','false');return;}\n    const events=[]");
-    // results path
-    expect(html).toContain("view.setAttribute('aria-busy','false');return;\n  }\n  const filter=VIEW_FILTERS");
+    // no-query path: empty search prompt then clears aria-busy
+    expect(html).toMatch(/'type to search'}.*?`;view\.setAttribute\('aria-busy','false'\);return;/);
+    // results path: clears aria-busy before the default (timeline) branch reads VIEW_FILTERS
+    expect(html).toMatch(/view\.setAttribute\('aria-busy','false'\);return;\s*}\s*const filter=VIEW_FILTERS/);
+  });
+  it('renderView clears aria-busy even when a branch throws (no permanent loading state)', () => {
+    expect(html).toContain("catch(err){console.error('[renderView]',err);view.setAttribute('aria-busy','false');}");
   });
 });
 

@@ -10,7 +10,7 @@
  *
  * Constraints:
  *   - /rss Content-Type must match xml|rss|atom
- *   - /json target host must be on JSON_HOST_ALLOW (Wikipedia/Wikimedia only)
+ *   - /json target host must be on JSON_HOST_ALLOW (Wikipedia/Wikimedia + qiita.com per ADR-0017)
  *   - Target URL must be http(s)
  *   - No private IP ranges (SSRF prevention)
  *   - No persistent state, no logs

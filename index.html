@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-oqHOORp9PP2yOuTWU/p/G2oPbBK1H8gOJ3rtEMFOfSE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-BMc5gE0xtvrI5K10YaglGJYz7WJy7ROT8hcrQjYpLPA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3292,39 +3292,41 @@ $('#view').addEventListener('input',(e)=>{
 
 async function renderView(){
   const view=$('#view');view.setAttribute('aria-busy','true');
-  if(currentView==='digest'){
-    view.innerHTML=await renderDigest();
-    view.setAttribute('aria-busy','false');return;
-  }
-  if(currentView==='words'){
-    view.scrollTop=0;
-    view.innerHTML=await renderWords();
-    view.setAttribute('aria-busy','false');return;
-  }
-  if(currentView==='search'){
-    if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;view.setAttribute('aria-busy','false');return;}
-    const events=[];const wordHits=[];
-    for(const r of searchResults){
-      if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w)wordHits.push({w,score:r.score});}
-      else{const ev=await Store.getEvent(r.id);if(ev&&matchesFilter(ev))events.push({ev,score:r.score});}
+  try{
+    if(currentView==='digest'){
+      view.innerHTML=await renderDigest();
+      view.setAttribute('aria-busy','false');return;
     }
-    // 単語探究バナー: 検索語を watchword として登録するショートカット
-    const srNorm=normalizeTerm(searchQuery);
-    const alreadyWord=wordHits.some(({w})=>w.normalized===srNorm)||(await Store.findWordByTerm(srNorm))!=null;
-    const srBanner=alreadyWord?'':`<div class="sr-word-banner"><span class="sr-word-label">${currentLang==='ja'?`「${escapeHtml(searchQuery)}」を探究登録`:`Register "${escapeHtml(searchQuery)}" as a watchword`}</span><button class="sr-word-btn" data-wact="regword" data-term="${escapeAttr(searchQuery)}">${currentLang==='ja'?'+ 登録':'+ Register'}</button></div>`;
-    if(events.length===0&&wordHits.length===0){view.innerHTML=srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;view.setAttribute('aria-busy','false');return;}
-    view.innerHTML=srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');view.setAttribute('aria-busy','false');return;
-  }
-  const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
-  // applyFilter()で設定されたソース/タグフィルタ適用
-  if(activeFilter)events=events.filter(matchesFilter);
-  events=events.slice(0,CONFIG.maxViewItems);
-  if(events.length===0){
-    view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${t('empty.inbox')}</div><div class="hint">${t('empty.hint')}</div><button id="empty-sources" type="button">${t('btn.sources')}</button></div>`;
-    $('#empty-sources')?.addEventListener('click',openSourcesModal);view.setAttribute('aria-busy','false');return;
-  }
-  view.innerHTML=events.map(ev=>cardHtml(ev)).join('');
-  view.setAttribute('aria-busy','false');
+    if(currentView==='words'){
+      view.scrollTop=0;
+      view.innerHTML=await renderWords();
+      view.setAttribute('aria-busy','false');return;
+    }
+    if(currentView==='search'){
+      if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;view.setAttribute('aria-busy','false');return;}
+      const events=[];const wordHits=[];
+      for(const r of searchResults){
+        if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w)wordHits.push({w,score:r.score});}
+        else{const ev=await Store.getEvent(r.id);if(ev&&matchesFilter(ev))events.push({ev,score:r.score});}
+      }
+      // 単語探究バナー: 検索語を watchword として登録するショートカット
+      const srNorm=normalizeTerm(searchQuery);
+      const alreadyWord=wordHits.some(({w})=>w.normalized===srNorm)||(await Store.findWordByTerm(srNorm))!=null;
+      const srBanner=alreadyWord?'':`<div class="sr-word-banner"><span class="sr-word-label">${currentLang==='ja'?`「${escapeHtml(searchQuery)}」を探究登録`:`Register "${escapeHtml(searchQuery)}" as a watchword`}</span><button class="sr-word-btn" data-wact="regword" data-term="${escapeAttr(searchQuery)}">${currentLang==='ja'?'+ 登録':'+ Register'}</button></div>`;
+      if(events.length===0&&wordHits.length===0){view.innerHTML=srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;view.setAttribute('aria-busy','false');return;}
+      view.innerHTML=srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');view.setAttribute('aria-busy','false');return;
+    }
+    const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
+    // applyFilter()で設定されたソース/タグフィルタ適用
+    if(activeFilter)events=events.filter(matchesFilter);
+    events=events.slice(0,CONFIG.maxViewItems);
+    if(events.length===0){
+      view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${t('empty.inbox')}</div><div class="hint">${t('empty.hint')}</div><button id="empty-sources" type="button">${t('btn.sources')}</button></div>`;
+      $('#empty-sources')?.addEventListener('click',openSourcesModal);view.setAttribute('aria-busy','false');return;
+    }
+    view.innerHTML=events.map(ev=>cardHtml(ev)).join('');
+    view.setAttribute('aria-busy','false');
+  }catch(err){console.error('[renderView]',err);view.setAttribute('aria-busy','false');}
 }
 
 // 検索結果に表示された単語カードをクリックすると WORDSビューに遷移してフィルタを適用する
