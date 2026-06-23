@@ -1348,7 +1348,7 @@ const FTSIndex=(()=>{
 
 // ===== VAULT MATCHER ====================================================
 const VaultMatcher=(()=>{
-  let vaultHandle=null;let fileMap=new Map();
+  let vaultHandle=null;let fileMap=new Map();let scanning=false;
   async function selectVault(){
     if(!('showDirectoryPicker'in window)){toast('File System Access API not supported','err');return null;}
     let h;try{h=await window.showDirectoryPicker({mode:'read',id:'neus-vault'});}catch(err){if(err.name!=='AbortError')console.error(err);return null;}
@@ -1361,12 +1361,16 @@ const VaultMatcher=(()=>{
     try{const perm=await h.queryPermission?.({mode:'read'});if(perm!=='granted')return false;vaultHandle=h;await scan();return true;}catch(err){console.warn(err);return false;}
   }
   async function scan(dir=vaultHandle,prefix='',firstCall=true){
-    if(!dir)return;if(firstCall)fileMap.clear();
-    for await(const entry of dir.values()){
-      const path=prefix?`${prefix}/${entry.name}`:entry.name;
-      if(entry.kind==='file'&&entry.name.endsWith('.md')){const base=entry.name.replace(/\.md$/,'');fileMap.set(base.toLowerCase(),{path,name:base,tokens:new Set(tokenize(base))});}
-      else if(entry.kind==='directory'&&!entry.name.startsWith('.'))await scan(entry,path,false);
-    }
+    if(!dir)return;
+    if(firstCall){if(scanning)return;scanning=true;fileMap.clear();}
+    try{
+      for await(const entry of dir.values()){
+        const path=prefix?`${prefix}/${entry.name}`:entry.name;
+        if(entry.kind==='file'&&entry.name.endsWith('.md')){const base=entry.name.replace(/\.md$/,'');fileMap.set(base.toLowerCase(),{path,name:base,tokens:new Set(tokenize(base))});}
+        else if(entry.kind==='directory'&&!entry.name.startsWith('.'))await scan(entry,path,false);
+      }
+    }catch(err){console.warn('[VaultMatcher.scan]',err);}
+    finally{if(firstCall)scanning=false;}
   }
   function matchEvent(ev){
     if(fileMap.size===0)return[];
@@ -3565,7 +3569,7 @@ $('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.t
 $('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;await Store.deleteSource(del.dataset.srcDel);openSourcesModal();});
 $('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
 $('#opml-import').addEventListener('click',()=>$('#opml-file').click());
-$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();});
+$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();});
 $('#opml-export').addEventListener('click',async()=>{const list=await Store.listSources();if(list.length===0){toast('no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(`exported ${list.length}`,'ok');});
 $('#bookmarklet-btn').addEventListener('click',()=>Bookmarklet.showUI());
 
