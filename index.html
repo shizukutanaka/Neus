@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-sVAi9bGpSRebQ3JRvz/GT1dRWeiXR2VyFBmcOSNMMGE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-L0ELzWQUy5Uk3IIB6FvTmej+k+gNCKBZDNA2V2uK3nQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4214,6 +4214,7 @@ $('#set-byok-provider').addEventListener('change',(e)=>{const def=CONFIG.byokDef
 $('#btn-settings').addEventListener('click',openSettingsModal);
 $('#set-cancel').addEventListener('click',()=>$('#modal-settings').classList.remove('show'));
 $('#set-save').addEventListener('click',async()=>{
+ try{
   const lang=$('#set-lang').value;
   const newPass=$('#set-pass-new').value.trim();
   const rawKey=$('#set-byok-key').value.trim();
@@ -4247,6 +4248,7 @@ $('#set-save').addEventListener('click',async()=>{
     if(!r.ok)toast(currentLang==='ja'?`自動取得登録失敗: ${r.reason}`:`auto-sync register failed: ${r.reason}`,'err');
   }else{await AutoSync.unregister();}
   toast('settings saved','ok');$('#modal-settings').classList.remove('show');
+ }catch(err){console.error('[set-save]',err);toast(currentLang==='ja'?'設定の保存に失敗しました':'failed to save settings','err');}
 });
 $('#modal-settings').addEventListener('click',(e)=>{if(e.target.id==='modal-settings')$('#modal-settings').classList.remove('show');});
 
