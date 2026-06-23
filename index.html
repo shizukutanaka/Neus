@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-a3AX4UvgeXl0QXyL6Pr6pfzJxoExLs+o/ccdCVgPGCU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-oqHOORp9PP2yOuTWU/p/G2oPbBK1H8gOJ3rtEMFOfSE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3554,9 +3554,11 @@ $('#modal-detail').addEventListener('click',(e)=>{if(e.target.id==='modal-detail
 
 // ===== SOURCES MODAL ====================================================
 async function openSourcesModal(){
-  const list=await Store.listSources();
-  const html=list.map(s=>`<div class="source-item${s.enabled===false?' disabled':''}"><div><div class="name">${escapeHtml(s.name)}</div><div class="url">${escapeHtml(s.url)}</div></div><button data-src-del="${s.id}" type="button">DEL</button></div>`).join('')||`<div style="color:var(--fg-3);text-align:center;padding:12px;font-family:var(--font-mono);font-size:11px;">${currentLang==='ja'?'ソースなし':'no sources'}</div>`;
-  $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
+  try{
+    const list=await Store.listSources();
+    const html=list.map(s=>`<div class="source-item${s.enabled===false?' disabled':''}"><div><div class="name">${escapeHtml(s.name)}</div><div class="url">${escapeHtml(s.url)}</div></div><button data-src-del="${s.id}" type="button">DEL</button></div>`).join('')||`<div style="color:var(--fg-3);text-align:center;padding:12px;font-family:var(--font-mono);font-size:11px;">${currentLang==='ja'?'ソースなし':'no sources'}</div>`;
+    $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
+  }catch(err){console.error('[openSourcesModal]',err);toast('failed to load sources','err');}
 }
 $('#btn-sources').addEventListener('click',openSourcesModal);
 $('#btn-poll').addEventListener('click',async()=>{
@@ -3584,8 +3586,8 @@ $('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.t
 $('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;try{await Store.deleteSource(del.dataset.srcDel);openSourcesModal();}catch(err){console.error('[sources-list delete]',err);toast('delete failed','err');}});
 $('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
 $('#opml-import').addEventListener('click',()=>$('#opml-file').click());
-$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();});
-$('#opml-export').addEventListener('click',async()=>{const list=await Store.listSources();if(list.length===0){toast('no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(`exported ${list.length}`,'ok');});
+$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;try{const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();}catch(err){console.error('[opml-import]',err);toast('OPML import failed','err');}});
+$('#opml-export').addEventListener('click',async()=>{try{const list=await Store.listSources();if(list.length===0){toast('no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(`exported ${list.length}`,'ok');}catch(err){console.error('[opml-export]',err);toast('OPML export failed','err');}});
 $('#bookmarklet-btn').addEventListener('click',()=>Bookmarklet.showUI());
 
 // ===== VAULT MODAL ======================================================
