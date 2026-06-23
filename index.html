@@ -3310,6 +3310,24 @@ $('#view').addEventListener('click',async(e)=>{
 });
 $('#view').addEventListener('click',async(e)=>{
   if(e.target.closest('a'))return;
+  // Digest view tag chips: use attribute value (not textContent which includes count)
+  // and switch to ALL view so the filter is actually visible in the timeline.
+  const digestTagEl=e.target.closest('[data-digest-tag]');
+  if(digestTagEl){
+    e.stopPropagation();
+    $$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+    const allBtn=$('.nav button[data-view="all"]');if(allBtn){allBtn.classList.add('active');allBtn.setAttribute('aria-selected','true');}
+    if(currentView==='words')wordViewFilter=null;currentView='all';kbCursor=-1;
+    applyFilter('tag',digestTagEl.dataset.digestTag);return;
+  }
+  const digestSrcEl=e.target.closest('[data-digest-src]');
+  if(digestSrcEl){
+    e.stopPropagation();
+    $$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});
+    const allBtn=$('.nav button[data-view="all"]');if(allBtn){allBtn.classList.add('active');allBtn.setAttribute('aria-selected','true');}
+    if(currentView==='words')wordViewFilter=null;currentView='all';kbCursor=-1;
+    applyFilter('source',digestSrcEl.dataset.digestSrc);return;
+  }
   // ソース名クリックでフィルタ適用
   const srcEl=e.target.closest('[data-filter-source]');
   if(srcEl){e.stopPropagation();const card=e.target.closest('.card');if(card){const ev=await Store.getEvent(card.dataset.id);if(ev)applyFilter('source',ev.source.name);}return;}
@@ -3883,7 +3901,8 @@ $('#restore-file').addEventListener('change',async(e)=>{
   for(const ev of dump.events){await Store.putEvent(ev);FTSIndex.add(ev);}
   for(const s of (dump.sources||[]))await Store.putSource(s);
   for(const w of (dump.words||[])){await Store.putWord(w);FTSIndex.addWord(w);}
-  for(const[k,v]of Object.entries(dump.settings||{}))await Store.putSetting(k,v);
+  const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done']);
+  for(const[k,v]of Object.entries(dump.settings||{})){if(RESTORE_SETTINGS_KEYS.has(k))await Store.putSetting(k,v);}
   await KeywordRules.load();
   await TagLearner.rebuild();
   await refreshCounts();await renderView();
