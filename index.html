@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-BMc5gE0xtvrI5K10YaglGJYz7WJy7ROT8hcrQjYpLPA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-OoYpTV7ckjxgDyqM1BM/vUC0onhDjhlxi6VOlo4v+cM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2755,21 +2755,25 @@ let wordNameFilter=''; // WORDS view text filter on word name
 const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starred:{starred:true},archived:{archived:true},later:{later:true,archived:false}};
 
 async function refreshCounts(){
-  // Run the four IDB count queries in parallel; countArchived is used twice (ALL badge + ARCHIVED badge).
-  const[unread,total,archived,starred,later,words]= await Promise.all([
-    Store.countUnread(),Store.countAll(),Store.countArchived(),Store.countStarred(),
-    Store.listEvents({filter:{later:true,archived:false},limit:1000}),
-    Store.listWords(),
-  ]);
-  $('#cnt-inbox').textContent=unread;
-  // ALL ビューは {archived:false} で描画するので、バッジも非アーカイブ件数に揃える(countAll は総数)
-  $('#cnt-all').textContent=total-archived;
-  $('#cnt-starred').textContent=starred;
-  $('#cnt-archived').textContent=archived;
-  // LATER count: listEvents scan (no dedicated index, OK for <500 items)
-  $('#cnt-later').textContent=later.length;
-  $('#cnt-words').textContent=words.length;
-  $('#cnt-search').textContent=searchResults.length;
+  // Guard all callers (~15 call sites) at once: an IDB error here must not become
+  // an unhandled rejection that aborts the awaiting handler (poll, search, actions).
+  try{
+    // Run the four IDB count queries in parallel; countArchived is used twice (ALL badge + ARCHIVED badge).
+    const[unread,total,archived,starred,later,words]= await Promise.all([
+      Store.countUnread(),Store.countAll(),Store.countArchived(),Store.countStarred(),
+      Store.listEvents({filter:{later:true,archived:false},limit:1000}),
+      Store.listWords(),
+    ]);
+    $('#cnt-inbox').textContent=unread;
+    // ALL ビューは {archived:false} で描画するので、バッジも非アーカイブ件数に揃える(countAll は総数)
+    $('#cnt-all').textContent=total-archived;
+    $('#cnt-starred').textContent=starred;
+    $('#cnt-archived').textContent=archived;
+    // LATER count: listEvents scan (no dedicated index, OK for <500 items)
+    $('#cnt-later').textContent=later.length;
+    $('#cnt-words').textContent=words.length;
+    $('#cnt-search').textContent=searchResults.length;
+  }catch(err){console.error('[refreshCounts]',err);}
 }
 
 function renderTags(ev){
