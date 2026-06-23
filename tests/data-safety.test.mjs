@@ -105,6 +105,23 @@ describe('vault dossier filename uniqueness (index.html)', () => {
   });
 });
 
+describe('onboarding never persists the master passphrase (index.html)', () => {
+  // Security: the passphrase decrypts the API key and must live in memory only
+  // (sessionPassphrase). A passphrase-but-no-key onboarding previously left
+  // byok.passphrase in the object written to IndexedDB. finish() must strip it
+  // unconditionally and only persist byok when an actual key exists.
+  it('deletes byok.passphrase unconditionally before persisting', () => {
+    expect(html).toContain('delete byok.passphrase;');
+  });
+  it('only writes byok when there is an apiKey to store', () => {
+    expect(html).toContain('if(byok.apiKey)await Store.putSetting(\'byok\',byok);');
+  });
+  it('does not persist byok with the passphrase still attached', () => {
+    // The old leaky form deleted passphrase only inside the apiKey branch.
+    expect(html).not.toContain('byok.encrypted=true;delete byok.passphrase;}');
+  });
+});
+
 describe('wordSlug collision is real (justifies the id suffix)', () => {
   const wordSlug = (s) => (s || 'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'word';
   it('maps distinct terms to the same slug', () => {

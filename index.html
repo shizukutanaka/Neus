@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-L0ELzWQUy5Uk3IIB6FvTmej+k+gNCKBZDNA2V2uK3nQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-FhS+lXnmidWp7nSnz8lR9WxIXcCK/EIYjalRu01eP3o='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4318,8 +4318,13 @@ const Onboarding=(()=>{
     await Store.putSetting('lang',selected.lang);currentLang=selected.lang;
     if(selected.byok){
       let byok={...selected.byok};
-      if(byok.passphrase&&byok.apiKey){byok.apiKey=await Crypto.encrypt(byok.apiKey,byok.passphrase);byok.encrypted=true;delete byok.passphrase;}
-      await Store.putSetting('byok',byok);
+      if(byok.passphrase&&byok.apiKey){byok.apiKey=await Crypto.encrypt(byok.apiKey,byok.passphrase);byok.encrypted=true;}
+      // The passphrase is the master secret (decrypts the API key) and must NEVER be
+      // persisted — it lives in-memory only (sessionPassphrase). Strip it unconditionally,
+      // even when no API key was entered, so a passphrase-but-no-key onboarding can't leak
+      // it to IndexedDB. Only persist byok when there is an actual key to store.
+      delete byok.passphrase;
+      if(byok.apiKey)await Store.putSetting('byok',byok);
     }
     for(const idx of selected.presets){const p=CONFIG.presetSources[idx];if(!await Store.findSourceByUrl(p.url))await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});}
     await Store.putSetting('onboarding-done',true);
