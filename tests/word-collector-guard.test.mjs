@@ -67,7 +67,10 @@ describe('collector guard wiring (index.html)', () => {
     expect(html).toMatch(/return\{collectOne,collectAll,fetchWiki,isBusy,getProgress\}/);
   });
   it('guards both collectOne and collectAll on the busy flag', () => {
-    expect(html).toContain('if(busy)return 0;');
+    // collectOne shows a toast before returning 0 when busy
+    expect(html).toContain("if(busy){toast(currentLang==='ja'?'収集中 — しばらくお待ちください':'collection in progress — please wait','err');return 0;}");
+    // collectAll also guards with busy (its guard sits at collectAll entry)
+    expect(html).toContain("if(busy){toast(currentLang==='ja'?'収集中");
     expect(html).toContain('finally{busy=false;}');
   });
   it('routes locked public calls through an unlocked _collectOne', () => {

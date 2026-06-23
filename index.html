@@ -1041,6 +1041,8 @@ function normalizeUrl(url){
 const HE={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 const escapeHtml=(s)=>String(s).replace(/[&<>"']/g,c=>HE[c]);
 const escapeAttr=escapeHtml;
+// Only allow http/https URLs in href/src attributes; javascript: and data: execute code.
+const safeHref=(url)=>{try{const p=new URL(url||'').protocol;return(p==='https:'||p==='http:')?url:'#';}catch{return'#';}};
 // YAML スカラーを二重引用符で安全に包む。フィードのタイトル/ソース名に含まれる `:` や改行が
 // frontmatter を壊す/キー注入するのを防ぐ。MarkdownExporter と WordExporter で共有。
 const yamlScalar=(s)=>'"'+String(s??'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
@@ -1920,7 +1922,7 @@ const WordCollector=(()=>{
   }
   // 公開API: 単語1件の収集。多重起動を防ぐ。
   async function collectOne(word){
-    if(busy)return 0;
+    if(busy){toast(currentLang==='ja'?'収集中 — しばらくお待ちください':'collection in progress — please wait','err');return 0;}
     busy=true;
     try{return await _collectOne(word);}finally{busy=false;}
   }
@@ -2761,7 +2763,7 @@ function cardHtml(ev,scoreHit){
   const blockBadge=(kwm?.block?.length>0)?`<span class="block-badge" title="${escapeAttr(kwm.block.join(', '))}">[${t('kw.blocked.badge')}]</span>`:'';
   return`<article class="${cls}" data-id="${ev.id}" role="article" aria-labelledby="title-${ev.id}">
     <div class="meta"><span class="source${isShare?' share':''}" data-filter-source="${escapeAttr(ev.source.id)}">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span>${ev.meta.author?`<span>${escapeHtml(ev.meta.author)}</span>`:''} ${scoreTag}${exportedBadge}${watchBadge}${blockBadge}</div>
-    <h2 id="title-${ev.id}"><a href="${escapeHtml(ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
+    <h2 id="title-${ev.id}"><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
     ${ev.content.snippet?`<p class="snippet">${escapeHtml(ev.content.snippet)}</p>`:''}${summary}${tags?`<div class="tags">${tags}</div>`:''}${vault}
     <div class="actions">
       <button data-act="read" aria-label="Toggle read state">${ev.state.read?'UNREAD':'READ'}</button>
@@ -2827,7 +2829,7 @@ async function renderDigest(){
 
   const top3Html=top3.map(ev=>`<article class="card unread" data-id="${ev.id}" style="margin-bottom:8px;">
     <div class="meta"><span class="source">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span></div>
-    <h2><a href="${escapeHtml(ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
+    <h2><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
     ${ev.content.summary?`<div class="summary">${escapeHtml(ev.content.summary)}</div>`:''}
   </article>`).join('');
 
@@ -2953,7 +2955,7 @@ async function renderWords(){
     const wikiRefreshBtn=wikiStale?`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を更新':'Refresh definition'}</button>`:'';
     const wikiThumb=w.wiki?.thumbnail?`<img class="word-wiki-thumb" src="${escapeHtml(w.wiki.thumbnail)}" alt="" loading="lazy">`:''
     const wikiCanon=w.wiki?.title&&w.wiki.title.trim().toLowerCase()!==w.term.trim().toLowerCase()?`<div class="word-wiki-canon">${currentLang==='ja'?'記事:':'article:'} <em>${escapeHtml(w.wiki.title)}</em></div>`:'';
-    const wiki=w.wiki?.extract?`<div class="word-wiki"><div class="word-wiki-inner">${wikiThumb}<div>${wikiCanon}<p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(w.wiki.url)}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div></div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
+    const wiki=w.wiki?.extract?`<div class="word-wiki"><div class="word-wiki-inner">${wikiThumb}<div>${wikiCanon}<p>${escapeHtml(w.wiki.extract)}</p><div style="display:flex;align-items:center;gap:12px;">${w.wiki.url?`<a href="${escapeHtml(safeHref(w.wiki.url))}" target="_blank" rel="noopener noreferrer">Wikipedia</a>`:''} ${wikiRefreshBtn}</div></div></div></div>`:(w.sources?.wikipedia?`<div class="word-wiki" style="color:var(--fg-3);">${wikiRefreshBtn||`<button class="word-stale" data-wact="refreshwiki" data-id="${w.id}">${currentLang==='ja'?'定義を取得':'Fetch definition'}</button>`}</div>`:'');
     const newBadge=newCount>0?` <span class="word-new">${newCount} ${currentLang==='ja'?'新着':'new'}</span>`:'';
     // 問いの彫琢: 問いは編集可能で、旧い定式化は履歴に残る。
     const revisions=(w.questionHistory||[]).length;
@@ -3002,7 +3004,7 @@ async function renderWords(){
     const qAdd=`<div class="word-q-add"><input type="text" placeholder="${qPh}" aria-label="${escapeAttr(currentLang==='ja'?`${w.term} への未解決の問い`:`open question for ${w.term}`)}" enterkeyhint="done" data-wqinput="${escapeAttr(w.id)}" maxlength="200"><button data-wact="addq" data-id="${escapeAttr(w.id)}" aria-label="${escapeAttr(currentLang==='ja'?'問いを追加':'add question')}">${currentLang==='ja'?'問い追加':'+ Q'}</button></div>`;
     // 反証候補(Falsifier Watch): 宣言した反証条件に該当しうる収集物を能動的に提示する。
     const fwatch=w.falsifier?falsifierHits(w,items):[];
-    const fwatchBlock=fwatch.length?`<div class="word-fwatch" title="${escapeAttr(currentLang==='ja'?'あなたが覆ると述べた条件に該当しうる証拠':'evidence that may match your stated falsifier')}"><span class="word-fwatch-label">${t('word.fwatch')}</span><ul>${fwatch.map(h=>`<li><a href="${escapeAttr(h.ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(h.ev.content.title||'(untitled)')}</a> <span class="word-fwatch-score">${Math.round(h.score*100)}%</span></li>`).join('')}</ul></div>`:'';
+    const fwatchBlock=fwatch.length?`<div class="word-fwatch" title="${escapeAttr(currentLang==='ja'?'あなたが覆ると述べた条件に該当しうる証拠':'evidence that may match your stated falsifier')}"><span class="word-fwatch-label">${t('word.fwatch')}</span><ul>${fwatch.map(h=>`<li><a href="${escapeAttr(safeHref(h.ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(h.ev.content.title||'(untitled)')}</a> <span class="word-fwatch-score">${Math.round(h.score*100)}%</span></li>`).join('')}</ul></div>`:'';
     // 問答(elenchus): システムが探究の構造から問いを投げ返す。
     const prompts=socraticPrompts(w,items);
     const elenchusBlock=prompts.length?`<div class="word-elenchus"><span class="word-elenchus-label">${t('word.elenchus')}</span><ul>${prompts.map(p=>`<li>${escapeHtml(currentLang==='ja'?p.ja:p.en)}</li>`).join('')}</ul></div>`:'';
@@ -3454,7 +3456,7 @@ async function openDetailModal(ev){
   $('#detail-card').innerHTML=`
     <h3 id="hd-detail">EVENT DETAIL</h3>
     <div class="detail-meta"><span class="accent">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span>${ev.meta.author?`<span>${escapeHtml(ev.meta.author)}</span>`:''}</div>
-    <h2 class="detail-title"><a href="${escapeHtml(ev.url||'#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
+    <h2 class="detail-title"><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
     ${summary}${snippet}${vaultHtml}
     <h4>USER TAGS</h4>
     <div class="tag-input-row" id="user-tags-row">${renderTagChips(tags)}<input type="text" id="tag-input" placeholder="add tag + Enter"></div>
@@ -3852,8 +3854,16 @@ $('#restore-file').addEventListener('change',async(e)=>{
   if(dump.app!=='neus'||!Array.isArray(dump.events)){toast('not a Neus backup','err');return;}
   // 退避前に全レコードの形を検証する。検証を後回しにすると既存データを消した後で
   // 不正なレコードに当たり、両方を失う(復元はロールバック不能)。
-  const validEvent=(ev)=>!!ev&&typeof ev.id==='string'&&!!ev.content&&!!ev.source&&!!ev.state&&!!ev.meta;
-  const validWord=(w)=>!!w&&typeof w.id==='string'&&typeof w.normalized==='string';
+  const validEvent=(ev)=>{
+    if(!ev||typeof ev.id!=='string'||!ev.content||!ev.source||!ev.state||!ev.meta)return false;
+    if(ev.url)ev.url=safeHref(ev.url);  // sanitize imported event URLs
+    return true;
+  };
+  const validWord=(w)=>{
+    if(!w||typeof w.id!=='string'||typeof w.normalized!=='string')return false;
+    if(w.wiki){if(w.wiki.url)w.wiki.url=safeHref(w.wiki.url);if(w.wiki.thumbnail)w.wiki.thumbnail=safeHref(w.wiki.thumbnail);}
+    return true;
+  };
   if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}
   if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast('backup has malformed words','err');return;}
   if(!await confirmAsync(t('backup.confirm')))return;
