@@ -259,6 +259,20 @@ describe('StorageGuard IDB/FTS ordering (index.html)', () => {
   it('wraps each auto-cleanup deletion in try/catch so one failure does not abort the rest', () => {
     expect(html).toContain("catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}");
   });
+  it('only auto-evicts exported+archived events (recoverable from vault)', () => {
+    // The eviction candidate filter must require BOTH archived AND exportedAt — never
+    // silently delete unexported personal data (the persistent-storage invariant).
+    expect(html).toContain('all.filter(ev=>ev.state.archived&&ev.state.exportedAt)');
+  });
+  it('warns the user instead of deleting when nothing recoverable can be evicted', () => {
+    // When the exported-archived pool is empty but storage is critical, StorageGuard
+    // must surface an actionable warning rather than destroying unexported data.
+    expect(html).toContain('storage critical');
+    expect(html).toContain('export & clear old events to free space');
+  });
+  it('guards against a zero/undefined quota (no division by zero)', () => {
+    expect(html).toContain('if(!quota)return;');
+  });
 });
 
 describe('TagLearner.rebuild error handling (index.html)', () => {

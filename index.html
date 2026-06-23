@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-OoYpTV7ckjxgDyqM1BM/vUC0onhDjhlxi6VOlo4v+cM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-0AayYghx9NH56mD0fKAOTF/NzqQURK4kTMRJI0yCwF8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1447,13 +1447,22 @@ const StorageGuard=(()=>{
   async function check(){
     if(!navigator.storage?.estimate)return;
     const{usage,quota}=await navigator.storage.estimate();
+    if(!quota)return;
     const ratio=usage/quota;
     if(ratio<CONFIG.storageQuotaThreshold)return;
     const all=await Store.allEvents();
+    // Auto-evict ONLY exported+archived events — they are recoverable from the Vault,
+    // so deleting them is not "unexpected data loss" (the persistent-storage invariant).
     const candidates=all.filter(ev=>ev.state.archived&&ev.state.exportedAt).sort((a,b)=>(a.state.archivedAt||0)-(b.state.archivedAt||0));
-    const toDelete=candidates.slice(0,Math.max(1,Math.ceil(candidates.length*0.1)));
-    for(const ev of toDelete){try{await Store.deleteEvent(ev.id);FTSIndex.remove(ev.id);}catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}}
-    if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err');
+    if(candidates.length>0){
+      const toDelete=candidates.slice(0,Math.max(1,Math.ceil(candidates.length*0.1)));
+      for(const ev of toDelete){try{await Store.deleteEvent(ev.id);FTSIndex.remove(ev.id);}catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}}
+      if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err');
+      return;
+    }
+    // Nothing safely recoverable to evict, but storage is critical. Do NOT silently
+    // delete unexported personal data — warn the user to export/clean up manually.
+    toast(currentLang==='ja'?`ストレージ逼迫(${Math.round(ratio*100)}%)— 不要な記事をVaultに書き出して整理してください`:`storage critical (${Math.round(ratio*100)}%) — export & clear old events to free space`,'err');
   }
   Bus.subscribe('event.stored',()=>check());
   return{check,requestPersist};
