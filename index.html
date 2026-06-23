@@ -1977,7 +1977,7 @@ Bus.subscribe('event.normalized',async(ev)=>{
   const recent=await Store.recentEvents(CONFIG.dedupWindowMs);
   const newTok=new Set(tokenize(ev.content.title));
   if(newTok.size>0){
-    for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!r.links.includes(ev.url)){r.links=[...r.links,ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
+    for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
   }
   // キーワードルール適用
   const matched=KeywordRules.evaluate(ev);
