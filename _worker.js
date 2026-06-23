@@ -35,8 +35,8 @@ const TIMEOUT_MS = 15000;
 const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
 
 // Read a response body up to MAX_SIZE bytes. Returns the ArrayBuffer or null if
-// Content-Length already exceeds the limit. Throws if the streamed body exceeds it.
-// This enforces the size limit even when Content-Length is absent (chunked encoding).
+// Content-Length already exceeds the limit, or if the buffered body exceeds it.
+// Enforces the size limit even when Content-Length is absent (chunked encoding).
 async function readCapped(res) {
   const cl = res.headers.get('content-length');
   if (cl && Number(cl) > MAX_SIZE) return null;
