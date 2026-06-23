@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-sffzy8z5qTFiEl6SzLMoo8EWfqj6XkY5a8aGbweOBng='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-FBY1WOZ9N+wZ0/CAMrVLvJSbFkvoRjVKgB8kthbzyaQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3543,10 +3543,10 @@ async function openDetailModal(ev){
     const promote=e.target.closest('[data-auto-promote]');if(promote){const t2=promote.dataset.autoTag;if(!tags.includes(t2))tags.push(t2);refreshTagsRow();promote.style.display='none';}
   });
   $('#detail-close').addEventListener('click',()=>$('#modal-detail').classList.remove('show'));
-  $('#detail-save').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=tags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast('saved','ok');$('#modal-detail').classList.remove('show');await renderView();});
+  $('#detail-save').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=tags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast('saved','ok');$('#modal-detail').classList.remove('show');await renderView();}catch(err){console.error('[detail-save]',err);toast('save failed','err');}});
   $('#detail-copy').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(cur)MarkdownExporter.copy(cur);});
   $('#detail-vault').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(cur);if(ok){toast(currentLang==='ja'?'書出完了':'exported','ok');$('#modal-detail').classList.remove('show');await renderView();}else toast('vault export failed','err');});
-  $('#detail-resummarize').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast('summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast('summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast('summary updated','ok');openDetailModal(cur);});
+  $('#detail-resummarize').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast('summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast('summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast('summary updated','ok');openDetailModal(cur);}catch(err){console.error('[detail-resummarize]',err);toast('summarize failed','err');}});
 }
 $('#modal-detail').addEventListener('click',(e)=>{if(e.target.id==='modal-detail')$('#modal-detail').classList.remove('show');});
 
@@ -3579,7 +3579,7 @@ $('#btn-poll').addEventListener('click',async()=>{
 })();
 $('#src-cancel').addEventListener('click',()=>{$('#modal-sources').classList.remove('show');$('#bookmarklet-area').style.display='none';});
 $('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.trim();if(!url)return;if(safeHref(url)==='#'){toast('invalid url','err');return;}if(await Store.findSourceByUrl(url)){toast(currentLang==='ja'?'登録済み':'already added','err');return;}try{await Store.putSource({id:uuid(),url,name:new URL(url).hostname,enabled:true,addedAt:Date.now()});}catch(err){toast('failed to save source','err');return;}$('#src-url').value='';toast(currentLang==='ja'?'追加しました':'source added','ok');openSourcesModal();});
-$('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;await Store.deleteSource(del.dataset.srcDel);openSourcesModal();});
+$('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;try{await Store.deleteSource(del.dataset.srcDel);openSourcesModal();}catch(err){console.error('[sources-list delete]',err);toast('delete failed','err');}});
 $('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
 $('#opml-import').addEventListener('click',()=>$('#opml-file').click());
 $('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();});
@@ -3791,7 +3791,9 @@ $('#word-list').addEventListener('click',async(e)=>{
   }
   if(act==='collect'){btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await renderWordList();await refreshCounts();await renderView();}
   if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){
-    const snap={...word};FTSIndex.removeWord(word.id);await Store.deleteWord(word.id);await renderWordList();await refreshCounts();await renderView();
+    const snap={...word};
+    try{await Store.deleteWord(word.id);FTSIndex.removeWord(word.id);}catch(err){console.error('[word-delete]',err);toast('delete failed','err');return;}
+    await renderWordList();await refreshCounts();await renderView();
     UndoStack.offer(currentLang==='ja'?`「${word.term}」を削除しました`:`deleted "${word.term}"`,async()=>{await Store.putWord(snap);FTSIndex.addWord(snap);await renderWordList();await refreshCounts();await renderView();});
   }}
 });
