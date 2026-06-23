@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-FBY1WOZ9N+wZ0/CAMrVLvJSbFkvoRjVKgB8kthbzyaQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-AMw13FViT/AujGWtMuIrVDg697JK8cvayPeZtrDUAJ4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3367,32 +3367,34 @@ $('#view').addEventListener('click',async(e)=>{
   }
   // ソース名クリックでフィルタ適用
   const srcEl=e.target.closest('[data-filter-source]');
-  if(srcEl){e.stopPropagation();const card=e.target.closest('.card');if(card){const ev=await Store.getEvent(card.dataset.id);if(ev)applyFilter('source',ev.source.name);}return;}
+  if(srcEl){e.stopPropagation();const card=e.target.closest('.card');if(card){try{const ev=await Store.getEvent(card.dataset.id);if(ev)applyFilter('source',ev.source.name);}catch(err){console.error('[view/source-filter]',err);}}return;}
   // タグクリックでフィルタ適用
   const tagEl=e.target.closest('.tag');
   if(tagEl){e.stopPropagation();const txt=tagEl.textContent.replace(/^[#~]/,'').trim();applyFilter('tag',txt,txt);return;}
   const btn=e.target.closest('button[data-act]');const card=e.target.closest('.card');if(!card)return;
-  const id=card.dataset.id;const ev=await Store.getEvent(id);if(!ev)return;
-  if(!btn){openDetailModal(ev);return;}e.stopPropagation();
-  const act=btn.dataset.act;const now=Date.now();
-  if(act==='read'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
-  if(act==='star'){ev.state.starred=!ev.state.starred;InterestProfile.learn(ev,'pos',ev.state.starred?1:-1);}
-  if(act==='archive'){
-    const wasArchived=ev.state.archived;
-    ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;
-    InterestProfile.learn(ev,'neg',ev.state.archived?1:-1);
-    if(!wasArchived){UndoStack.offer(currentLang==='ja'?'アーカイブしました':'Archived',async()=>{const e=await Store.getEvent(ev.id);if(!e)return;e.state.archived=false;e.state.archivedAt=undefined;await InterestProfile.learn(e,'neg',-1);await Store.putEvent(e);FTSIndex.add(e);await renderView();await refreshCounts();});}
-  }
-  if(act==='later'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
-  if(act==='vault'){
-    toast(currentLang==='ja'?'書出中...':'exporting...');
-    const ok=await VaultWriter.exportEvent(ev);
-    if(ok)toast(currentLang==='ja'?'Vaultに書出完了':'exported to vault','ok');else toast('vault export failed','err');
-    await renderView();await refreshCounts();return;
-  }
-  if(act==='detail'){openDetailModal(ev);return;}
-  if(act==='copy'){MarkdownExporter.copy(ev);return;}
-  await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+  try{
+    const id=card.dataset.id;const ev=await Store.getEvent(id);if(!ev)return;
+    if(!btn){openDetailModal(ev);return;}e.stopPropagation();
+    const act=btn.dataset.act;const now=Date.now();
+    if(act==='read'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
+    if(act==='star'){ev.state.starred=!ev.state.starred;InterestProfile.learn(ev,'pos',ev.state.starred?1:-1);}
+    if(act==='archive'){
+      const wasArchived=ev.state.archived;
+      ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;
+      InterestProfile.learn(ev,'neg',ev.state.archived?1:-1);
+      if(!wasArchived){UndoStack.offer(currentLang==='ja'?'アーカイブしました':'Archived',async()=>{const e=await Store.getEvent(ev.id);if(!e)return;e.state.archived=false;e.state.archivedAt=undefined;await InterestProfile.learn(e,'neg',-1);await Store.putEvent(e);FTSIndex.add(e);await renderView();await refreshCounts();});}
+    }
+    if(act==='later'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
+    if(act==='vault'){
+      toast(currentLang==='ja'?'書出中...':'exporting...');
+      const ok=await VaultWriter.exportEvent(ev);
+      if(ok)toast(currentLang==='ja'?'Vaultに書出完了':'exported to vault','ok');else toast('vault export failed','err');
+      await renderView();await refreshCounts();return;
+    }
+    if(act==='detail'){openDetailModal(ev);return;}
+    if(act==='copy'){MarkdownExporter.copy(ev);return;}
+    await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+  }catch(err){console.error('[view/card-action]',err);toast('action failed','err');}
 });
 
 // ===== CONTEXT ACTION SHEET (long-press / right-click → keyword rule) ====
