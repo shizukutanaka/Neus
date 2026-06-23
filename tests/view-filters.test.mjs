@@ -185,22 +185,38 @@ describe('auto-refresh debouncing (index.html)', () => {
 });
 
 describe('FTSIndex rebuild-after-restore (index.html)', () => {
-  // Bug: restore called FTSIndex.add(ev) for every event in a loop, and
-  // FTSIndex.removeWord/remove for every deleted event. TagLearner.rebuild()
-  // was called at the end (correct), but FTSIndex was not rebuilt in the same
-  // pattern — inconsistent, and for large restores the N individual add()
-  // calls block the main thread without yielding.
-  // Fix: remove individual add/remove calls; call FTSIndex.rebuild() at the
-  // end alongside TagLearner.rebuild() — uses the existing yield-every-100 path.
+  // Restore rebuilds FTS once after all events are written (yield-every-100 path),
+  // rather than calling FTSIndex.add(ev) per event.
   it('restore calls FTSIndex.rebuild() after all events are stored', () => {
     expect(html).toContain('await FTSIndex.rebuild(); // batch rebuild with yield-every-100 for large restores');
   });
-  it('restore does not call FTSIndex.add(ev) in the event loop', () => {
-    // Find the restore section (after "復元" comment) — should not have FTSIndex.add inside the event loop
-    const restoreIdx = html.indexOf('// 復元 (FTSIndex.add は呼ばず');
-    expect(restoreIdx).toBeGreaterThan(0);
-    const restoreSlice = html.slice(restoreIdx, restoreIdx + 400);
-    expect(restoreSlice).not.toContain('FTSIndex.add(ev)');
+});
+
+describe('atomic restore (index.html)', () => {
+  // Bug: restore deleted all existing data, then put() the backup records in a loop.
+  // If any put failed mid-restore (e.g. quota), existing data was already gone and the
+  // restore was half-applied — unrecoverable, exactly what pre-validation tried to avoid
+  // (validation only guards malformed records, not write failures).
+  // Fix: Store.replaceAll clears + repopulates in ONE IDB transaction; IDB auto-aborts
+  // (rolls back the clears) on any write error, so existing data survives a failed restore.
+  it('exposes an atomic Store.replaceAll over all three stores in one transaction', () => {
+    expect(html).toContain("const t=db.transaction(['events','sources','words','settings'],'readwrite');");
+    expect(html).toContain('t.onabort=()=>reject(t.error||new Error(\'restore_aborted\'));');
+  });
+  it('replaceAll clears events/sources/words but not settings (preserves salt/vault-handle)', () => {
+    expect(html).toContain("const ev=t.objectStore('events');ev.clear();");
+    expect(html).toContain("const sr=t.objectStore('sources');sr.clear();");
+    expect(html).toContain("const wd=t.objectStore('words');wd.clear();");
+    // settings store: only selected keys overwritten, never cleared
+    expect(html).toContain("const st=t.objectStore('settings');for(const[k,v]of settings)st.put({key:k,value:v});");
+  });
+  it('restore handler delegates to replaceAll and reports existing data preserved on failure', () => {
+    expect(html).toContain('await Store.replaceAll({events:dump.events,sources:dump.sources||[],words:dump.words||[],settings:settingsEntries});');
+    expect(html).toContain('existing data preserved');
+  });
+  it('restore no longer deletes records one-by-one before writing', () => {
+    // The old destructive pre-delete loop must be gone.
+    expect(html).not.toContain('for(const ev of existing)await Store.deleteEvent(ev.id);');
   });
 });
 

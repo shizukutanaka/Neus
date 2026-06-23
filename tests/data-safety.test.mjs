@@ -83,12 +83,12 @@ describe('import shape validation (modeled)', () => {
 });
 
 describe('import validation wiring (index.html)', () => {
-  it('validates events and words BEFORE deleting existing data', () => {
+  it('validates events and words BEFORE the destructive restore', () => {
     const validateAt = html.indexOf('backup has malformed events');
-    const wipeAt = html.indexOf('// 既存データ削除');
+    const wipeAt = html.indexOf('await Store.replaceAll({events:dump.events');
     expect(validateAt).toBeGreaterThan(0);
     expect(wipeAt).toBeGreaterThan(0);
-    expect(validateAt).toBeLessThan(wipeAt); // guard precedes the destructive wipe
+    expect(validateAt).toBeLessThan(wipeAt); // shape guard precedes the atomic replace
   });
   it('aborts (returns) on malformed events or words without wiping', () => {
     expect(html).toContain("if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}");

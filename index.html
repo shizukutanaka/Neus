@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-56xH7rsRb1E4/DQEWZmBNQTp5oDKa4LDRjzmiCLY/tc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-sVAi9bGpSRebQ3JRvz/GT1dRWeiXR2VyFBmcOSNMMGE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1169,6 +1169,22 @@ const Store=(()=>{
     async getSetting(key){const r=await r2p(tx(['settings']).objectStore('settings').get(key));return r?.value;},
     async putSetting(key,value){return r2p(tx(['settings'],'readwrite').objectStore('settings').put({key,value}));},
     async deleteSetting(key){return r2p(tx(['settings'],'readwrite').objectStore('settings').delete(key));},
+    // Atomic restore: clear + repopulate events/sources/words and overwrite selected
+    // settings keys in ONE transaction. IndexedDB auto-aborts (rolls back the clears too)
+    // if any put fails, so a mid-restore error leaves existing data unchanged rather than
+    // half-deleted. settings store is NOT cleared (preserves salt, vault-handle, etc.).
+    async replaceAll({events=[],sources=[],words=[],settings=[]}){
+      return new Promise((resolve,reject)=>{
+        const t=db.transaction(['events','sources','words','settings'],'readwrite');
+        t.oncomplete=()=>resolve();
+        t.onerror=()=>reject(t.error);
+        t.onabort=()=>reject(t.error||new Error('restore_aborted'));
+        const ev=t.objectStore('events');ev.clear();for(const r of events)ev.put(r);
+        const sr=t.objectStore('sources');sr.clear();for(const r of sources)sr.put(r);
+        const wd=t.objectStore('words');wd.clear();for(const r of words)wd.put(r);
+        const st=t.objectStore('settings');for(const[k,v]of settings)st.put({key:k,value:v});
+      });
+    },
   };
 })();
 
@@ -3931,22 +3947,24 @@ $('#modal-stats').addEventListener('click',(e)=>{if(e.target.id==='modal-stats')
 
 // ===== BACKUP / RESTORE =================================================
 $('#stats-backup').addEventListener('click',async()=>{
-  const events=await Store.allEvents();
-  const sources=await Store.listSources();
-  const words=await Store.listWords();
-  const settings={};
-  for(const key of ['byok','lang','keyword-rules','onboarding-done']){
-    const v=await Store.getSetting(key);if(v!==undefined)settings[key]=v;
-  }
-  const dump={version:'1.0',exportedAt:new Date().toISOString(),app:'neus',counts:{events:events.length,sources:sources.length,words:words.length},events,sources,words,settings};
-  // セキュリティ警告: APIキーは暗号化されている場合のみ含めるべき
-  if(settings.byok&&!settings.byok.encrypted){
-    if(!await confirmAsync(currentLang==='ja'?'APIキーが暗号化されていません。バックアップに含めますか?':'API key is not encrypted. Include in backup?',{danger:true})){
-      delete dump.settings.byok;
+  try{
+    const events=await Store.allEvents();
+    const sources=await Store.listSources();
+    const words=await Store.listWords();
+    const settings={};
+    for(const key of ['byok','lang','keyword-rules','onboarding-done']){
+      const v=await Store.getSetting(key);if(v!==undefined)settings[key]=v;
     }
-  }
-  downloadFile(`neus-backup-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(dump,null,2),'application/json');
-  toast(currentLang==='ja'?`${events.length}件エクスポート`:`exported ${events.length} events`,'ok');
+    const dump={version:'1.0',exportedAt:new Date().toISOString(),app:'neus',counts:{events:events.length,sources:sources.length,words:words.length},events,sources,words,settings};
+    // セキュリティ警告: APIキーは暗号化されている場合のみ含めるべき
+    if(settings.byok&&!settings.byok.encrypted){
+      if(!await confirmAsync(currentLang==='ja'?'APIキーが暗号化されていません。バックアップに含めますか?':'API key is not encrypted. Include in backup?',{danger:true})){
+        delete dump.settings.byok;
+      }
+    }
+    downloadFile(`neus-backup-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(dump,null,2),'application/json');
+    toast(currentLang==='ja'?`${events.length}件エクスポート`:`exported ${events.length} events`,'ok');
+  }catch(err){console.error('[stats-backup]',err);toast(currentLang==='ja'?'エクスポート失敗':'export failed','err');}
 });
 
 $('#stats-restore').addEventListener('click',()=>$('#restore-file').click());
@@ -3971,17 +3989,17 @@ $('#restore-file').addEventListener('change',async(e)=>{
   if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}
   if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast('backup has malformed words','err');return;}
   if(!await confirmAsync(t('backup.confirm')))return;
-  // 既存データ削除 (FTSIndex は末尾で一括 rebuild するため個別 remove 不要)
-  const existing=await Store.allEvents();
-  for(const ev of existing)await Store.deleteEvent(ev.id);
-  for(const s of await Store.listSources())await Store.deleteSource(s.id);
-  for(const w of await Store.listWords())await Store.deleteWord(w.id);
-  // 復元 (FTSIndex.add は呼ばず、全件 Store 書き込み後に rebuild で一括構築)
-  for(const ev of dump.events)await Store.putEvent(ev);
-  for(const s of (dump.sources||[]))await Store.putSource(s);
-  for(const w of (dump.words||[]))await Store.putWord(w);
+  // Atomic restore in a single IDB transaction: if any write fails, IDB rolls back the
+  // clears too, so existing data is preserved (the rollback-impossible problem is solved).
   const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done']);
-  for(const[k,v]of Object.entries(dump.settings||{})){if(RESTORE_SETTINGS_KEYS.has(k))await Store.putSetting(k,v);}
+  const settingsEntries=Object.entries(dump.settings||{}).filter(([k])=>RESTORE_SETTINGS_KEYS.has(k));
+  try{
+    await Store.replaceAll({events:dump.events,sources:dump.sources||[],words:dump.words||[],settings:settingsEntries});
+  }catch(err){
+    console.error('[restore]',err);
+    toast(currentLang==='ja'?'復元に失敗しました(既存データは保持されています)':'restore failed (existing data preserved)','err');
+    return;
+  }
   await KeywordRules.load();
   await TagLearner.rebuild();
   await FTSIndex.rebuild(); // batch rebuild with yield-every-100 for large restores
