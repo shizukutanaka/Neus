@@ -1682,7 +1682,7 @@ const AutoSync=(()=>{
 // Service Worker からのメッセージ受信(periodicsync完了通知)
 if('serviceWorker'in navigator){
   navigator.serviceWorker.addEventListener('message',async(e)=>{
-    if(e.data?.type==='periodic-poll-done'){
+    if(e.data?.type==='periodic-poll-request'){
       // SWは取得をトリガしただけなので、メインスレッドでPOLL実行
       const before=await Store.countAll();
       await RSSPoller.fetchAll();
@@ -2740,15 +2740,20 @@ let wordNameFilter=''; // WORDS view text filter on word name
 const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starred:{starred:true},archived:{archived:true},later:{later:true,archived:false}};
 
 async function refreshCounts(){
-  $('#cnt-inbox').textContent=await Store.countUnread();
+  // Run the four IDB count queries in parallel; countArchived is used twice (ALL badge + ARCHIVED badge).
+  const[unread,total,archived,starred,later,words]= await Promise.all([
+    Store.countUnread(),Store.countAll(),Store.countArchived(),Store.countStarred(),
+    Store.listEvents({filter:{later:true,archived:false},limit:1000}),
+    Store.listWords(),
+  ]);
+  $('#cnt-inbox').textContent=unread;
   // ALL ビューは {archived:false} で描画するので、バッジも非アーカイブ件数に揃える(countAll は総数)
-  $('#cnt-all').textContent=(await Store.countAll())-(await Store.countArchived());
-  $('#cnt-starred').textContent=await Store.countStarred();
-  $('#cnt-archived').textContent=await Store.countArchived();
+  $('#cnt-all').textContent=total-archived;
+  $('#cnt-starred').textContent=starred;
+  $('#cnt-archived').textContent=archived;
   // LATER count: listEvents scan (no dedicated index, OK for <500 items)
-  const laterEvents=await Store.listEvents({filter:{later:true,archived:false},limit:1000});
-  $('#cnt-later').textContent=laterEvents.length;
-  $('#cnt-words').textContent=(await Store.listWords()).length;
+  $('#cnt-later').textContent=later.length;
+  $('#cnt-words').textContent=words.length;
   $('#cnt-search').textContent=searchResults.length;
 }
 
@@ -3556,7 +3561,7 @@ $('#btn-poll').addEventListener('click',async()=>{
   document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&menu.classList.contains('show')&&!document.querySelector('.modal.show')){close();btn.focus();}});
 })();
 $('#src-cancel').addEventListener('click',()=>{$('#modal-sources').classList.remove('show');$('#bookmarklet-area').style.display='none';});
-$('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.trim();if(!url)return;try{new URL(url);}catch{toast('invalid url','err');return;}if(await Store.findSourceByUrl(url)){toast(currentLang==='ja'?'登録済み':'already added','err');return;}await Store.putSource({id:uuid(),url,name:new URL(url).hostname,enabled:true,addedAt:Date.now()});$('#src-url').value='';toast(currentLang==='ja'?'追加しました':'source added','ok');openSourcesModal();});
+$('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.trim();if(!url)return;if(safeHref(url)==='#'){toast('invalid url','err');return;}if(await Store.findSourceByUrl(url)){toast(currentLang==='ja'?'登録済み':'already added','err');return;}try{await Store.putSource({id:uuid(),url,name:new URL(url).hostname,enabled:true,addedAt:Date.now()});}catch(err){toast('failed to save source','err');return;}$('#src-url').value='';toast(currentLang==='ja'?'追加しました':'source added','ok');openSourcesModal();});
 $('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;await Store.deleteSource(del.dataset.srcDel);openSourcesModal();});
 $('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
 $('#opml-import').addEventListener('click',()=>$('#opml-file').click());

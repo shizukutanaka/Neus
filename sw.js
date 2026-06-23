@@ -93,7 +93,7 @@ self.addEventListener('periodicsync', (e) => {
     // Delegate poll to exactly one tab (prefer focused, then visible, then any).
     // Messaging all tabs causes redundant concurrent fetches and wasted bandwidth.
     const target = clients.find(c => c.focused) || clients.find(c => c.visibilityState === 'visible') || clients[0];
-    target.postMessage({ type: 'periodic-poll-done' });
+    target.postMessage({ type: 'periodic-poll-request' });
   })());
 });
 
