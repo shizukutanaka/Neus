@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-AMw13FViT/AujGWtMuIrVDg697JK8cvayPeZtrDUAJ4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-a3AX4UvgeXl0QXyL6Pr6pfzJxoExLs+o/ccdCVgPGCU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4105,19 +4105,21 @@ document.addEventListener('keydown',async(e)=>{
   }
   // Enter/o = open detail
   if(k==='Enter'||k==='o'){
-    const ev=await currentCardEvent();if(ev){e.preventDefault();openDetailModal(ev);}return;
+    try{const ev=await currentCardEvent();if(ev){e.preventDefault();openDetailModal(ev);}}catch(err){console.error('[kb/open]',err);}return;
   }
   // s/e/r/v = card actions
   if(['s','e','r','v','l'].includes(k)){
-    const ev=await currentCardEvent();if(!ev)return;
-    e.preventDefault();
-    const now=Date.now();
-    if(k==='s'){ev.state.starred=!ev.state.starred;}
-    if(k==='e'){ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;}
-    if(k==='r'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
-    if(k==='l'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
-    if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();return;}
-    await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+    try{
+      const ev=await currentCardEvent();if(!ev)return;
+      e.preventDefault();
+      const now=Date.now();
+      if(k==='s'){ev.state.starred=!ev.state.starred;}
+      if(k==='e'){ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;}
+      if(k==='r'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
+      if(k==='l'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
+      if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();return;}
+      await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+    }catch(err){console.error('[kb/action]',err);toast('action failed','err');}
   }
 });
 
