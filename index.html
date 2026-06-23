@@ -1746,6 +1746,7 @@ const RSSPoller=(()=>{
     const ta=document.createElement('textarea');ta.innerHTML=s;return ta.value;
   }
   function parseFeed(xml,source){
+    if(!xml)return[];
     const doc=new DOMParser().parseFromString(xml,'text/xml');
     // bozoパターン(feedparser): XMLエラーでも可能な限りデータを救出する。
     const hadError=!!doc.querySelector('parsererror');
@@ -1966,24 +1967,26 @@ Bus.subscribe('inbound.fetched',async({raw,source})=>{
 });
 
 Bus.subscribe('event.normalized',async(ev)=>{
-  const existing=await Store.findByHash(ev.hash);
-  if(existing){
-    // Merge incoming autoTags (e.g. word:gpt) onto the existing event so an article
-    // collected by two different watchwords appears under both words' views.
-    const merged=[...new Set([...(existing.meta.autoTags||[]),...(ev.meta.autoTags||[])])];
-    if(merged.length!==(existing.meta.autoTags||[]).length){existing.meta.autoTags=merged;await Store.putEvent(existing);FTSIndex.add(existing);}
-    Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;
-  }
-  const recent=await Store.recentEvents(CONFIG.dedupWindowMs);
-  const newTok=new Set(tokenize(ev.content.title));
-  if(newTok.size>0){
-    for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
-  }
-  // キーワードルール適用
-  const matched=KeywordRules.evaluate(ev);
-  const skip=KeywordRules.apply(ev,matched);
-  if(skip){Bus.publish('event.blocked',{ev,reason:'keyword-rule',patterns:matched.block.map(r=>r.pattern)});return;}
-  await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
+  try{
+    const existing=await Store.findByHash(ev.hash);
+    if(existing){
+      // Merge incoming autoTags (e.g. word:gpt) onto the existing event so an article
+      // collected by two different watchwords appears under both words' views.
+      const merged=[...new Set([...(existing.meta.autoTags||[]),...(ev.meta.autoTags||[])])];
+      if(merged.length!==(existing.meta.autoTags||[]).length){existing.meta.autoTags=merged;await Store.putEvent(existing);FTSIndex.add(existing);}
+      Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;
+    }
+    const recent=await Store.recentEvents(CONFIG.dedupWindowMs);
+    const newTok=new Set(tokenize(ev.content.title));
+    if(newTok.size>0){
+      for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
+    }
+    // キーワードルール適用
+    const matched=KeywordRules.evaluate(ev);
+    const skip=KeywordRules.apply(ev,matched);
+    if(skip){Bus.publish('event.blocked',{ev,reason:'keyword-rule',patterns:matched.block.map(r=>r.pattern)});return;}
+    await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
+  }catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}
 });
 
 Bus.subscribe('inbound.error',({source,error})=>{console.warn(`[RSS] ${source.name}: ${error}`);});
@@ -2061,7 +2064,13 @@ const InterestProfile=(()=>{
   }
   async function load(){
     const saved=await Store.getSetting('interest-profile');
-    vocab=new Map(saved?.vocab||[]);loaded=true;
+    if(saved?.vocab){
+      // Apply time-based decay: interestDecay per day elapsed since last save.
+      const daysSince=saved.updatedAt?(Date.now()-saved.updatedAt)/(24*60*60*1000):0;
+      const d=Math.pow(CONFIG.interestDecay,Math.max(0,daysSince));
+      vocab=new Map(saved.vocab.map(([w,e])=>[w,{pos:e.pos*d,neg:e.neg*d}]));
+    }else{vocab=new Map();}
+    loaded=true;
   }
   async function save(){
     // 語彙が上限を超えたら、スコア絶対値の低い語から削る(忘却)
@@ -3295,17 +3304,17 @@ async function renderView(){
 $('#view').addEventListener('click',async(e)=>{
   if(e.target.closest('a'))return;
   const wres=e.target.closest('[data-wres]');
-  if(wres){e.stopPropagation();wordNameFilter=wres.dataset.wres;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
+  if(wres){e.stopPropagation();wordViewFilter=null;wordNameFilter=wres.dataset.wres;currentView='words';kbCursor=-1;$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
   // 検索バナーから watchword 登録(探究への参入口)
   const rwBtn=e.target.closest('[data-wact="regword"]');
   if(rwBtn){e.stopPropagation();
     const term=(rwBtn.dataset.term||'').trim();if(!term)return;
     const normalized=normalizeTerm(term);
-    if(await Store.findWordByTerm(normalized)){wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
+    if(await Store.findWordByTerm(normalized)){wordViewFilter=null;wordNameFilter=normalized;currentView='words';kbCursor=-1;$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();return;}
     const now=Date.now();const word={id:uuid(),term,normalized,note:'',lang:currentLang,priorBelief:'curious',sources:defaultSources(),enabled:true,createdAt:now,reviewedAt:now,lastCollectedAt:null,lastFetched:0,wiki:null,verdict:{status:'open',note:''},verdictAt:null,verdictHistory:[],falsifier:'',questions:[],questionHistory:[]};
     await Store.putWord(word);FTSIndex.addWord(word);await refreshCounts();
     toast(currentLang==='ja'?`「${term}」を登録 — 収集中...`:`added "${term}" — collecting...`,'ok');
-    wordNameFilter=normalized;currentView='words';$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
+    wordViewFilter=null;wordNameFilter=normalized;currentView='words';kbCursor=-1;$$('.nav button').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-selected','false');});const wb=$('.nav button[data-view="words"]');if(wb){wb.classList.add('active');wb.setAttribute('aria-selected','true');}await renderView();
     await WordCollector.collectOne(word);await refreshCounts();await renderView();
     return;}
 });
@@ -3463,8 +3472,8 @@ $$('.nav button').forEach(b=>{
 // ===== SEARCH ===========================================================
 const doSearch=debounce(async(q)=>{
   searchQuery=q.trim();
-  if(!searchQuery){searchResults=[];$('#nav-search').style.display='none';if(currentView==='search'){$$('.nav button').forEach(x=>x.classList.remove('active'));$('.nav button[data-view="inbox"]').classList.add('active');currentView='inbox';}await refreshCounts();await renderView();return;}
-  searchResults=FTSIndex.search(searchQuery);$('#nav-search').style.display='';$$('.nav button').forEach(x=>x.classList.remove('active'));$('#nav-search').classList.add('active');currentView='search';await refreshCounts();await renderView();
+  if(!searchQuery){searchResults=[];$('#nav-search').style.display='none';if(currentView==='search'){$$('.nav button').forEach(x=>x.classList.remove('active'));$('.nav button[data-view="inbox"]').classList.add('active');currentView='inbox';}kbCursor=-1;await refreshCounts();await renderView();return;}
+  searchResults=FTSIndex.search(searchQuery);$('#nav-search').style.display='';$$('.nav button').forEach(x=>x.classList.remove('active'));$('#nav-search').classList.add('active');currentView='search';kbCursor=-1;await refreshCounts();await renderView();
 },200);
 $('#search-input').addEventListener('input',(e)=>doSearch(e.target.value));
 

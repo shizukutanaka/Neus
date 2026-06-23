@@ -82,6 +82,58 @@ describe('view filter wiring (index.html)', () => {
   });
 });
 
+describe('keyboard cursor + wordViewFilter reset safety (index.html)', () => {
+  // Bug: search view transitions (enter search, clear search) did not reset kbCursor.
+  // Stale cursor index from a previous view applied to new search results, causing
+  // keyboard navigation to select the wrong card.
+  // Bug: wordViewFilter persisted when re-entering the WORDS view via a search-result
+  // word click, so the user saw a filtered subset instead of the expected word.
+  it('doSearch clears kbCursor when entering search view', () => {
+    expect(html).toContain("currentView='search';kbCursor=-1;");
+  });
+  it('doSearch clears kbCursor when clearing search and returning to inbox', () => {
+    expect(html).toContain("currentView='inbox';}kbCursor=-1;");
+  });
+  it('word result click resets wordViewFilter before entering WORDS view', () => {
+    expect(html).toContain("wordViewFilter=null;wordNameFilter=wres.dataset.wres;currentView='words';kbCursor=-1;");
+  });
+  it('regword click also resets wordViewFilter and kbCursor when re-entering WORDS', () => {
+    // Appears at least twice (existing word path + new word path)
+    const occ = html.split("wordViewFilter=null;wordNameFilter=normalized;currentView='words';kbCursor=-1;").length - 1;
+    expect(occ).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('event.normalized pipeline error handling (index.html)', () => {
+  // Bug: the event.normalized Bus subscriber had no try/catch. Any IDB error
+  // (e.g. quota exceeded) silently discarded the event with no user feedback.
+  it('wraps the dedup/store pipeline in try/catch', () => {
+    // try{ opens the handler body; catch closes it on the same line
+    const tryIdx = html.indexOf("Bus.subscribe('event.normalized'");
+    expect(tryIdx).toBeGreaterThan(0);
+    const slice = html.slice(tryIdx, tryIdx + 400);
+    expect(slice).toContain('try{');
+    expect(slice).toContain('Store.findByHash(ev.hash)');
+  });
+  it('catches errors and publishes inbound.error for user visibility', () => {
+    expect(html).toContain("catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}");
+  });
+});
+
+describe('InterestProfile time-based decay (index.html)', () => {
+  // Bug: CONFIG.interestDecay (0.98) was declared but never applied.
+  // Old interest signals accumulated indefinitely, making recent actions no more
+  // influential than actions from months ago.
+  // Fix: on load(), compute elapsed days since last save and apply decay^days.
+  it('applies interestDecay on load proportional to days elapsed', () => {
+    expect(html).toContain('const daysSince=saved.updatedAt?(Date.now()-saved.updatedAt)/(24*60*60*1000):0;');
+    expect(html).toContain('const d=Math.pow(CONFIG.interestDecay,Math.max(0,daysSince));');
+  });
+  it('decays both pos and neg counters', () => {
+    expect(html).toContain('vocab=new Map(saved.vocab.map(([w,e])=>[w,{pos:e.pos*d,neg:e.neg*d}]));');
+  });
+});
+
 describe('source filter display (index.html)', () => {
   // Bug: clicking a source label called applyFilter('source', ev.source.id, ev.source.name).
   // applyFilter only accepts two args; the UUID was stored as activeFilter.value and shown
