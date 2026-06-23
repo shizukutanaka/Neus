@@ -3910,19 +3910,20 @@ $('#restore-file').addEventListener('change',async(e)=>{
   if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}
   if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast('backup has malformed words','err');return;}
   if(!await confirmAsync(t('backup.confirm')))return;
-  // 既存データ削除
+  // 既存データ削除 (FTSIndex は末尾で一括 rebuild するため個別 remove 不要)
   const existing=await Store.allEvents();
-  for(const ev of existing){FTSIndex.remove(ev.id);await Store.deleteEvent(ev.id);}
+  for(const ev of existing)await Store.deleteEvent(ev.id);
   for(const s of await Store.listSources())await Store.deleteSource(s.id);
-  for(const w of await Store.listWords()){FTSIndex.removeWord(w.id);await Store.deleteWord(w.id);}
-  // 復元
-  for(const ev of dump.events){await Store.putEvent(ev);FTSIndex.add(ev);}
+  for(const w of await Store.listWords())await Store.deleteWord(w.id);
+  // 復元 (FTSIndex.add は呼ばず、全件 Store 書き込み後に rebuild で一括構築)
+  for(const ev of dump.events)await Store.putEvent(ev);
   for(const s of (dump.sources||[]))await Store.putSource(s);
-  for(const w of (dump.words||[])){await Store.putWord(w);FTSIndex.addWord(w);}
+  for(const w of (dump.words||[]))await Store.putWord(w);
   const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done']);
   for(const[k,v]of Object.entries(dump.settings||{})){if(RESTORE_SETTINGS_KEYS.has(k))await Store.putSetting(k,v);}
   await KeywordRules.load();
   await TagLearner.rebuild();
+  await FTSIndex.rebuild(); // batch rebuild with yield-every-100 for large restores
   await refreshCounts();await renderView();
   toast(`${t('backup.imported')}: ${dump.events.length}`,'ok');
   $('#modal-stats').classList.remove('show');

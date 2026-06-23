@@ -169,6 +169,26 @@ describe('auto-refresh debouncing (index.html)', () => {
   });
 });
 
+describe('FTSIndex rebuild-after-restore (index.html)', () => {
+  // Bug: restore called FTSIndex.add(ev) for every event in a loop, and
+  // FTSIndex.removeWord/remove for every deleted event. TagLearner.rebuild()
+  // was called at the end (correct), but FTSIndex was not rebuilt in the same
+  // pattern — inconsistent, and for large restores the N individual add()
+  // calls block the main thread without yielding.
+  // Fix: remove individual add/remove calls; call FTSIndex.rebuild() at the
+  // end alongside TagLearner.rebuild() — uses the existing yield-every-100 path.
+  it('restore calls FTSIndex.rebuild() after all events are stored', () => {
+    expect(html).toContain('await FTSIndex.rebuild(); // batch rebuild with yield-every-100 for large restores');
+  });
+  it('restore does not call FTSIndex.add(ev) in the event loop', () => {
+    // Find the restore section (after "復元" comment) — should not have FTSIndex.add inside the event loop
+    const restoreIdx = html.indexOf('// 復元 (FTSIndex.add は呼ばず');
+    expect(restoreIdx).toBeGreaterThan(0);
+    const restoreSlice = html.slice(restoreIdx, restoreIdx + 400);
+    expect(restoreSlice).not.toContain('FTSIndex.add(ev)');
+  });
+});
+
 describe('InterestProfile time-based decay (index.html)', () => {
   // Bug: CONFIG.interestDecay (0.98) was declared but never applied.
   // Old interest signals accumulated indefinitely, making recent actions no more
