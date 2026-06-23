@@ -1822,13 +1822,17 @@ const RSSPoller=(()=>{
     for(const raw of items)Bus.publish('inbound.fetched',raw);
     return items.length;
   }
+  let fetching=false;
   async function fetchAll(){
-    if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return;}
-    const sources=await Store.listSources();
-    if(sources.length===0){toast(currentLang==='ja'?'ソースが未設定':'no sources configured','err');return;}
-    toast(currentLang==='ja'?`${sources.length}件取得中...`:`polling ${sources.length} source(s)...`);
-    let total=0;for(const s of sources)total+=await fetchOne(s);
-    toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
+    if(fetching)return;fetching=true;
+    try{
+      if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return;}
+      const sources=await Store.listSources();
+      if(sources.length===0){toast(currentLang==='ja'?'ソースが未設定':'no sources configured','err');return;}
+      toast(currentLang==='ja'?`${sources.length}件取得中...`:`polling ${sources.length} source(s)...`);
+      let total=0;for(const s of sources)total+=await fetchOne(s);
+      toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');
+    }finally{fetching=false;}
   }
   return{fetchOne,fetchAll,parseFeed,decodeEntities};
 })();
@@ -3531,11 +3535,10 @@ async function openSourcesModal(){
   $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
 }
 $('#btn-sources').addEventListener('click',openSourcesModal);
-let polling=false;
 $('#btn-poll').addEventListener('click',async()=>{
-  if(polling)return;polling=true;
+  const btn=$('#btn-poll');btn.disabled=true;
   try{await RSSPoller.fetchAll();await WordCollector.collectAll();await refreshCounts();await renderView();}
-  finally{polling=false;}
+  finally{btn.disabled=false;}
 });
 
 // オーバーフローメニュー(ヘッダーのモバイル集約)

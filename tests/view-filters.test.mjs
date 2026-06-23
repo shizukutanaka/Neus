@@ -121,16 +121,21 @@ describe('event.normalized pipeline error handling (index.html)', () => {
 });
 
 describe('poll button double-submit guard (index.html)', () => {
-  // Bug: clicking POLL rapidly started multiple concurrent fetchAll/collectAll chains.
-  // Fix: polling flag with finally-clear guards against overlapping poll runs.
-  it('declares polling in-flight flag', () => {
-    expect(html).toContain('let polling=false;');
+  // Bug: clicking POLL (or triggering via SW periodic-poll-done or online event)
+  // could start multiple concurrent fetchAll chains. Fix: in-flight guard moved
+  // inside RSSPoller.fetchAll() itself so all callers are protected.
+  it('RSSPoller.fetchAll declares fetching in-flight flag', () => {
+    expect(html).toContain('let fetching=false;');
   });
-  it('returns early if a poll is already in flight', () => {
-    expect(html).toContain('if(polling)return;polling=true;');
+  it('RSSPoller.fetchAll returns early if already in flight', () => {
+    expect(html).toContain('if(fetching)return;fetching=true;');
   });
-  it('resets polling flag in finally block', () => {
-    expect(html).toContain('finally{polling=false;}');
+  it('RSSPoller.fetchAll resets flag in finally block', () => {
+    expect(html).toContain('finally{fetching=false;}');
+  });
+  it('poll button disables itself during the fetch chain for UX feedback', () => {
+    expect(html).toContain("const btn=$('#btn-poll');btn.disabled=true;");
+    expect(html).toContain('finally{btn.disabled=false;}');
   });
 });
 
