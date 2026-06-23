@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-CXWMSe34b1h6W+97QhaLK565skO0+OGrSE71s3+Tk9s='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-sffzy8z5qTFiEl6SzLMoo8EWfqj6XkY5a8aGbweOBng='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1621,7 +1621,8 @@ const KeywordRules=(()=>{
       // 既存のkeywordMatchedをリセット
       delete ev.meta.keywordMatched;
       apply(ev,m);
-      await Store.putEvent(ev);FTSIndex.add(ev);changed++;
+      try{await Store.putEvent(ev);FTSIndex.add(ev);changed++;}
+      catch(err){console.warn('[KeywordRules.reapplyAll] putEvent failed:',ev.id,err);}
       // INP optimization: yield every 50 events
       if(changed>0&&changed%50===0)await (('scheduler' in window&&window.scheduler.yield)?window.scheduler.yield():new Promise(r=>setTimeout(r,0)));
     }
@@ -2081,13 +2082,15 @@ const InterestProfile=(()=>{
     ]);
   }
   async function load(){
-    const saved=await Store.getSetting('interest-profile');
-    if(saved?.vocab){
-      // Apply time-based decay: interestDecay per day elapsed since last save.
-      const daysSince=saved.updatedAt?(Date.now()-saved.updatedAt)/(24*60*60*1000):0;
-      const d=Math.pow(CONFIG.interestDecay,Math.max(0,daysSince));
-      vocab=new Map(saved.vocab.map(([w,e])=>[w,{pos:e.pos*d,neg:e.neg*d}]));
-    }else{vocab=new Map();}
+    try{
+      const saved=await Store.getSetting('interest-profile');
+      if(saved?.vocab){
+        // Apply time-based decay: interestDecay per day elapsed since last save.
+        const daysSince=saved.updatedAt?(Date.now()-saved.updatedAt)/(24*60*60*1000):0;
+        const d=Math.pow(CONFIG.interestDecay,Math.max(0,daysSince));
+        vocab=new Map(saved.vocab.map(([w,e])=>[w,{pos:e.pos*d,neg:e.neg*d}]));
+      }else{vocab=new Map();}
+    }catch(err){console.warn('[InterestProfile.load]',err);vocab=new Map();}
     loaded=true;
   }
   async function save(){
@@ -2097,7 +2100,8 @@ const InterestProfile=(()=>{
         (Math.abs(b[1].pos-b[1].neg))-(Math.abs(a[1].pos-a[1].neg)));
       vocab=new Map(ranked.slice(0,CONFIG.interestMaxVocab));
     }
-    await Store.putSetting('interest-profile',{vocab:[...vocab.entries()],updatedAt:Date.now()});
+    try{await Store.putSetting('interest-profile',{vocab:[...vocab.entries()],updatedAt:Date.now()});}
+    catch(err){console.warn('[InterestProfile.save]',err);}
   }
   // 行動を学習。kind: 'pos'(star) | 'neg'(archive)。undo時はsign=-1で打ち消し。
   async function learn(ev,kind,sign=1){
@@ -3475,11 +3479,13 @@ $('#view').addEventListener('touchcancel',()=>{cancelLP();if(swipeCard){swipeCar
 async function addQuickRule(kind,action){
   if(!kwSheetTerm)return;
   const rule={pattern:kwSheetTerm,mode:'contains',scope:'all',case:false,action};
-  await KeywordRules.addRule(kind,rule);
-  const n=await KeywordRules.reapplyAll();
-  closeKwSheet();
-  toast(currentLang==='ja'?`「${rule.pattern}」を${kind==='watch'?'WATCH':'BLOCK'}に追加(${n}件適用)`:`Added "${rule.pattern}" to ${kind} (${n} applied)`,'ok');
-  await refreshCounts();await renderView();
+  try{
+    await KeywordRules.addRule(kind,rule);
+    const n=await KeywordRules.reapplyAll();
+    closeKwSheet();
+    toast(currentLang==='ja'?`「${rule.pattern}」を${kind==='watch'?'WATCH':'BLOCK'}に追加(${n}件適用)`:`Added "${rule.pattern}" to ${kind} (${n} applied)`,'ok');
+    await refreshCounts();await renderView();
+  }catch(err){console.error('[addQuickRule]',err);toast('rule save failed','err');}
 }
 $('#kw-sheet-watch-hl').addEventListener('click',()=>addQuickRule('watch','highlight'));
 $('#kw-sheet-watch-star').addEventListener('click',()=>addQuickRule('watch','star'));
@@ -3843,9 +3849,11 @@ $('#kw-reapply').addEventListener('click',async()=>{
   $('#kw-save').click();
   await new Promise(r=>setTimeout(r,200));
   toast(currentLang==='ja'?'再適用中...':'reapplying to all events...');
-  const n=await KeywordRules.reapplyAll();
-  toast(currentLang==='ja'?`${n}件に適用`:`reapplied to ${n} events`,'ok');
-  await refreshCounts();await renderView();
+  try{
+    const n=await KeywordRules.reapplyAll();
+    toast(currentLang==='ja'?`${n}件に適用`:`reapplied to ${n} events`,'ok');
+    await refreshCounts();await renderView();
+  }catch(err){console.error('[kw-reapply]',err);toast('reapply failed','err');}
 });
 
 // (legacy STATS/BACKUP/FILTER block removed; see STATS MODAL below)
