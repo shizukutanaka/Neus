@@ -51,7 +51,7 @@ const TIER_DEFS = [
 function sourceTier(name) {
   const label = ((name || '').split('·').pop() || '').trim().toLowerCase();
   if (label.includes('arxiv')) return 'research';
-  if (label.includes('reddit') || label.includes('hacker')) return 'discussion';
+  if (label.includes('reddit') || label.includes('hacker') || label.includes('qiita') || label.includes('zenn') || label.includes('hatena')) return 'discussion';
   if (label.includes('news')) return 'press';
   return 'other';
 }
@@ -315,6 +315,11 @@ describe('sourceTier', () => {
     expect(sourceTier('WebGPU · Google News')).toBe('press');
     expect(sourceTier('WebGPU · Reddit')).toBe('discussion');
     expect(sourceTier('WebGPU · Hacker News')).toBe('discussion');
+  });
+  it('classifies Japanese community sources as discussion (not other)', () => {
+    expect(sourceTier('Rust · Qiita')).toBe('discussion');
+    expect(sourceTier('Next.js · Zenn')).toBe('discussion');
+    expect(sourceTier('AI · Hatena')).toBe('discussion');
   });
   it('ranks discussion before press so "Hacker News" is not mistaken for press', () => {
     expect(sourceTier('X · Hacker News')).not.toBe('press');

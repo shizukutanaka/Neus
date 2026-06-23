@@ -57,7 +57,7 @@ function verdictStale(word, events) {
 function sourceTier(name) {
   const label = ((name || '').split('·').pop() || '').trim().toLowerCase();
   if (label.includes('arxiv')) return 'research';
-  if (label.includes('reddit') || label.includes('hacker')) return 'discussion';
+  if (label.includes('reddit') || label.includes('hacker') || label.includes('qiita') || label.includes('zenn') || label.includes('hatena')) return 'discussion';
   if (label.includes('news')) return 'press';
   return 'other';
 }
