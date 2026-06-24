@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-RIr0mhM3mOKeCvzm1xFlI0+ychl/PjW7GbvCabc+Jdw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-dnPLhVuab5mjizZC69crslUfazjhlmKc88hwI/YQYl4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1525,11 +1525,19 @@ const UndoStack=(()=>{
     let el=document.getElementById(id);
     if(!el){
       el=document.createElement('div');el.id=id;
-      el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg-3);border:1px solid var(--accent-line);border-radius:4px;padding:10px 14px;font-family:var(--font-mono);font-size:12px;color:var(--fg);z-index:201;display:flex;align-items:center;gap:12px;';
+      el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg-3);border:1px solid var(--accent-line);border-radius:4px;padding:10px 14px 12px;font-family:var(--font-mono);font-size:12px;color:var(--fg);z-index:201;display:flex;flex-direction:column;gap:8px;min-width:200px;overflow:hidden;';
       document.body.appendChild(el);
     }
-    el.innerHTML=`<span>${escapeHtml(label)}</span><button id="undo-btn" style="padding:4px 10px;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:3px;font-family:var(--font-mono);font-size:11px;cursor:pointer;">UNDO</button>`;
+    // 残り時間バー: 期限付きウィンドウ(8秒)を可視化。motion設定を尊重(reduce時は静的)。
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:12px;"><span>${escapeHtml(label)}</span><button id="undo-btn" style="margin-left:auto;padding:4px 10px;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:3px;font-family:var(--font-mono);font-size:11px;cursor:pointer;">UNDO</button></div><div id="undo-bar" style="height:2px;background:var(--accent);width:100%;border-radius:1px;"></div>`;
     el.style.display='flex';
+    const bar=document.getElementById('undo-bar');
+    const reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(bar&&!reduce){
+      // reflow を挟んでから幅0へ遷移させ、残り時間を線形にアニメーション。
+      bar.style.transition='none';bar.style.width='100%';void bar.offsetWidth;
+      requestAnimationFrame(()=>{bar.style.transition=`width ${TIMEOUT_MS}ms linear`;bar.style.width='0%';});
+    }
     document.getElementById('undo-btn').onclick=async()=>{
       if(pending){try{await pending.undoFn();}catch(err){ErrorBoundary.record(err,'undo');}pending=null;}
       el.style.display='none';clearTimeout(timer);

@@ -189,6 +189,13 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain('Single-slot undo register');
     expect(html).toContain('new offer arrives while one is pending');
   });
+  it('UndoStack shows a countdown bar making the 8s window visible (motion-respecting)', () => {
+    // The time-limited undo window was invisible before; a linear width-shrink bar surfaces it.
+    expect(html).toContain('id="undo-bar"');
+    expect(html).toContain('width ${TIMEOUT_MS}ms linear');
+    // Honors prefers-reduced-motion: no animation when the user opts out.
+    expect(html).toContain("window.matchMedia('(prefers-reduced-motion: reduce)').matches");
+  });
   it('renders questions most-recent-first by reversing the array', () => {
     expect(html).toContain('[...(w.questions||[])].reverse()');
   });
