@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-BbcH+5xdeXm/2YtKjJb1qQP2bfjwZ3CF3sWO+JNgOFU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-RIr0mhM3mOKeCvzm1xFlI0+ychl/PjW7GbvCabc+Jdw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1902,7 +1902,8 @@ const WORD_FEEDS={
   // 記事を横断的に拾う(Qiita/Zenn を補完)。検索語は verbatim(検索エンジン側が処理)。RSSのため /rss 流用。
   // users=3: 最低3ブックマークの品質フロア。「広く参照された記事」という役割に沿い、
   // 1ブックマークのノイズ(個人メモ/スパム)を除外する。bookmarkcount はスコアにも反映。
-  hatena:{label:'Hatena', build:(q)=>`https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&users=3&mode=rss`},
+  // safe=on: アダルト除外。Qiita/Zenn と違い Web 全体を拾う横断アグリゲータのため健全な既定に。
+  hatena:{label:'Hatena', build:(q)=>`https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&users=3&safe=on&mode=rss`},
 };
 const WordCollector=(()=>{
   // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを
