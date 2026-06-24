@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-dnPLhVuab5mjizZC69crslUfazjhlmKc88hwI/YQYl4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-4HVm8vJV9jCfDSZwhmDVEkGRUT23nCbiwT4gu29YetY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2405,7 +2405,16 @@ function signalGaps(word,events){
   const errs=word.lastErrors||{};
   const active=[],silent=[],errored=[];
   // 取得失敗(errored)は沈黙(silent)と区別する。失敗は「空白」ではなく「未知」。
-  const classify=(label,has)=>{if(errs[label])errored.push({label,error:errs[label]});else if(has)active.push(label);else silent.push(label);};
+  // 例外: Zenn は一致トピックが無いと 404 を返す(設計上、ADR-0017)。これは「取得不能な死角」
+  // ではなく「この語に該当トピック無し=信号なし」なので沈黙(silent)に分類する。他ソースは
+  // 0件でも 404 を返さないため、この特例は Zenn の http_404 のみ。
+  const zennLabel=WORD_FEEDS.zenn.label;
+  const classify=(label,has)=>{
+    const err=errs[label];
+    if(err&&!(label===zennLabel&&err==='http_404'))errored.push({label,error:err});
+    else if(has)active.push(label);
+    else silent.push(label);
+  };
   if(word.sources?.wikipedia)classify('Wikipedia',!!word.wiki?.extract);
   for(const key of Object.keys(WORD_FEEDS)){
     if(!word.sources?.[key])continue;
