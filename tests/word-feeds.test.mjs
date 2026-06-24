@@ -21,7 +21,7 @@ const SEARCH_FEEDS = {
   reddit: { label: 'Reddit',      build: (q) => `https://www.reddit.com/search.rss?q=${q}&sort=new` },
   hn:     { label: 'Hacker News',  build: (q) => `https://hnrss.org/newest?q=${q}&count=30` },
   arxiv:  { label: 'arXiv',        build: (q) => `https://export.arxiv.org/api/query?search_query=all:${q}&sortBy=submittedDate&sortOrder=descending&max_results=30` },
-  hatena: { label: 'Hatena',      build: (q) => `https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&mode=rss` },
+  hatena: { label: 'Hatena',      build: (q) => `https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&users=3&mode=rss` },
 };
 // Qiita: JSON full-text search via the official REST API v2 (ADR-0017), routed through /json.
 // Mirror of index.html: prefer rendered_body (HTML) over body (Markdown); strip tags then
@@ -78,8 +78,11 @@ describe('WORD_FEEDS builders — search feeds', () => {
 describe('Hatena Bookmark search feed (cross-platform JP aggregator)', () => {
   // Full-text search RSS across the whole Japanese web's bookmarked links,
   // complementing single-platform Qiita/Zenn. Reuses /rss (no Worker change).
-  it('builds a full-text search RSS URL sorted by recency', () => {
-    expect(SEARCH_FEEDS.hatena.build(encodeURIComponent('rust'))).toBe('https://b.hatena.ne.jp/search/text?q=rust&sort=recent&mode=rss');
+  it('builds a full-text search RSS URL sorted by recency with a 3-bookmark quality floor', () => {
+    expect(SEARCH_FEEDS.hatena.build(encodeURIComponent('rust'))).toBe('https://b.hatena.ne.jp/search/text?q=rust&sort=recent&users=3&mode=rss');
+  });
+  it('applies users=3 to exclude 1-2 bookmark noise (serves the "broadly bookmarked" role)', () => {
+    expect(SEARCH_FEEDS.hatena.build('x')).toContain('users=3');
   });
   it('passes the query verbatim (multiword + Japanese) and requests RSS', () => {
     expect(SEARCH_FEEDS.hatena.build(encodeURIComponent('Machine Learning'))).toContain('q=Machine%20Learning');
