@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-v6HBv60MxhCHqlseHNXYDq/d8SqsBhIaEITMDK/7oDw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-9ande/Fg12Js7xvnX4UxzKYCFLsawc/F2QFxZP22P9s='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1891,8 +1891,10 @@ const WORD_FEEDS={
   // 記事タグ(最大5件)は raw.tags として渡し、正規化ハンドラが autoTags に取り込む。
   // likes_count をスコアの控えめなブースト(+0..25、対数)に使い、人気記事をダイジェスト上位へ。
   qiita: {label:'Qiita', kind:'json',
-    build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse:(text)=>JSON.parse(text).map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)}))},
+    build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=30`,
+    // JSON.parse throws on malformed input (collector records 'parse'). A valid-but-non-array
+    // body (e.g. an error object returned with HTTP 200) yields no items rather than a TypeError.
+    parse:(text)=>{const d=JSON.parse(text);return Array.isArray(d)?d.map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)})):[];}},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   zenn:  {label:'Zenn', build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},

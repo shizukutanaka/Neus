@@ -31,8 +31,8 @@ const decodeEntities = (s) => { if (!s || s.indexOf('&') < 0) return s; const ta
 const engagementScore = (n) => 50 + Math.min(25, Math.round(Math.log10((n || 0) + 1) * 12));
 const JSON_FEEDS = {
   qiita: { label: 'Qiita', kind: 'json',
-    build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=20`,
-    parse: (text) => JSON.parse(text).map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean), score: engagementScore(it.likes_count) })) },
+    build: (q) => `https://qiita.com/api/v2/items?query=${q}&per_page=30`,
+    parse: (text) => { const d = JSON.parse(text); return Array.isArray(d) ? d.map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean), score: engagementScore(it.likes_count) })) : []; } },
 };
 // Zenn: tag/topic Atom feed (no official search API), routed through /rss.
 const TAG_FEEDS = {
@@ -116,7 +116,10 @@ describe('engagementScore — shared signal-to-score curve', () => {
 
 describe('Qiita JSON search feed (official REST API v2)', () => {
   it('builds a query-search API URL (full-text, not tag-limited)', () => {
-    expect(JSON_FEEDS.qiita.build(encodeURIComponent('rust'))).toBe('https://qiita.com/api/v2/items?query=rust&per_page=20');
+    expect(JSON_FEEDS.qiita.build(encodeURIComponent('rust'))).toBe('https://qiita.com/api/v2/items?query=rust&per_page=30');
+  });
+  it('requests 30 items per page (parity with HN/arXiv coverage, same 1-request rate cost)', () => {
+    expect(JSON_FEEDS.qiita.build('x')).toContain('per_page=30');
   });
   it('passes the raw query verbatim (search engine handles case/multiword)', () => {
     expect(JSON_FEEDS.qiita.build(encodeURIComponent('Machine Learning'))).toContain('query=Machine%20Learning');
@@ -183,6 +186,12 @@ describe('Qiita JSON search feed (official REST API v2)', () => {
   });
   it('throws on malformed JSON so the collector records a parse error', () => {
     expect(() => JSON_FEEDS.qiita.parse('not json')).toThrow();
+  });
+  it('returns no items for a valid-but-non-array body (e.g. an error object) instead of throwing', () => {
+    // Qiita rate-limit/errors are normally non-200 (handled before parse), but a 200 with a
+    // non-array body must not throw a TypeError mislabeled as a parse error.
+    expect(JSON_FEEDS.qiita.parse('{"message":"rate limit","type":"rate_limit_exceeded"}')).toEqual([]);
+    expect(JSON_FEEDS.qiita.parse('null')).toEqual([]);
   });
 });
 
