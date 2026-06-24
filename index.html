@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-XcyLOlAfXnsFmsf1lzysJIQwmPM80j61K3Gayv9wFXI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-v6HBv60MxhCHqlseHNXYDq/d8SqsBhIaEITMDK/7oDw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3500,21 +3500,23 @@ const endSwipe=async()=>{
   card.style.transition='transform .2s, background .2s';
   card.style.transform='';card.style.background='';
   if(Math.abs(dx)<SWIPE_THRESHOLD)return;
-  const id=card.dataset.id;const ev=await Store.getEvent(id);if(!ev)return;
-  if(navigator.vibrate)navigator.vibrate(10);
-  if(dx>0){ // 右スワイプ → star
-    ev.state.starred=!ev.state.starred;
-    InterestProfile.learn(ev,'pos',ev.state.starred?1:-1);
-    await Store.putEvent(ev);FTSIndex.add(ev);
-    toast(ev.state.starred?(currentLang==='ja'?'スター':'starred'):(currentLang==='ja'?'スター解除':'unstarred'),'ok');
-  }else{ // 左スワイプ → archive
-    const wasArchived=ev.state.archived;
-    ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?Date.now():undefined;
-    InterestProfile.learn(ev,'neg',ev.state.archived?1:-1);
-    await Store.putEvent(ev);FTSIndex.add(ev);
-    if(!wasArchived)UndoStack.offer(currentLang==='ja'?'アーカイブしました':'Archived',async()=>{const e=await Store.getEvent(id);if(!e)return;e.state.archived=false;e.state.archivedAt=undefined;await InterestProfile.learn(e,'neg',-1);await Store.putEvent(e);FTSIndex.add(e);await renderView();await refreshCounts();});
-  }
-  await renderView();await refreshCounts();
+  try{
+    const id=card.dataset.id;const ev=await Store.getEvent(id);if(!ev)return;
+    if(navigator.vibrate)navigator.vibrate(10);
+    if(dx>0){ // 右スワイプ → star
+      ev.state.starred=!ev.state.starred;
+      InterestProfile.learn(ev,'pos',ev.state.starred?1:-1);
+      await Store.putEvent(ev);FTSIndex.add(ev);
+      toast(ev.state.starred?(currentLang==='ja'?'スター':'starred'):(currentLang==='ja'?'スター解除':'unstarred'),'ok');
+    }else{ // 左スワイプ → archive
+      const wasArchived=ev.state.archived;
+      ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?Date.now():undefined;
+      InterestProfile.learn(ev,'neg',ev.state.archived?1:-1);
+      await Store.putEvent(ev);FTSIndex.add(ev);
+      if(!wasArchived)UndoStack.offer(currentLang==='ja'?'アーカイブしました':'Archived',async()=>{const e=await Store.getEvent(id);if(!e)return;e.state.archived=false;e.state.archivedAt=undefined;await InterestProfile.learn(e,'neg',-1);await Store.putEvent(e);FTSIndex.add(e);await renderView();await refreshCounts();});
+    }
+    await renderView();await refreshCounts();
+  }catch(err){console.error('[endSwipe]',err);toast(currentLang==='ja'?'操作に失敗しました':'action failed','err');}
 };
 const cancelLP=()=>{if(lpTimer){clearTimeout(lpTimer);lpTimer=null;}};
 $('#view').addEventListener('touchend',()=>{cancelLP();endSwipe();},{passive:true});
