@@ -153,6 +153,16 @@ describe('collectAll busy feedback (index.html)', () => {
   });
 });
 
+describe('collectOne completion feedback (index.html)', () => {
+  it('shows a success toast after a single-word collect with items found', () => {
+    expect(html).toContain("n>0?`fetched ${n} item(s)`:'collected (0 new items)'");
+    expect(html).toContain("n>0?`${n}件取得`:'収集完了(新着なし)'");
+  });
+  it("uses 'ok' toast when items were found, neutral when none", () => {
+    expect(html).toContain("toast(msg,n>0?'ok':'')");
+  });
+});
+
 describe('WORDS view UX improvements (index.html)', () => {
   it('scrolls to top on WORDS view re-render', () => {
     expect(html).toContain('view.scrollTop=0');

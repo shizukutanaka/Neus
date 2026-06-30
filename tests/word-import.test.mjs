@@ -16,6 +16,8 @@ const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 const normalizeTerm = (s) => (s || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 let _id = 0;
 const uuid = () => 'id-' + (++_id);
+// Mirror of defaultSources() with currentLang='en' (the common test default).
+const defaultSources = () => ({ wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false, github: false });
 function wordFromImport(dump) {
   if (!dump || dump.kind !== 'word-dossier' || !dump.word) return null;
   const w = dump.word;
@@ -26,7 +28,7 @@ function wordFromImport(dump) {
     id: uuid(), term, normalized: normalizeTerm(term), lang: w.lang || 'en',
     note: w.note || '', questionHistory: Array.isArray(w.questionHistory) ? w.questionHistory : [],
     priorBelief: w.priorBelief || 'curious',
-    sources: (w.sources && typeof w.sources === 'object') ? w.sources : { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false },
+    sources: (w.sources && typeof w.sources === 'object') ? { ...defaultSources(), ...w.sources } : defaultSources(),
     enabled: w.enabled !== false,
     verdict: { status: w.verdict?.status || 'open', note: w.verdict?.note || '' }, verdictAt: w.verdictAt || null,
     verdictHistory: Array.isArray(w.verdictHistory) ? w.verdictHistory : [], falsifier: typeof w.falsifier === 'string' ? w.falsifier : '',
@@ -69,7 +71,9 @@ describe('wordFromImport — reconstruction', () => {
     expect(w.verdictAt).toBe(99);
     expect(w.questions).toHaveLength(1);
     expect(w.questionHistory).toHaveLength(1);
-    expect(w.sources).toEqual({ arxiv: true });
+    // Stored sources are merged with current defaults: explicit key wins, missing keys get defaults.
+    expect(w.sources).toMatchObject({ arxiv: true });
+    expect(w.sources).toHaveProperty('github');   // new keys filled in by the merge
     expect(w.lastFetched).toBe(5);
     expect(w.wiki.title).toBe('WebGPU');
   });
@@ -86,7 +90,7 @@ describe('wordFromImport — reconstruction', () => {
     expect(w.questions).toEqual([]);
     expect(w.questionHistory).toEqual([]);
     expect(w.enabled).toBe(true);
-    expect(w.sources).toEqual({ wikipedia: true, news: true, reddit: true, hn: true, arxiv: false });
+    expect(w.sources).toEqual({ wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false, github: false });
   });
 
   it('honors a disabled flag', () => {
@@ -135,6 +139,28 @@ describe('wordFromImport — reconstruction', () => {
     const a = wordFromImport(dossier({ term: 'a' }));
     const b = wordFromImport(dossier({ term: 'b' }));
     expect(a.id).not.toBe(b.id);
+  });
+
+  it('fills missing source keys from current defaults when importing a word from an older dossier', () => {
+    // An older export only had wikipedia/news/reddit/hn/arxiv; newer sources (qiita/zenn/hatena/github)
+    // were absent. After import the word should have all keys (new ones default to false).
+    const oldSources = { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false };
+    const w = wordFromImport(dossier({ term: 'WebGPU', sources: oldSources }));
+    expect(w.sources.wikipedia).toBe(true);   // preserved
+    expect(w.sources.news).toBe(true);         // preserved
+    expect(w.sources.arxiv).toBe(false);       // preserved
+    expect(w.sources.qiita).toBe(false);       // filled with default
+    expect(w.sources.zenn).toBe(false);        // filled with default
+    expect(w.sources.hatena).toBe(false);      // filled with default
+    expect(w.sources.github).toBe(false);      // filled with default
+  });
+
+  it('explicit source values in the dossier override the defaults (user choices survive round-trip)', () => {
+    // A user who had explicitly enabled qiita and hatena should keep them after import.
+    const w = wordFromImport(dossier({ term: 'Rust', sources: { qiita: true, hatena: true } }));
+    expect(w.sources.qiita).toBe(true);
+    expect(w.sources.hatena).toBe(true);
+    expect(w.sources.github).toBe(false);   // not in dossier, gets default
   });
 });
 

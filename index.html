@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Od7iSrW5CqGhWJv0YucQleKWZj7kBb1w8Mk6TJJQVMc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-rpELwDwQqV5egSEHAn9uLTADFwxjMRlFGWkhbvyjyDY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1477,7 +1477,7 @@ const StorageGuard=(()=>{
     if(candidates.length>0){
       const toDelete=candidates.slice(0,Math.max(1,Math.ceil(candidates.length*0.1)));
       for(const ev of toDelete){try{await Store.deleteEvent(ev.id);FTSIndex.remove(ev.id);}catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}}
-      if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err');
+      if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'ok');
       return;
     }
     // Nothing safely recoverable to evict, but storage is critical. Do NOT silently
@@ -1998,11 +1998,16 @@ const WordCollector=(()=>{
     await Store.putWord(word);
     return total;
   }
-  // 公開API: 単語1件の収集。多重起動を防ぐ。
+  // 公開API: 単語1件の収集。多重起動を防ぐ。収集後にアイテム数をトーストで通知。
   async function collectOne(word){
     if(busy){toast(currentLang==='ja'?'収集中 — しばらくお待ちください':'collection in progress — please wait','err');return 0;}
     busy=true;
-    try{return await _collectOne(word);}finally{busy=false;}
+    try{
+      const n=await _collectOne(word);
+      const msg=currentLang==='ja'?(n>0?`${n}件取得`:'収集完了(新着なし)'):(n>0?`fetched ${n} item(s)`:'collected (0 new items)');
+      toast(msg,n>0?'ok':'');
+      return n;
+    }finally{busy=false;}
   }
   async function collectAll(){
     if(busy){toast(currentLang==='ja'?'収集中 — しばらくお待ちください':'collection in progress — please wait','err');return 0;}
@@ -2293,7 +2298,7 @@ function wordFromImport(dump){
     id:uuid(),term,normalized:normalizeTerm(term),lang:w.lang||'en',
     note:w.note||'',questionHistory:Array.isArray(w.questionHistory)?w.questionHistory:[],
     priorBelief:w.priorBelief||'curious',
-    sources:(w.sources&&typeof w.sources==='object')?w.sources:defaultSources(),
+    sources:(w.sources&&typeof w.sources==='object')?{...defaultSources(),...w.sources}:defaultSources(),
     enabled:w.enabled!==false,
     verdict:{status:w.verdict?.status||'open',note:w.verdict?.note||''},verdictAt:w.verdictAt||null,
     verdictHistory:Array.isArray(w.verdictHistory)?w.verdictHistory:[],falsifier:typeof w.falsifier==='string'?w.falsifier:'',

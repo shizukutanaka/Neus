@@ -299,6 +299,12 @@ describe('StorageGuard IDB/FTS ordering (index.html)', () => {
   it('guards against a zero/undefined quota (no division by zero)', () => {
     expect(html).toContain('if(!quota)return;');
   });
+  it('shows auto-clean as ok toast (not err) — housekeeping is a success, not an error', () => {
+    // Before: toast(..., 'err') — red toast confused users into thinking something broke.
+    // Fix: toast(..., 'ok') — green toast accurately reflects that cleanup succeeded.
+    expect(html).toContain("if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'ok')");
+    expect(html).not.toContain("if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err')");
+  });
 });
 
 describe('TagLearner.rebuild error handling (index.html)', () => {
