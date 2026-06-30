@@ -10,17 +10,17 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
-const WORD_FEEDS = { news: { label: 'Google News' }, reddit: { label: 'Reddit' }, hn: { label: 'Hacker News' }, arxiv: { label: 'arXiv' }, zenn: { label: 'Zenn' } };
+const WORD_FEEDS = { news: { label: 'Google News' }, reddit: { label: 'Reddit' }, hn: { label: 'Hacker News' }, arxiv: { label: 'arXiv' }, zenn: { label: 'Zenn' }, hatena: { label: 'Hatena' }, github: { label: 'GitHub' } };
 const feedLabelOf = (name) => ((name || '').split('·').pop() || '').trim();
 function signalGaps(word, events) {
   const present = new Set(events.map(e => feedLabelOf(e.source?.name)));
   const errs = word.lastErrors || {};
   const active = [], silent = [], errored = [];
-  // Zenn 404 means "no matching topic" (not a fetch failure) -> treat as silence.
-  const zennLabel = WORD_FEEDS.zenn.label;
+  // Zenn and GitHub use topic feeds: 404 means "no matching topic" (by design), not a fetch failure.
+  const topicFeeds = new Set([WORD_FEEDS.zenn.label, WORD_FEEDS.github.label]);
   const classify = (label, has) => {
     const err = errs[label];
-    if (err && !(label === zennLabel && err === 'http_404')) errored.push({ label, error: err });
+    if (err && !(topicFeeds.has(label) && err === 'http_404')) errored.push({ label, error: err });
     else if (has) active.push(label);
     else silent.push(label);
   };
@@ -123,8 +123,24 @@ describe('signalGaps — fetch errors vs silence (a blind spot is not a void)', 
     expect(errored).toEqual([{ label: 'Zenn', error: 'network' }]);
   });
 
-  it('does not extend the 404-as-silence exception to other sources', () => {
-    // Only Zenn 404s mean "no topic"; a 404 from another source is a genuine failure.
+  it('treats a GitHub 404 as silence (no matching topic), not a blind spot', () => {
+    // GitHub Topics Atom feed returns 404 when no topic matches the slug — same design as Zenn.
+    const w = { sources: { github: true }, wiki: null, lastErrors: { 'GitHub': 'http_404' } };
+    const { silent, errored } = signalGaps(w, []);
+    expect(silent).toEqual(['GitHub']);
+    expect(errored).toEqual([]);
+  });
+
+  it('still treats a GitHub non-404 failure as a real error', () => {
+    const w = { sources: { github: true }, wiki: null, lastErrors: { 'GitHub': 'network' } };
+    const { silent, errored } = signalGaps(w, []);
+    expect(silent).toEqual([]);
+    expect(errored).toEqual([{ label: 'GitHub', error: 'network' }]);
+  });
+
+  it('does not extend the 404-as-silence exception to non-topic sources', () => {
+    // Only topic-feed sources (Zenn, GitHub) get the 404-as-silence treatment;
+    // a 404 from a search-feed source is a genuine failure.
     const w = { sources: { news: true }, wiki: null, lastErrors: { 'Google News': 'http_404' } };
     const { silent, errored } = signalGaps(w, []);
     expect(silent).toEqual([]);
@@ -144,6 +160,10 @@ describe('signal-gap wiring (index.html)', () => {
   it('classifies sources into active / silent / errored', () => {
     expect(html).toContain('const active=[],silent=[],errored=[]');
     expect(html).toContain('const errs=word.lastErrors||{}');
+  });
+  it('uses a topicFeeds Set to unify Zenn and GitHub 404-as-silence logic', () => {
+    expect(html).toContain('const topicFeeds=new Set([WORD_FEEDS.zenn.label,WORD_FEEDS.github.label])');
+    expect(html).toContain('topicFeeds.has(label)&&err===\'http_404\'');
   });
   it('records per-source errors on the word during collection', () => {
     // fetchFeed returns a typed error per source; _collectOne records it as errors[label].

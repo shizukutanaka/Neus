@@ -35,8 +35,12 @@ const JSON_FEEDS = {
     parse: (text) => { const d = JSON.parse(text); return Array.isArray(d) ? d.map(it => ({ title: it.title || '(untitled)', link: it.url, summary: decodeEntities((it.rendered_body || it.body || '').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim().slice(0, 500), publishedAt: Date.parse(it.created_at) || undefined, author: it.user?.id || '', tags: (it.tags || []).map(t => t && t.name).filter(Boolean), score: engagementScore(it.likes_count) })) : []; } },
 };
 // Zenn: tag/topic Atom feed (no official search API), routed through /rss.
+// GitHub: Topics Atom feed (github.com/topics/{slug}.atom), routed through /rss.
+// GitHub slug: lowercase alphanumeric + hyphens ("Next.js" -> "next-js", "machine learning" -> "machine-learning").
+const githubSlug = (q) => decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 const TAG_FEEDS = {
-  zenn: { label: 'Zenn', build: (q) => `https://zenn.dev/topics/${zennSlug(q)}/feed` },
+  zenn:   { label: 'Zenn',   build: (q) => `https://zenn.dev/topics/${zennSlug(q)}/feed` },
+  github: { label: 'GitHub', build: (q) => `https://github.com/topics/${encodeURIComponent(githubSlug(q))}.atom` },
 };
 const WORD_FEEDS = { ...SEARCH_FEEDS, ...TAG_FEEDS };
 
@@ -228,11 +232,40 @@ describe('Zenn tag feed (no official search API)', () => {
   });
 });
 
+describe('GitHub Topics Atom feed', () => {
+  it('produces a .atom topic URL on the canonical host/path', () => {
+    expect(TAG_FEEDS.github.build(encodeURIComponent('webgpu'))).toBe('https://github.com/topics/webgpu.atom');
+  });
+  it('joins words with hyphens (GitHub topic convention)', () => {
+    expect(TAG_FEEDS.github.build(encodeURIComponent('machine learning'))).toBe('https://github.com/topics/machine-learning.atom');
+  });
+  it('strips dots to hyphens ("Next.js" -> "next-js")', () => {
+    expect(TAG_FEEDS.github.build(encodeURIComponent('Next.js'))).toBe('https://github.com/topics/next-js.atom');
+    expect(TAG_FEEDS.github.build(encodeURIComponent('Node.js'))).toBe('https://github.com/topics/node-js.atom');
+  });
+  it('strips leading and trailing hyphens from the slug', () => {
+    const url = TAG_FEEDS.github.build(encodeURIComponent('.foo.'));
+    const slug = decodeURIComponent(new URL(url).pathname.split('/')[2].replace('.atom', ''));
+    expect(slug).toBe('foo');
+    expect(slug).not.toMatch(/^-|-$/);
+  });
+  it('produces a parseable URL for empty / whitespace input (graceful, not crash)', () => {
+    expect(() => new URL(TAG_FEEDS.github.build(encodeURIComponent('')))).not.toThrow();
+    expect(() => new URL(TAG_FEEDS.github.build(encodeURIComponent('   ')))).not.toThrow();
+  });
+  it('targets github.com', () => {
+    expect(new URL(TAG_FEEDS.github.build('x')).hostname).toBe('github.com');
+  });
+  it('the path ends in .atom', () => {
+    expect(new URL(TAG_FEEDS.github.build(encodeURIComponent('rust'))).pathname.endsWith('.atom')).toBe(true);
+  });
+});
+
 describe('language-aware default sources (modeled)', () => {
   // Mirror of defaultSources() in index.html.
   const defaultSources = (lang) => lang === 'ja'
-    ? { wikipedia: true, news: true, reddit: false, hn: false, arxiv: false, qiita: true, zenn: true, hatena: true }
-    : { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false };
+    ? { wikipedia: true, news: true, reddit: false, hn: false, arxiv: false, qiita: true, zenn: true, hatena: true, github: false }
+    : { wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false, github: false };
 
   it('enables the Japanese sources by default for ja users', () => {
     const ja = defaultSources('ja');
@@ -247,7 +280,11 @@ describe('language-aware default sources (modeled)', () => {
   });
   it('keeps the original English defaults for en users (JP sources off)', () => {
     const en = defaultSources('en');
-    expect(en).toEqual({ wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false });
+    expect(en).toEqual({ wikipedia: true, news: true, reddit: true, hn: true, arxiv: false, qiita: false, zenn: false, hatena: false, github: false });
+  });
+  it('GitHub is off by default for both languages (topic-only, English slugs only)', () => {
+    expect(defaultSources('ja').github).toBe(false);
+    expect(defaultSources('en').github).toBe(false);
   });
   it('always enables the universal sources (Wikipedia + Google News)', () => {
     for (const lang of ['ja', 'en']) {
@@ -264,11 +301,11 @@ describe('language-aware defaults wiring (index.html)', () => {
   it('defines defaultSources() switching on currentLang', () => {
     expect(html).toContain('function defaultSources()');
     expect(html).toContain("return currentLang==='ja'");
-    expect(html).toContain('{wikipedia:true,news:true,reddit:false,hn:false,arxiv:false,qiita:true,zenn:true,hatena:true}');
+    expect(html).toContain('{wikipedia:true,news:true,reddit:false,hn:false,arxiv:false,qiita:true,zenn:true,hatena:true,github:false}');
   });
   it('word creation and import use defaultSources() (no hardcoded literal)', () => {
     expect(html).toContain('sources:defaultSources()');
-    expect(html).not.toContain('sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false}');
+    expect(html).not.toContain('sources:{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false,github:false}');
   });
   it('the words modal syncs its source checkboxes to the language default on open', () => {
     expect(html).toContain("const ds=defaultSources();for(const k of Object.keys(ds)){const cb=$('#wsrc-'+k);if(cb)cb.checked=ds[k];}");
@@ -276,13 +313,15 @@ describe('language-aware defaults wiring (index.html)', () => {
 });
 
 describe('WORD_FEEDS source-drift guard (index.html)', () => {
-  it('declares qiita (JSON search), zenn (tag feed) and hatena (search RSS) as collectable sources', () => {
+  it('declares qiita (JSON search), zenn (tag feed), hatena (search RSS) and github (topic Atom) as collectable sources', () => {
     expect(html).toContain("qiita: {label:'Qiita', kind:'json',");
     expect(html).toContain('https://qiita.com/api/v2/items?query=');
     expect(html).toContain('zenn:  {label:');
     expect(html).toContain('https://zenn.dev/topics/');
     expect(html).toContain("hatena:{label:'Hatena',");
     expect(html).toContain('https://b.hatena.ne.jp/search/text?q=');
+    expect(html).toContain("github:{label:'GitHub',");
+    expect(html).toContain('https://github.com/topics/');
   });
   it('routes JSON-kind feeds through /json and RSS feeds through /rss', () => {
     expect(html).toContain("`${CONFIG.proxy}/${isJson?'json':'rss'}?url=${encodeURIComponent(feedUrl)}`");
@@ -305,13 +344,15 @@ describe('WORD_FEEDS source-drift guard (index.html)', () => {
     expect(html).toContain('id="wsrc-qiita"');
     expect(html).toContain('id="wsrc-zenn"');
     expect(html).toContain('id="wsrc-hatena"');
+    expect(html).toContain('id="wsrc-github"');
     // Defaults: the literal default-sources object must NOT enable them
-    expect(html).toContain('arxiv:false,qiita:false,zenn:false,hatena:false');
+    expect(html).toContain('arxiv:false,qiita:false,zenn:false,hatena:false,github:false');
   });
-  it('the per-word modal source list includes all three', () => {
+  it('the per-word modal source list includes all four specialist sources', () => {
     expect(html).toContain("{key:'qiita',label:'Qiita'}");
     expect(html).toContain("{key:'zenn',label:'Zenn'}");
     expect(html).toContain("{key:'hatena',label:'Hatena'}");
+    expect(html).toContain("{key:'github',label:'GitHub'}");
   });
 });
 
@@ -351,7 +392,7 @@ describe('Wikipedia language fallback order', () => {
 
 describe('source drift guard (index.html / _worker.js)', () => {
   it('index.html declares the expected feed hosts', () => {
-    for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary', 'qiita.com/api/v2/items', 'zenn.dev/topics/', 'b.hatena.ne.jp/search/text']) {
+    for (const frag of ['news.google.com/rss/search', 'reddit.com/search.rss', 'hnrss.org/newest', 'export.arxiv.org/api/query', 'rest_v1/page/summary', 'qiita.com/api/v2/items', 'zenn.dev/topics/', 'b.hatena.ne.jp/search/text', 'github.com/topics/']) {
       expect(html, `missing feed host: ${frag}`).toContain(frag);
     }
   });

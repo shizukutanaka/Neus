@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-65F+hwXJAbsnU+xbUzUPX+pPQFX+MBTZ1o3BfpxBi3U='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Od7iSrW5CqGhWJv0YucQleKWZj7kBb1w8Mk6TJJQVMc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -646,6 +646,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
       <label><input type="checkbox" id="wsrc-qiita"> Qiita</label>
       <label><input type="checkbox" id="wsrc-zenn"> Zenn</label>
       <label><input type="checkbox" id="wsrc-hatena"> Hatena</label>
+      <label><input type="checkbox" id="wsrc-github"> GitHub</label>
     </div>
     <div class="row">
       <button class="primary" id="word-add" type="button">ADD</button>
@@ -1918,6 +1919,12 @@ const WORD_FEEDS={
   // 1ブックマークのノイズ(個人メモ/スパム)を除外する。bookmarkcount はスコアにも反映。
   // safe=on: アダルト除外。Qiita/Zenn と違い Web 全体を拾う横断アグリゲータのため健全な既定に。
   hatena:{label:'Hatena', build:(q)=>`https://b.hatena.ne.jp/search/text?q=${q}&sort=recent&users=3&safe=on&mode=rss`},
+  // GitHub Topics の Atom フィード: 指定トピックに紐付いたリポジトリを取得。
+  // 検索語をトピックスラグ(小文字英数字+ハイフン)に正規化 — "Next.js"→"next-js"。
+  // 既存の /rss プロキシで取得可能(Worker 変更なし)。一致トピックが無ければ 404 →
+  // signalGaps が「沈黙」として扱う(Zenn と同じトピックフィード設計)。
+  // 英語のみ対応(GitHub Topics は日本語スラグを持たない)のため、日本語語のデフォルト OFF。
+  github:{label:'GitHub', build:(q)=>{const slug=decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');return`https://github.com/topics/${encodeURIComponent(slug)}.atom`;}},
 };
 const WordCollector=(()=>{
   // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを
@@ -2272,8 +2279,8 @@ function renameWordPlan(word,newTerm,existingTaken){
 // 手間を省く。ユーザーは個別トグルで上書き可能。
 function defaultSources(){
   return currentLang==='ja'
-    ?{wikipedia:true,news:true,reddit:false,hn:false,arxiv:false,qiita:true,zenn:true,hatena:true}
-    :{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false};
+    ?{wikipedia:true,news:true,reddit:false,hn:false,arxiv:false,qiita:true,zenn:true,hatena:true,github:false}
+    :{wikipedia:true,news:true,reddit:true,hn:true,arxiv:false,qiita:false,zenn:false,hatena:false,github:false};
 }
 // インポート用: ドシエJSON(schema 1/2)から word オブジェクトを安全に再構成。無効なら null。
 function wordFromImport(dump){
@@ -2411,13 +2418,13 @@ function signalGaps(word,events){
   const errs=word.lastErrors||{};
   const active=[],silent=[],errored=[];
   // 取得失敗(errored)は沈黙(silent)と区別する。失敗は「空白」ではなく「未知」。
-  // 例外: Zenn は一致トピックが無いと 404 を返す(設計上、ADR-0017)。これは「取得不能な死角」
-  // ではなく「この語に該当トピック無し=信号なし」なので沈黙(silent)に分類する。他ソースは
-  // 0件でも 404 を返さないため、この特例は Zenn の http_404 のみ。
-  const zennLabel=WORD_FEEDS.zenn.label;
+  // 例外: Zenn/GitHub はトピックフィード設計で、一致トピックが無ければ 404 が返る(設計上)。
+  // これは「取得不能な死角」ではなく「この語に該当トピック無し=信号なし」なので沈黙(silent)
+  // に分類する。他ソースは 0 件でも 404 を返さないため、この特例はトピックフィードの http_404 のみ。
+  const topicFeeds=new Set([WORD_FEEDS.zenn.label,WORD_FEEDS.github.label]);
   const classify=(label,has)=>{
     const err=errs[label];
-    if(err&&!(label===zennLabel&&err==='http_404'))errored.push({label,error:err});
+    if(err&&!(topicFeeds.has(label)&&err==='http_404'))errored.push({label,error:err});
     else if(has)active.push(label);
     else silent.push(label);
   };
@@ -3766,7 +3773,7 @@ $('#modal-keywords').addEventListener('click',(e)=>{if(e.target.id==='modal-keyw
 async function renderWordList(){
   const words=(await Store.listWords()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   if(words.length===0){$('#word-list').innerHTML=`<div style="color:var(--fg-3);">${currentLang==='ja'?'なし':'none'}</div>`;return;}
-  const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'},{key:'qiita',label:'Qiita'},{key:'zenn',label:'Zenn'},{key:'hatena',label:'Hatena'}];
+  const srcDefs=[{key:'wikipedia',label:'Wikipedia'},{key:'news',label:'Google News'},{key:'reddit',label:'Reddit'},{key:'hn',label:'HN'},{key:'arxiv',label:'arXiv'},{key:'qiita',label:'Qiita'},{key:'zenn',label:'Zenn'},{key:'hatena',label:'Hatena'},{key:'github',label:'GitHub'}];
   // 実際に保存されているアイテム数で表示(重複排除後)。WORDSビューと一致させる。
   const all=await Store.allEvents();
   const countFor=(w)=>{const tag='word:'+w.normalized;return all.filter(e=>(e.meta.autoTags||[]).includes(tag)&&!e.state.archived).length;};
@@ -3803,7 +3810,7 @@ async function addWord(){
   if(addingWord)return; // 同期ガード: 二重クリック/Enter連打で同じ normalized が二重登録されるのを防ぐ
   const term=$('#word-input').value.trim();
   if(!term){toast(currentLang==='ja'?'単語を入力':'enter a word','err');return;}
-  const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked,qiita:$('#wsrc-qiita').checked,zenn:$('#wsrc-zenn').checked,hatena:$('#wsrc-hatena').checked};
+  const sources={wikipedia:$('#wsrc-wikipedia').checked,news:$('#wsrc-news').checked,reddit:$('#wsrc-reddit').checked,hn:$('#wsrc-hn').checked,arxiv:$('#wsrc-arxiv').checked,qiita:$('#wsrc-qiita').checked,zenn:$('#wsrc-zenn').checked,hatena:$('#wsrc-hatena').checked,github:$('#wsrc-github').checked};
   if(!Object.values(sources).some(Boolean)){toast(currentLang==='ja'?'収集ソースを1つ以上選択':'select at least one source','err');return;}
   addingWord=true;
   try{
