@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-4HVm8vJV9jCfDSZwhmDVEkGRUT23nCbiwT4gu29YetY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-65F+hwXJAbsnU+xbUzUPX+pPQFX+MBTZ1o3BfpxBi3U='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1807,7 +1807,13 @@ const RSSPoller=(()=>{
       try{
         const get=(sel)=>{try{return item.querySelector(sel)?.textContent?.trim()||'';}catch{return'';}};
         const link=item.querySelector('link[href]')?.getAttribute('href')||get('link')||'';
-        const title=decodeEntities(get('title'))||'(untitled)';
+        let title=decodeEntities(get('title'))||'(untitled)';
+        // Google News appends " - {publisher}" to every headline and supplies the publisher
+        // in the item's <source> element. Strip exactly that suffix: cleaner display, and the
+        // bare headline title-dedups against the same article fetched directly (Qiita/Zenn/HN).
+        // General + safe: only fires when the title ends with its own <source> name; no-op otherwise.
+        const pub=item.querySelector('source')?.textContent?.trim()||'';
+        if(pub&&title.length>pub.length+3&&title.endsWith(' - '+pub))title=title.slice(0,-(pub.length+3)).trim();
         const summaryRaw=get('description')||get('summary')||get('content');
         const summary=decodeEntities(summaryRaw).replace(/<[^>]+>/g,'').trim().slice(0,500);
         const pubDate=get('pubDate')||get('published')||get('updated')||get('dc\\:date');

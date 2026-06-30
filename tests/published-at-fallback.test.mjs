@@ -64,3 +64,39 @@ describe('source invariants (index.html)', () => {
     }
   });
 });
+
+describe('Google News publisher-suffix stripping (parseFeed)', () => {
+  // Mirror of the stripping logic in parseFeed's item loop.
+  // Google News appends " - {publisher}" using the <source> element;
+  // stripping it produces the canonical headline for cross-source dedup.
+  const strip = (title, pub) => {
+    if (pub && title.length > pub.length + 3 && title.endsWith(' - ' + pub)) {
+      return title.slice(0, -(pub.length + 3)).trim();
+    }
+    return title;
+  };
+
+  it('removes the " - publisher" suffix when the <source> name matches', () => {
+    expect(strip('WebGPU in 2026 - Qiita', 'Qiita')).toBe('WebGPU in 2026');
+    expect(strip('機械学習の最前線 - Zenn', 'Zenn')).toBe('機械学習の最前線');
+  });
+  it('is a no-op when there is no <source> element', () => {
+    expect(strip('Plain title', '')).toBe('Plain title');
+  });
+  it('is a no-op when the title does not end with " - publisher"', () => {
+    expect(strip('Title - Different Pub', 'Qiita')).toBe('Title - Different Pub');
+  });
+  it('does not strip when the title is just " - publisher" (no content before the suffix)', () => {
+    // ' - Qiita'.length (8) is NOT > 'Qiita'.length+3 (8) → guard rejects: no strip
+    expect(strip(' - Qiita', 'Qiita')).toBe(' - Qiita');
+    // 'ab - cd' (7) > 'cd'.length+3 (5) → guard passes: strip is correct
+    expect(strip('ab - cd', 'cd')).toBe('ab');
+  });
+  it('handles a publisher name that appears mid-title without stripping (suffix-only match)', () => {
+    expect(strip('Qiita - Dev - Qiita', 'Qiita')).toBe('Qiita - Dev');
+  });
+  it('is wired into parseFeed in index.html', () => {
+    expect(html).toContain("const pub=item.querySelector('source')?.textContent?.trim()||''");
+    expect(html).toContain("if(pub&&title.length>pub.length+3&&title.endsWith(' - '+pub))title=title.slice(0,-(pub.length+3)).trim()");
+  });
+});
