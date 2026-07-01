@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-rpELwDwQqV5egSEHAn9uLTADFwxjMRlFGWkhbvyjyDY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-3YGXj4olFElKtG54KPgJ1h2lDBJN05ZAlTu2jZpwLkQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1738,7 +1738,9 @@ if('serviceWorker'in navigator){
         if(s.notify&&fetched>0&&Notification.permission==='granted'){
           new Notification(currentLang==='ja'?'Neus 新着':'Neus new items',{
             body:currentLang==='ja'?`${fetched}件の新着があります`:`${fetched} new event(s)`,
-            icon:'/icon-192.png',tag:'neus-new',
+            // Reuses the manifest's 192x192 app icon (inline SVG) — no separate PNG asset exists.
+            icon:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230a0d0e'/><circle cx='96' cy='96' r='80' fill='none' stroke='%2300C4CC' stroke-width='14'/><circle cx='96' cy='96' r='28' fill='%2300C4CC'/></svg>",
+            tag:'neus-new',
           });
         }
         await refreshCounts();await renderView();
@@ -2891,9 +2893,9 @@ function cardHtml(ev,scoreHit){
       <button data-act="star" class="star${ev.state.starred?' on':''}" aria-label="Toggle star" aria-pressed="${ev.state.starred}">${ev.state.starred?'UNSTAR':'STAR'}</button>
       <button data-act="archive" aria-label="Toggle archive">${ev.state.archived?'UNARCH':'ARCHIVE'}</button>
       <button data-act="later" aria-label="Toggle read later">${ev.state.later?'UNLATER':'LATER'}</button>
-      <button data-act="vault" class="vault-btn${ev.state.exported?' done':''}">VAULT</button>
-      <button data-act="detail">EDIT</button>
-      <button data-act="copy">COPY MD</button>
+      <button data-act="vault" class="vault-btn${ev.state.exported?' done':''}" aria-label="Export to vault">VAULT</button>
+      <button data-act="detail" aria-label="Edit event details">EDIT</button>
+      <button data-act="copy" aria-label="Copy as Markdown">COPY MD</button>
     </div>
   </article>`;
 }

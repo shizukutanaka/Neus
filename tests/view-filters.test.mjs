@@ -330,7 +330,7 @@ describe('SW periodic-poll-request error handling (index.html)', () => {
   it('wraps periodic-poll-request handler in try/catch', () => {
     const idx = html.indexOf("e.data?.type==='periodic-poll-request'");
     expect(idx).toBeGreaterThan(0);
-    const slice = html.slice(idx, idx + 800);
+    const slice = html.slice(idx, idx + 1200);
     expect(slice).toContain('try{');
     expect(slice).toContain("catch(err){console.error('[SW message] periodic-poll-request failed:',err);}");
   });
