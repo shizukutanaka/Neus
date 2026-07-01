@@ -109,6 +109,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `tests/word-question-resolve.test.mjs` を新規追加: `openQuestions` ユニット(3件)＋questions-remain カウント(2件)＋解決ワイヤリング(8件)、合計 724件
 - 計 634 tests
 
+### Added
+- **GitHub Topics を収集ソースに追加**: `github.com/topics/{slug}.atom` のトピック Atom フィードを opt-in ソースとして追加(スラグはハイフン連結、例 "Next.js"→"next-js")。公式検索 API が無いトピックフィード設計は Zenn と同型のため、`signalGaps` の 404-as-silence 特例を `zennLabel` 単体判定から `topicFeeds` Set(Zenn ∪ GitHub)へ一般化 / Add GitHub Topics Atom feed as an opt-in watchword source; generalize the Zenn 404-as-silence exception to a `topicFeeds` Set covering both topic-feed sources
+
+### Fixed
+- **Google News のタイトルに publisher サフィックスが残っていた**: Google News は全見出しに `<source>` 要素の発行元名を使って ` - {publisher}` を付与するが、`parseFeed` はこれを剥がしていなかった。表示ノイズに加え、同一記事を Qiita/Zenn/HN から直接取得した場合とのタイトル Jaccard 類似度を下げ、クロスソース重複排除の閾値(0.8)をすり抜けさせていた。`<source>` の値と厳密一致するサフィックスのみを除去する条件付きストリップを追加(他 RSS ソースは無変更) / Strip Google News' " - {publisher}" title suffix (via the item's `<source>` element) for cleaner display and reliable cross-source dedup
+- **単語インポートで新規ソースキーが欠落し得た**: `wordFromImport` は古いドシエ JSON の `sources` オブジェクトをそのまま使っていたため、エクスポート後に `WORD_FEEDS` へ新ソース(qiita/zenn/hatena/github)が追加されると、インポートした語にそのキーが存在しなくなっていた。`defaultSources()` とのマージに変更し、既存キーはユーザー設定を維持したまま新規キーを既定値で補完 / Merge imported word sources with defaultSources() so newly-added source keys are backfilled instead of silently missing after import
+- **単語1件収集(COLLECT)に完了フィードバックが無かった**: `collectAll` は完了トーストを出す一方、単一語の `collectOne` はボタンのテキストが戻るだけで取得件数が分からなかった。「N件取得」(件数>0時は緑)/「収集完了(新着なし)」のトーストを追加し、COLLECT ALL と挙動を揃えた / Add a completion toast to single-word collectOne (parity with collectAll's feedback)
+- **ストレージ自動整理のトーストが赤(エラー色)だった**: `StorageGuard` の自動退避(エクスポート済み・アーカイブ済みイベントの間引き)は正常な保守動作なのに `'err'` トーストで表示され、何か壊れたかのように見えた。`'ok'` に変更 / Auto-clean toast now shows as success (ok), not error — housekeeping is not a failure
+- **新着通知アイコンが存在しないファイルを参照**: 定期同期の新着通知が `icon:'/icon-192.png'` を指定していたが、このリポジトリに PNG アセットは存在しない(`manifest.json` は inline SVG data URI のみ)。マニフェストと同じ 192x192 SVG data URI を直接指定するよう修正 / Fix the new-items notification to use the manifest's inline SVG icon instead of a nonexistent /icon-192.png file
+- **イベントカードの一部ボタンに aria-label が無かった**: read/star/archive/later ボタンには aria-label があったが、vault/detail/copy の3ボタンには無かった(可視テキストはあるが兄弟ボタンと非一貫)。3ボタンに aria-label を追加 / Add aria-label to the vault/detail/copy event-card buttons for consistency with their siblings
+- **フルバックアップ/復元が学習した興味プロファイルと同期設定を落としていた**: JSON バックアップの設定ホワイトリストが `byok`/`lang`/`keyword-rules`/`onboarding-done` の4件のみで、`interest-profile`(スター/アーカイブ操作から学習した興味語彙)と `auto-sync`(取得間隔・通知設定)が対象外だった。`interest-profile` は復元イベントから自動再構築できない(学習はライブ操作でのみ蓄積)ため、復元のたびにユーザーのパーソナライズが無警告で失われていた。両キーをエクスポート/リストア双方のホワイトリストに追加し、復元後に `InterestProfile.load()` を呼んで即時反映(`summary-budget` は日付スコープのカウンタのため意図的に対象外のまま) / Include interest-profile and auto-sync in full JSON backup/restore — interest-profile can't be rebuilt from restored events alone, so it was silently lost on every restore
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)
