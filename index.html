@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-bJeXUdM+yNEVyC3Ton02nc/FIATeBH32WhUDh+DfvMo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-akYQmr7DFvle1Ot5TX2EpARFuI/tBYeCSyI7q1qe7I8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2521,6 +2521,9 @@ function socraticPrompts(word,events){
   if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
   if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
   if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
+  // 裁決の動揺: verdictHistory は変遷の記録として蓄積されるだけで、これまで振り返りの対象では
+  // なかった。3件以上(=最低2往復)の変遷は、基準が一貫しているか証拠が真に不安定かを問う価値がある。
+  if((word.verdictHistory||[]).length>=3)out.push({key:'verdict-churn',ja:`裁決を${word.verdictHistory.length}回変更した。基準は一貫しているか、それとも証拠が本当に不安定なのか?`,en:`Verdict changed ${word.verdictHistory.length} times. Is your criteria consistent, or is the evidence genuinely unstable?`});
   // 認識の逆転: 先入観と正反対の結論になった場合のみ(可謬性の自己体験として最も価値が高い)。
   if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
   if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});

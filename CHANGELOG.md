@@ -126,6 +126,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 - **問いの手がかり (Question Watch)**: ソクラテス式問答法でプロダクト自身の機能セットを検討した結果発見した非対称性を解消。反証条件(`falsifier`)は該当収集物を能動検出する `falsifierHits` を持つのに、構造的に同一の照合が必要な未解決の問い(`questions`)には同等の機構が無かった。被覆率照合ロジックを共有ヘルパー `bigramCoverageHits(text,events)` へ抽出し、各未解決の問いに `questionHits(question,events)` として適用。WORDSビューは問い文の直後にクリック可能なヒント(上位一致へのリンク+件数)を表示、ドシエは問いの下にインデントした箇条書きで一致アイテムを記録。解決済みの問いは対象外 / Question Watch: extract the shared bigram-coverage matcher and apply it to open questions too (symmetric to the existing Falsifier Watch), surfacing collected items that may address an unresolved question
+- **裁決の動揺(verdict-churn)プロンプト**: ソクラテス式問答法の第2ラウンドで発見した非対称性。`verdictHistory` は変遷のたびに記録されるが、`socraticPrompts` は一度もこれを読まなかった。`cognitiveShift` は登録時の先入観と現在の裁決という単一比較に留まり、裁決が何度も揺れ動いた事実そのものは問い直されなかった。`verdictHistory.length>=3`(最低2往復の反転)で「基準は一貫しているか、証拠が本当に不安定なのか」を問うプロンプトを追加 / Add a verdict-churn prompt: 3+ recorded verdict transitions now surface a reflection on whether the oscillation reflects consistent criteria or genuinely unstable evidence
 
 ## [v0.12.0] - 2026-06-14
 

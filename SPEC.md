@@ -164,6 +164,7 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 | `questions` | 未解決の問い (アポリア)。`resolvedAt` の無いものを数える |
 | `questionHits` | 問いの手がかり(Question Watch)。`falsifierHits` と対称に `bigramCoverageHits` を各未解決の問いのテキストへ適用し、該当しうる収集物を能動検出。解決済みの問いは対象外(能動監視の必要が無いため)。WORDSビューでは問い文の直後にクリック可能なヒント(上位一致へのリンク + 件数)、ドシエでは問いの下にインデントした箇条書きとして表示 |
 | `socraticPrompts` | 状況に応じ最大3件の問い直しを提示 |
+| verdict-churn | `verdictHistory` の長さ(≥3、最低2往復)が振り返りの対象になっていなかった非対称性を解消。`cognitiveShift` が prior→現裁決の単一比較にとどまるのに対し、変遷回数そのものから「基準の一貫性 vs 証拠の不安定性」を問う |
 | `newSinceReview` | `reviewedAt` 以降に収集されたアイテム = 答えの変化 |
 
 `PRIOR_DIRECTION = {certain:affirm, skeptical:deny, curious:open, agnostic:open}`
@@ -367,3 +368,32 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   問い文の直後にクリック可能なヒント(上位一致へのリンク+件数)を表示、ドシエは問いの下に
   インデントした箇条書きで一致アイテムを記録。解決済みの問いは対象外(能動監視の必要が
   無いため)。§6.3 に追記。
+
+### 10.7 第5次監査 (round 18) — ソクラテス式問答法・第2ラウンド
+
+同じ手法(仮説→コードで反証を試みる→生き残ったもののみ実装)をもう一往復。
+
+**却下した仮説(反証された = 欠陥ではなかった)**:
+
+- 「`VERDICT_DEFS` の `converging` は `open` と実質重複し冗長」→ 反証:
+  `VERDICT_DIRECTION` では `converging` は `answered` と同じ `affirm` 方向を持ち、
+  `cognitiveShift`・`no-falsifier` 系プロンプトの両方で `answered` と同グループ扱いされる
+  (「結論へ傾いている」という意味論を担う)。`open`(無方向)とは明確に異なる役割。
+- 「`gaps.errored`(取得失敗)にも `gaps.silent` と対称な elenchus プロンプトを設けるべき」→
+  反証: silent は「有効なのに0件=この語に関する信号なし」という被験対象についての情報だが、
+  errored は「取得不能」という運用上の障害であり、対象についての情報を何も持たない。
+  両者を意図して区別した設計(取得失敗と沈黙の区別、CHANGELOG既出)に反する。
+- 「`relatedWords`(語同士の共起検出)はエレンコス装置の一部として問い直しの対象にすべき」→
+  反証: これはナビゲーション支援(発見)であり、探究の妥当性を問う認識論的機構ではない。
+  対象が異なるため、無理に接続すると過剰設計になる。
+
+**生き残った仮説(実装した)**:
+
+- W14: **裁決の変遷(verdictHistory)が振り返りの対象になっていない非対称性** —
+  `verdictHistory` は変遷のたびに追記されるが(`verdictTransition`)、`socraticPrompts` は
+  一度もこれを読まない。`cognitiveShift` は「登録時の先入観 vs 現在の裁決」という単一比較に
+  留まり、裁決が何度も揺れ動いた事実そのもの(基準の一貫性、あるいは証拠の真の不安定性を
+  示唆する)は問い直されなかった。
+  → C15: `verdictHistory.length>=3`(最低2往復の反転)で `verdict-churn` プロンプトを追加。
+  「基準は一貫しているか、証拠が本当に不安定なのか」を問う。既存の `HISTORY_CAP=5` により
+  件数は自然に上限化されるため、新たな上限設計は不要。§6.3 に追記。
