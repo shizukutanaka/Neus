@@ -166,6 +166,7 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 | `socraticPrompts` | 状況に応じ最大3件の問い直しを提示 |
 | verdict-churn | `verdictHistory` の長さ(≥3、最低2往復)が振り返りの対象になっていなかった非対称性を解消。`cognitiveShift` が prior→現裁決の単一比較にとどまるのに対し、変遷回数そのものから「基準の一貫性 vs 証拠の不安定性」を問う |
 | resolved-from-agnostic | `PRIOR_DIRECTION` は curious/agnostic を共に `open` へ写像するため `cognitiveShift.shifted` は構造上決して立たない。`curious`(既定値)を除外しつつ `agnostic`(意図的な選択)のみ特例化し、「知り得ないと言ったのに結論に至った」自己矛盾を問う |
+| only-research | `no-research`(証拠が全て議論/その他=一次研究皆無)の対称形。証拠が全て研究層(arXiv)のみで報道・議論が皆無なら、理論と実践の乖離(実世界で検証されているか)を問う |
 | `newSinceReview` | `reviewedAt` 以降に収集されたアイテム = 答えの変化 |
 
 `PRIOR_DIRECTION = {certain:affirm, skeptical:deny, curious:open, agnostic:open}`
@@ -423,3 +424,22 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   → C16: `prior==='agnostic'&&(verdict==='answered'||verdict==='converging')` で
   `resolved-from-agnostic` プロンプトを追加(`shift.shifted` に依存せず prior を直接判定)。
   「それは本当に知り得たのか、それとも決めつけただけか」を問う。§6.3 に追記。
+
+### 10.9 第7次監査 (round 20) — ソクラテス式問答法・第4ラウンド
+
+**生き残った仮説(実装した)**:
+
+- W16: **`no-research` に対称形が無い非対称性** — `onlyTalk`(証拠が全て discussion/other、
+  一次研究皆無)は `no-research` プロンプトで「これは検証された事実か、意見か」と問われるが、
+  その裏返し(証拠が全て research 層のみで、報道・議論が皆無)には何の反応も無かった。
+  純粋に学術論文のみに基づく結論は、実世界での検証(実装・採用・community reaction)を
+  経ていない可能性があり、「理論に留まっているのではないか」という、no-research とは別種
+  だが同格の証拠多様性の欠如を示す。
+  → C17: `tiers.every(t=>t.tier==='research')` で `only-research` プロンプトを追加。
+  `no-research`(hasResearch===false && onlyTalk===true)と `only-research`
+  (全tierがresearch)は構造上排他的(同時に真になり得ない)。§6.3 に追記。
+
+なお、GitHub Topics(ADR-0018)が `sourceTier` の discussion 層判定
+(reddit/hacker/qiita/zenn/hatena)に含まれていない点も検討したが、GitHub リポジトリは
+フォーラム議論と性質が異なり(コード実装であって「議論」ではない)、既定の `other` 層への
+分類はむしろ正確であるため欠陥としなかった。
