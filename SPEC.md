@@ -94,7 +94,7 @@ Word = {
   id, term, normalized,           // normalized = 正規化済みキー (dedup)
   lang,                           // 'ja' | 'en'
   note,                           // 探究の意図 (intent)
-  sources: { wikipedia, news, reddit, hn, arxiv },  // 収集ソース toggle
+  sources: { wikipedia, news, reddit, hn, arxiv, qiita, zenn, hatena, github },  // 収集ソース toggle
   enabled,
   createdAt, reviewedAt,          // reviewedAt = 最後にレビューした時刻
   lastCollectedAt, lastFetched,   // 直近収集時刻 / 直近取得生件数
@@ -135,6 +135,10 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
     一致トピックが無ければ 404 が `lastErrors` に http_404 として記録され「取得失敗」表示
   - 検索 RSS (Hatena=はてなブックマーク) は `b.hatena.ne.jp/search/text?q={term}&mode=rss` を
     `/rss` 経由で取得。単一プラットフォームではなく日本語Web全体の被ブックマーク記事を横断
+  - タグ型 Atom (GitHub Topics) は term をスラグ (小文字英数字のみ、非英数字はハイフンへ連結。
+    "Next.js"->"next-js"。Zenn とは正規化方式が異なる — GitHub のトピック命名規則がハイフン
+    区切りのため) に正規化し `github.com/topics/{slug}.atom` を `/rss` 経由で取得。Zenn と同じ
+    トピックフィード設計のため 404 は `signalGaps` の `topicFeeds` 特例で沈黙として扱う (ADR-0018)
   - Wikipedia 要約は `/json` 経由で取得 (Wikipedia/Wikimedia 許可リスト)
   - 取得アイテムは `inbound.fetched` で既存パイプラインに投入、`word:{term}` を付与。
     ソースが `raw.tags` を提供する場合 (例 Qiita 記事タグ) は小文字化・重複排除・上限8件で
@@ -281,3 +285,44 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   例外的状況のみ。console.warn 追加は毎イベントのログ汚染を招くため見送り。
 - **dedup の Jaccard が O(n^2)**: 24h ウィンドウ内の近傍比較は件数増で重くなるが、
   正当性の欠陥ではなく性能課題。別途 ADR で窓の上限化を検討する。
+
+### 10.5 第3次監査 (round 16) — ソース追加・バックアップ完全性・a11y
+
+- W7: **フルバックアップ/復元が学習データを落としていた** — JSON バックアップの設定
+  ホワイトリストが `byok`/`lang`/`keyword-rules`/`onboarding-done` の4件のみで、
+  `interest-profile` (スター/アーカイブ操作から学習した興味語彙、ライブ操作でのみ
+  蓄積されるためリストアされたイベントから再構築不能) と `auto-sync` (取得間隔・通知設定)
+  が対象外だった。復元のたびにパーソナライズが無警告で失われていた。
+  → C8: 両キーをエクスポート/リストアのホワイトリストに追加し、復元後に
+  `InterestProfile.load()` を呼んで即時反映(`summary-budget` は日付スコープの
+  カウンタのため意図的に対象外のまま)。
+- W8: **新着通知アイコンが存在しないファイルを参照** — `icon:'/icon-192.png'` を
+  指定していたが、リポジトリに PNG アセットは存在しない (`manifest.json` は inline
+  SVG data URI のみ)。通知がアイコン無しで表示されていた。
+  → C9: マニフェストと同じ 192x192 SVG data URI を直接指定。
+- W9: **イベントカードの一部ボタンに aria-label が無かった** — read/star/archive/later
+  ボタンにはあったが、vault/detail/copy の3ボタンに無く兄弟ボタンと非一貫だった。
+  → C10: 3ボタンに aria-label を追加。
+- W10: **単語インポートで新規ソースキーが欠落し得た** — `wordFromImport` が古い
+  ドシエ JSON の `sources` をそのまま使っていたため、エクスポート後に `WORD_FEEDS`
+  へ新ソース (qiita/zenn/hatena/github) が追加されると、インポートした語にそのキーが
+  存在しなくなっていた。
+  → C11: `defaultSources()` とのマージに変更し、既存キーはユーザー設定を維持したまま
+  新規キーを既定値で補完。
+- W11: **Google News のタイトルに publisher サフィックスが残っていた** — 全見出しに
+  ` - {publisher}` が付与され、表示ノイズに加え同一記事を他ソースから直接取得した
+  場合とのタイトル類似度を下げクロスソース重複排除の閾値をすり抜けさせていた。
+  → C12: `<source>` 要素と厳密一致するサフィックスのみを条件付きで除去。
+
+#### round 16 で追加した収集ソース(欠陥ではなく新機能)
+
+- Hatena Bookmark・GitHub Topics を opt-in ソースとして追加 (ADR-0018)。§5.3/§6.2 に反映。
+  Zenn の 404-as-silence 特例を `topicFeeds` Set (Zenn ∪ GitHub) へ一般化。
+
+#### round 16 で検討したが修正しなかった項目
+
+- **npm audit の High 脆弱性 (wrangler 系devDependency)**: `ws`/`undici`/`vite`/
+  `wrangler`/`miniflare` が devDependency のみ (出荷される `index.html`/`_worker.js` には
+  含まれずエンドユーザー露出ゼロ)。修正には wrangler の大規模な依存ツリー更新
+  (60+ 新規推移的パッケージ) が必要で、この環境では `wrangler dev` の動作確認ができない
+  ため見送り。別途、専用の依存関係更新パスで対応する。
