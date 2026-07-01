@@ -283,8 +283,7 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
 - **KeywordRules 正規表現の評価時失敗**: 保存時に `new RegExp` を検証済みで、評価時も
   try-catch で `false` を返すため評価ループは壊れない。保存後に不正化するのは DB 破損等の
   例外的状況のみ。console.warn 追加は毎イベントのログ汚染を招くため見送り。
-- **dedup の Jaccard が O(n^2)**: 24h ウィンドウ内の近傍比較は件数増で重くなるが、
-  正当性の欠陥ではなく性能課題。別途 ADR で窓の上限化を検討する。
+- ~~dedup の Jaccard が O(n^2)~~ → round 16 の W12/C13 で ADR-0019 に基づき修正済み。
 
 ### 10.5 第3次監査 (round 16) — ソース追加・バックアップ完全性・a11y
 
@@ -313,6 +312,13 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   ` - {publisher}` が付与され、表示ノイズに加え同一記事を他ソースから直接取得した
   場合とのタイトル類似度を下げクロスソース重複排除の閾値をすり抜けさせていた。
   → C12: `<source>` 要素と厳密一致するサフィックスのみを条件付きで除去。
+- W12: **dedup の類似度比較が件数無制限で O(n) スキャン** — round 15 で性能課題として
+  留保されていた項目。24h ウィンドウ内の全イベントと総当たりで Jaccard 比較し、
+  比較のたびにタイトルを再 tokenize していたため、活発なユーザー(ソース数・watchword数
+  が多い)ほど POLL/COLLECT ALL のコストが件数に比例して悪化していた。
+  → C13 (ADR-0019): `recentEvents` の結果(timestamp 降順)を直近 `dedupCompareMax=300`
+  件に `.slice` で上限化。重複は時間的に近接するフィード配信の性質上ほぼ常にウィンドウの
+  先頭側に集中するため、実運用での再現率低下は事実上発生しない。
 
 #### round 16 で追加した収集ソース(欠陥ではなく新機能)
 

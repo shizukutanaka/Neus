@@ -121,6 +121,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **イベントカードの一部ボタンに aria-label が無かった**: read/star/archive/later ボタンには aria-label があったが、vault/detail/copy の3ボタンには無かった(可視テキストはあるが兄弟ボタンと非一貫)。3ボタンに aria-label を追加 / Add aria-label to the vault/detail/copy event-card buttons for consistency with their siblings
 - **フルバックアップ/復元が学習した興味プロファイルと同期設定を落としていた**: JSON バックアップの設定ホワイトリストが `byok`/`lang`/`keyword-rules`/`onboarding-done` の4件のみで、`interest-profile`(スター/アーカイブ操作から学習した興味語彙)と `auto-sync`(取得間隔・通知設定)が対象外だった。`interest-profile` は復元イベントから自動再構築できない(学習はライブ操作でのみ蓄積)ため、復元のたびにユーザーのパーソナライズが無警告で失われていた。両キーをエクスポート/リストア双方のホワイトリストに追加し、復元後に `InterestProfile.load()` を呼んで即時反映(`summary-budget` は日付スコープのカウンタのため意図的に対象外のまま) / Include interest-profile and auto-sync in full JSON backup/restore — interest-profile can't be rebuilt from restored events alone, so it was silently lost on every restore
 
+### Changed
+- **重複排除の類似度比較件数に上限を設けた(ADR-0019)**: `event.normalized` の dedup は 24h ウィンドウ内の全イベントと総当たりで Jaccard 比較し、比較のたびにタイトルを再 tokenize していたため、ソース数・watchword 数が多い活発なユーザーほど POLL/COLLECT ALL のコストが件数に比例して悪化していた(SPEC.md round 15 で性能課題として指摘済み)。`recentEvents`(timestamp 降順)の結果を直近 `dedupCompareMax=300` 件に `.slice` で上限化。重複記事は時間的近接性から通常ウィンドウの先頭側に集中するため、実運用での再現率低下は事実上発生しない / Cap the dedup title-similarity scan to the 300 most recent events instead of the full 24h window, bounding cost as active users' event volume grows
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)

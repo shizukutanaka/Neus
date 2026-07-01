@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-savVrHlVeC6POdslt3x2W2MaCEbhnZbcshcUw0VJpm8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-fkkIpPqRreefOofsdgAWPWSTujggZkjDvp24TgPiHAE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -745,7 +745,7 @@ const CONFIG = Object.freeze({
   summaryPrompt:'Summarize the following article in 3 short bullet points (each <= 20 words). Match the source language. Output bullets only, no preamble.\n\nTitle: {title}\n\nContent:\n{content}',
   tagLearnMinFreq:3, tagSuggestMax:3,
   interestMaxVocab:300, interestMinDf:2, interestBoostMax:25, interestDecay:0.98,
-  dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000,
+  dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000, dedupCompareMax:300,
   ftsGram:2, ftsScoreMin:0.4,
   vaultMatchMinTokens:2, vaultMatchMax:5,
   sourceMaxFails:5,
@@ -2054,7 +2054,10 @@ Bus.subscribe('event.normalized',async(ev)=>{
       if(merged.length!==(existing.meta.autoTags||[]).length){existing.meta.autoTags=merged;await Store.putEvent(existing);FTSIndex.add(existing);}
       Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;
     }
-    const recent=await Store.recentEvents(CONFIG.dedupWindowMs);
+    // Cap the O(n) title-similarity scan to the most recent dedupCompareMax events (ADR-0019):
+    // recentEvents is already sorted newest-first, so slice keeps the temporally-closest items
+    // — where real duplicates actually cluster — without unbounded cost as the window fills up.
+    const recent=(await Store.recentEvents(CONFIG.dedupWindowMs)).slice(0,CONFIG.dedupCompareMax);
     const newTok=new Set(tokenize(ev.content.title));
     if(newTok.size>0){
       for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
