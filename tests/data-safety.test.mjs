@@ -96,6 +96,27 @@ describe('import validation wiring (index.html)', () => {
   });
 });
 
+describe('full backup/restore settings whitelist (index.html)', () => {
+  // Found via audit: interest-profile (learned star/archive vocab) and auto-sync
+  // (poll schedule/notify prefs) were silently dropped from backups — a restore
+  // wiped the user's learned personalization and sync preferences with no warning.
+  // summary-budget is correctly excluded: it's a day-scoped API-call counter that
+  // would misreport quota if blindly restored on a different day.
+  it('includes interest-profile and auto-sync in the export whitelist', () => {
+    expect(html).toContain("for(const key of ['byok','lang','keyword-rules','onboarding-done','interest-profile','auto-sync'])");
+  });
+  it('includes interest-profile and auto-sync in the restore whitelist', () => {
+    expect(html).toContain("const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done','interest-profile','auto-sync'])");
+  });
+  it('excludes summary-budget from both whitelists (day-scoped, not portable)', () => {
+    expect(html).not.toMatch(/RESTORE_SETTINGS_KEYS=new Set\(\[[^\]]*summary-budget/);
+    expect(html).not.toMatch(/for\(const key of \[[^\]]*summary-budget/);
+  });
+  it('reloads InterestProfile after restore so the restored vocab takes effect immediately', () => {
+    expect(html).toContain('await KeywordRules.load();\n  await InterestProfile.load();\n  await TagLearner.rebuild();');
+  });
+});
+
 describe('vault dossier filename uniqueness (index.html)', () => {
   it('suffixes the vault filename with the stable word id to avoid slug collisions', () => {
     expect(html).toContain("['neus','words'],`${wordSlug(word.term)}-${word.id.slice(0,8)}.md`");

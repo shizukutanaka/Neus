@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-3YGXj4olFElKtG54KPgJ1h2lDBJN05ZAlTu2jZpwLkQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-savVrHlVeC6POdslt3x2W2MaCEbhnZbcshcUw0VJpm8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3996,7 +3996,9 @@ $('#stats-backup').addEventListener('click',async()=>{
     const sources=await Store.listSources();
     const words=await Store.listWords();
     const settings={};
-    for(const key of ['byok','lang','keyword-rules','onboarding-done']){
+    // summary-budget excluded: it's a day-scoped API-call counter, not a portable preference —
+    // restoring a stale day's count on a different day would misreport the daily quota.
+    for(const key of ['byok','lang','keyword-rules','onboarding-done','interest-profile','auto-sync']){
       const v=await Store.getSetting(key);if(v!==undefined)settings[key]=v;
     }
     const dump={version:'1.0',exportedAt:new Date().toISOString(),app:'neus',counts:{events:events.length,sources:sources.length,words:words.length},events,sources,words,settings};
@@ -4035,7 +4037,7 @@ $('#restore-file').addEventListener('change',async(e)=>{
   if(!await confirmAsync(t('backup.confirm')))return;
   // Atomic restore in a single IDB transaction: if any write fails, IDB rolls back the
   // clears too, so existing data is preserved (the rollback-impossible problem is solved).
-  const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done']);
+  const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done','interest-profile','auto-sync']);
   const settingsEntries=Object.entries(dump.settings||{}).filter(([k])=>RESTORE_SETTINGS_KEYS.has(k));
   try{
     await Store.replaceAll({events:dump.events,sources:dump.sources||[],words:dump.words||[],settings:settingsEntries});
@@ -4045,6 +4047,7 @@ $('#restore-file').addEventListener('change',async(e)=>{
     return;
   }
   await KeywordRules.load();
+  await InterestProfile.load();
   await TagLearner.rebuild();
   await FTSIndex.rebuild(); // batch rebuild with yield-every-100 for large restores
   await refreshCounts();await renderView();
