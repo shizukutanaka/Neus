@@ -124,6 +124,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Changed
 - **重複排除の類似度比較件数に上限を設けた(ADR-0019)**: `event.normalized` の dedup は 24h ウィンドウ内の全イベントと総当たりで Jaccard 比較し、比較のたびにタイトルを再 tokenize していたため、ソース数・watchword 数が多い活発なユーザーほど POLL/COLLECT ALL のコストが件数に比例して悪化していた(SPEC.md round 15 で性能課題として指摘済み)。`recentEvents`(timestamp 降順)の結果を直近 `dedupCompareMax=300` 件に `.slice` で上限化。重複記事は時間的近接性から通常ウィンドウの先頭側に集中するため、実運用での再現率低下は事実上発生しない / Cap the dedup title-similarity scan to the 300 most recent events instead of the full 24h window, bounding cost as active users' event volume grows
 
+### Added
+- **問いの手がかり (Question Watch)**: ソクラテス式問答法でプロダクト自身の機能セットを検討した結果発見した非対称性を解消。反証条件(`falsifier`)は該当収集物を能動検出する `falsifierHits` を持つのに、構造的に同一の照合が必要な未解決の問い(`questions`)には同等の機構が無かった。被覆率照合ロジックを共有ヘルパー `bigramCoverageHits(text,events)` へ抽出し、各未解決の問いに `questionHits(question,events)` として適用。WORDSビューは問い文の直後にクリック可能なヒント(上位一致へのリンク+件数)を表示、ドシエは問いの下にインデントした箇条書きで一致アイテムを記録。解決済みの問いは対象外 / Question Watch: extract the shared bigram-coverage matcher and apply it to open questions too (symmetric to the existing Falsifier Watch), surfacing collected items that may address an unresolved question
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)

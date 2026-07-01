@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-fkkIpPqRreefOofsdgAWPWSTujggZkjDvp24TgPiHAE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-bJeXUdM+yNEVyC3Ton02nc/FIATeBH32WhUDh+DfvMo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -176,6 +176,8 @@ input,select,textarea{font:inherit;color:inherit;}
 .word-q-resolve:hover{color:var(--accent);border-color:var(--accent);}
 .word-q-resolve.resolved{color:var(--accent);border-color:var(--accent);}
 .word-q-done{text-decoration:line-through;color:var(--fg-3);}
+.word-q-hit{font-size:10px;color:var(--accent);text-decoration:none;margin-left:6px;}
+.word-q-hit:hover{text-decoration:underline;}
 .word-q-list li.q-resolved::before{color:var(--accent);}
 .word-q-add{display:flex;gap:6px;margin:4px 0 12px;}
 .word-q-add input{flex:1;font-size:12px;font-family:var(--font-mono);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--bg-2);color:var(--fg-1);}
@@ -808,6 +810,7 @@ const DICT={
     'word.shift':'認識の変容',
     'word.elenchus':'問答(システムからの問い)',
     'word.fwatch':'反証候補(あなたの反証条件に該当しうる)',
+    'word.qhits':'関連しうる収集物',
     'word.verdict':'裁決',
     'word.verdict.cycle':'裁決を変更',
     'word.q.add':'問いを追加',
@@ -909,6 +912,7 @@ const DICT={
     'word.shift':'Cognitive shift',
     'word.elenchus':'Elenchus (questions for you)',
     'word.fwatch':'Possible falsifier (may match your stated condition)',
+    'word.qhits':'may relate',
     'word.verdict':'Verdict',
     'word.verdict.cycle':'Cycle verdict',
     'word.q.add':'Add question',
@@ -2454,19 +2458,27 @@ function fsBigrams(text){
   const s=String(text||'').toLowerCase().replace(/\s+/g,'');
   const g=new Set();for(let i=0;i<s.length-1;i++)g.add(s.slice(i,i+2));return g;
 }
-function falsifierHits(word,events){
-  const f=(word.falsifier||'').trim();if(f.length<4)return[];
-  const fg=fsBigrams(f);if(fg.size<3)return[];
+// 文字bigram被覆率(≥0.5)で、宣言テキストに該当しうる収集物を検出する共有ヘルパー。
+// falsifier(反証条件)と questions(未解決の問い)の双方が同じ「宣言テキスト vs 証拠」照合
+// を必要とするため、比較ロジックを一箇所に集約する。言語非依存・純粋関数。
+function bigramCoverageHits(text,events){
+  const t=(text||'').trim();if(t.length<4)return[];
+  const tg=fsBigrams(t);if(tg.size<3)return[];
   const hits=[];
   for(const ev of events||[]){
     const eg=fsBigrams([ev.content?.title,ev.content?.snippet,ev.content?.summary].filter(Boolean).join(' '));
     if(eg.size===0)continue;
-    let inter=0;for(const b of fg)if(eg.has(b))inter++;
-    const cov=inter/fg.size;
+    let inter=0;for(const b of tg)if(eg.has(b))inter++;
+    const cov=inter/tg.size;
     if(cov>=0.5)hits.push({ev,score:cov});
   }
   return hits.sort((a,b)=>b.score-a.score).slice(0,3);
 }
+function falsifierHits(word,events){return bigramCoverageHits(word.falsifier,events);}
+// 問いの手がかり(Question Watch): falsifierHits と対称な機構。未解決の問い(アポリア)は
+// これまで受動的なテキストで、該当しうる証拠が届いても人が手動で見比べるしかなかった。
+// 同じ被覆率照合を問いのテキストに適用し、未解決の問いにも能動センサーを与える。
+function questionHits(question,events){return bigramCoverageHits(question?.text,events);}
 // 問答(elenchus): 探究の構造そのものから、システムが探究者へ問いを投げ返す。
 // ソクラテスの助産術 — 答えを与えず、矛盾と空白を問いとして突きつける。純粋関数。
 function socraticPrompts(word,events){
@@ -2701,11 +2713,16 @@ const WordExporter={
       parts.push('');
     }
     // 問い群(残余問題): 未解決の問い(アポリア)と解決済みの問い(弧の完了)を分けて記す。
+    // 未解決の問いには、該当しうる収集物(Question Watch)があれば併記する。
     const qs=(word.questions||[]);
     if(qs.length){
       const openQs=qs.filter(q=>!q.resolvedAt),doneQs=qs.filter(q=>q.resolvedAt);
       parts.push('## 問い群','');
-      for(const q of openQs)parts.push(`- ${q.text}`);
+      for(const q of openQs){
+        parts.push(`- ${q.text}`);
+        const qh=questionHits(q,events);
+        for(const h of qh)parts.push(`  - ${mdLink(h.ev.content.title||'(untitled)',h.ev.url)} — ${Math.round(h.score*100)}%`);
+      }
       for(const q of doneQs){const d=q.resolvedAt?` (${isoDate(q.resolvedAt).slice(0,10)})`:'';parts.push(`- ~~${q.text}~~ — 解決済み${d}`);}
       parts.push('');
     }
@@ -3122,7 +3139,11 @@ async function renderWords(){
     const qReopenLabel=currentLang==='ja'?'未解決に戻す':'reopen question';
     const qList=qs.length?`<ul class="word-q-list">${qs.map(q=>{
       const done=!!q.resolvedAt;
-      const txt=done?`<span style="flex:1" class="word-q-done">${escapeHtml(q.text)}</span>`:`<span style="flex:1">${escapeHtml(q.text)}</span>`;
+      // 問いの手がかり(Question Watch): 未解決の問いのみ、該当しうる収集物を能動提示する。
+      const qh=done?[]:questionHits(q,items);
+      const qhTitle=escapeAttr(qh.map(h=>h.ev.content.title||'(untitled)').join(' / '));
+      const qHint=qh.length?`<a href="${escapeAttr(safeHref(qh[0].ev.url))}" target="_blank" rel="noopener noreferrer" class="word-q-hit" title="${qhTitle}">${escapeHtml(t('word.qhits'))} ${qh.length}</a>`:'';
+      const txt=done?`<span style="flex:1" class="word-q-done">${escapeHtml(q.text)}</span>`:`<span style="flex:1">${escapeHtml(q.text)}${qHint}</span>`;
       const rBtn=`<button class="word-q-resolve${done?' resolved':''}" data-wact="resolveq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${done?qReopenLabel:qResolveLabel}" aria-label="${done?qReopenLabel:qResolveLabel}" aria-pressed="${done}">&check;</button>`;
       return `<li${done?' class="q-resolved"':''}>${txt}${rBtn}<button class="word-q-del" data-wact="delq" data-id="${w.id}" data-qid="${escapeAttr(q.id)}" title="${qDelLabel}" aria-label="${qDelLabel}">&times;</button></li>`;
     }).join('')}</ul>`:'';
