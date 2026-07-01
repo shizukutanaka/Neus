@@ -165,6 +165,7 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 | `questionHits` | 問いの手がかり(Question Watch)。`falsifierHits` と対称に `bigramCoverageHits` を各未解決の問いのテキストへ適用し、該当しうる収集物を能動検出。解決済みの問いは対象外(能動監視の必要が無いため)。WORDSビューでは問い文の直後にクリック可能なヒント(上位一致へのリンク + 件数)、ドシエでは問いの下にインデントした箇条書きとして表示 |
 | `socraticPrompts` | 状況に応じ最大3件の問い直しを提示 |
 | verdict-churn | `verdictHistory` の長さ(≥3、最低2往復)が振り返りの対象になっていなかった非対称性を解消。`cognitiveShift` が prior→現裁決の単一比較にとどまるのに対し、変遷回数そのものから「基準の一貫性 vs 証拠の不安定性」を問う |
+| resolved-from-agnostic | `PRIOR_DIRECTION` は curious/agnostic を共に `open` へ写像するため `cognitiveShift.shifted` は構造上決して立たない。`curious`(既定値)を除外しつつ `agnostic`(意図的な選択)のみ特例化し、「知り得ないと言ったのに結論に至った」自己矛盾を問う |
 | `newSinceReview` | `reviewedAt` 以降に収集されたアイテム = 答えの変化 |
 
 `PRIOR_DIRECTION = {certain:affirm, skeptical:deny, curious:open, agnostic:open}`
@@ -397,3 +398,28 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   → C15: `verdictHistory.length>=3`(最低2往復の反転)で `verdict-churn` プロンプトを追加。
   「基準は一貫しているか、証拠が本当に不安定なのか」を問う。既存の `HISTORY_CAP=5` により
   件数は自然に上限化されるため、新たな上限設計は不要。§6.3 に追記。
+
+### 10.8 第6次監査 (round 19) — ソクラテス式問答法・第3ラウンド
+
+**却下した仮説(反証された = 欠陥ではなかった)**:
+
+- 「`curious`(既定値)も同じ特例化(結論到達を問い直す)の対象にすべき」→ 反証:
+  `curious` は明示指定しない限り既定で設定される値であり、ほぼ全ての語が該当する。
+  ここに問い直しプロンプトを適用すると、成功裏に結論へ至った語のほぼ全てで発火し、
+  「意図的な立場表明が裏切られた」という信号の鋭さが失われ単なるノイズになる。
+  `agnostic` は明示的な選択であるため対象を限定する。
+
+**生き残った仮説(実装した)**:
+
+- W15: **`agnostic` が `cognitiveShift.shifted` を構造上決して発火できない非対称性** —
+  `PRIOR_DIRECTION` は `curious` と `agnostic` を共に `'open'` へ写像するため、両者を起点に
+  した語は `shifted`(`priorDir!=='open'` が前提条件)を決して立てられない。しかし
+  `certain`/`skeptical` が確信的な結論から逆転した場合に専用プロンプト
+  (`shifted-from-certain`/`shifted-from-skeptical`)を持つのに対し、「知り得ないと明示的に
+  述べた(agnostic)のに確信的な結論(answered/converging)に至った」という、同等以上に
+  鋭い自己矛盾には何の反応も無かった。`curious` は既定値でほぼ全ての語に該当するため
+  同じ特例化は信号を薄める(除外が正しい判断)。`agnostic` は意図的に選ばれた稀な立場
+  であるため特例化に値する。
+  → C16: `prior==='agnostic'&&(verdict==='answered'||verdict==='converging')` で
+  `resolved-from-agnostic` プロンプトを追加(`shift.shifted` に依存せず prior を直接判定)。
+  「それは本当に知り得たのか、それとも決めつけただけか」を問う。§6.3 に追記。
