@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-AQaewqNPSqjQftLWm9AtpAfeiD/nMCUftTAxMYpi3J0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-hFLTnn8Qzi3cc6uVRE85tyAnWYXWB9L/xlYkLzNMZBE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2536,6 +2536,10 @@ function socraticPrompts(word,events){
   // certain/skeptical の逆転と同じくらい鋭い自己矛盾たりうる。curious は既定値で
   // ほぼ全ての語に該当し信号として薄まるため対象外(agnostic のみを特例化)。
   if(prior==='agnostic'&&(verdict==='answered'||verdict==='converging'))out.push({key:'resolved-from-agnostic',ja:'「わからない」と始めたが、結論に至った。それは本当に知り得たのか、それとも決めつけただけか?',en:"You began agnostic ('unknowable'), yet reached a conclusion. Did you truly come to know it, or did you just decide?"});
+  // 無効化による静かな放棄: enabled=false は収集を止めるだけで、裁決には何の作用もしない。
+  // suspended(保留)という明示的な誠実さの選択があるのに、無効化すれば open のまま
+  // 探究を静かに放棄でき、他の全プロンプトが強いる自己吟味の圧力を回避できてしまう。
+  if(word.enabled===false&&verdict==='open'&&n>0)out.push({key:'disabled-still-open',ja:'収集を無効化したが、探究はまだ探究中のまま。再開するか、保留として記録すべきか?',en:'Collection is disabled, yet the verdict remains open. Resume the inquiry, or record it as suspended?'});
   // 収束の長期停滞: 収束中のまま多くの証拠を蓄えているなら、結論を避けているか再考が必要。
   if(verdict==='converging'&&word.verdictAt){
     const sinceConverging=events.filter(e=>(e.timestamp||0)>word.verdictAt).length;

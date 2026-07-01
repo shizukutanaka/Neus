@@ -167,6 +167,7 @@ SEARCH は検索時のみ出現。`maxViewItems = 50`。
 | verdict-churn | `verdictHistory` の長さ(≥3、最低2往復)が振り返りの対象になっていなかった非対称性を解消。`cognitiveShift` が prior→現裁決の単一比較にとどまるのに対し、変遷回数そのものから「基準の一貫性 vs 証拠の不安定性」を問う |
 | resolved-from-agnostic | `PRIOR_DIRECTION` は curious/agnostic を共に `open` へ写像するため `cognitiveShift.shifted` は構造上決して立たない。`curious`(既定値)を除外しつつ `agnostic`(意図的な選択)のみ特例化し、「知り得ないと言ったのに結論に至った」自己矛盾を問う |
 | only-research | `no-research`(証拠が全て議論/その他=一次研究皆無)の対称形。証拠が全て研究層(arXiv)のみで報道・議論が皆無なら、理論と実践の乖離(実世界で検証されているか)を問う |
+| disabled-still-open | `enabled=false`(収集無効化)は裁決に何の作用も無いため、`open` のまま静かに探究を放棄でき、他の全プロンプトが強いる自己吟味を回避できてしまう非対称性を解消。無効化かつ未裁決かつ証拠有りなら、再開または `suspended` への明示的な記録を促す |
 | `newSinceReview` | `reviewedAt` 以降に収集されたアイテム = 答えの変化 |
 
 `PRIOR_DIRECTION = {certain:affirm, skeptical:deny, curious:open, agnostic:open}`
@@ -443,3 +444,16 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
 (reddit/hacker/qiita/zenn/hatena)に含まれていない点も検討したが、GitHub リポジトリは
 フォーラム議論と性質が異なり(コード実装であって「議論」ではない)、既定の `other` 層への
 分類はむしろ正確であるため欠陥としなかった。
+
+### 10.10 第8次監査 (round 21) — ソクラテス式問答法・第5ラウンド
+
+**生き残った仮説(実装した)**:
+
+- W17: **`enabled=false` による静かな探究放棄** — 探究モデルは至る所で誠実さを強制する
+  (反証条件を述べさせる、反証条件無しの結論をなじる、裁決の動揺を問い直す等)。しかし
+  `word.enabled=false`(収集無効化)は裁決に何の作用も持たず、`socraticPrompts` はこれを
+  一度も参照しない。ユーザーは単に収集を止めるだけで `open` のまま探究を静かに放棄でき、
+  `suspended`(保留)という誠実な明示的選択が本来担うべき役割(「結論に至れなかった」と
+  記録すること)を回避したまま、他の全プロンプトの自己吟味圧力からも逃れられていた。
+  → C18: `word.enabled===false&&verdict==='open'&&n>0` で `disabled-still-open`
+  プロンプトを追加。「再開するか、保留として記録すべきか」を問う。§6.3 に追記。
