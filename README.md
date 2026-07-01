@@ -94,8 +94,8 @@ npm run deploy
 
 ### 4. 単語ウォッチ(Watchword)
 
-- **WORDS**(メニュー)→ 単語を入力し、収集ソース(Wikipedia / Google News / Reddit / Hacker News / arXiv / Qiita / Zenn / Hatena)を選んで **ADD**
-  - 日本語ソース: Qiita は公式 REST API v2 の全文キーワード検索(JSON、ワーカー `/json` 経由)、Zenn はトピックの Atom フィード、Hatena(はてなブックマーク)は日本語Web全体の被ブックマーク記事を横断する全文検索 RSS。Zenn は一致トピックが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。いずれもデフォルトは OFF(arXiv と同じ opt-in 扱い)。詳細は `docs/adr/ADR-0017`
+- **WORDS**(メニュー)→ 単語を入力し、収集ソース(Wikipedia / Google News / Reddit / Hacker News / arXiv / Qiita / Zenn / Hatena / GitHub)を選んで **ADD**
+  - 日本語ソース: Qiita は公式 REST API v2 の全文キーワード検索(JSON、ワーカー `/json` 経由、`docs/adr/ADR-0017`)、Zenn はトピックの Atom フィード(`docs/adr/ADR-0017`)、Hatena(はてなブックマーク)は日本語Web全体の被ブックマーク記事を横断する全文検索 RSS(`docs/adr/ADR-0018`)。GitHub はトピックの Atom フィード(`docs/adr/ADR-0018`)。Zenn/GitHub は一致トピックが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。いずれもデフォルトは OFF(arXiv と同じ opt-in 扱い)
 - 登録時とPOLL時に自動収集。各ソースの検索フィードを取得し、`word:{単語}` タグ付きで保存
 - **WORDS** ビュー → 単語ごとにWikipedia定義 + 直近アイテム + 出力ボタン(DOSSIER MD / JSON / VAULT)
 - 出力先(Vault): `{Vault}/neus/words/{単語}-{id}.md`(語ごとに一意。"C++" と "C" のように同じ slug に正規化される語でも上書きされない)
@@ -151,7 +151,7 @@ neus/
   SPEC.md             # 仕様書(一次情報)
   ARCHITECTURE.md     # アーキテクチャ概観
   CHANGELOG.md        # 変更履歴
-  docs/adr/           # 設計判断記録(ADR 0001-0016)
+  docs/adr/           # 設計判断記録(ADR 0001-0018)
   tests/              # Vitest単体テスト
   scripts/            # HTMLチェッカー等
 ```

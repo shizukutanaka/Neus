@@ -248,6 +248,7 @@ Word = {
 | ADR-0015 | Conditional GET |
 | ADR-0016 | Watchword Collector(`/json` 許可リスト) |
 | ADR-0017 | Qiita/Zenn ソース追加(Qiita 検索API を `/json` 許可) |
+| ADR-0018 | Hatena/GitHub Topics ソース追加(いずれも `/rss` のみ、Worker変更なし) |
 
 ## 将来の方針
 
