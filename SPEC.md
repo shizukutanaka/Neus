@@ -474,3 +474,21 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   スキップし、「0件に制限」の意図が「無制限」へ反転していた。
   → C20: 判定を `typeof s.budget==='number'&&dailyCount>=s.budget` へ変更し、`0` を
   明示的な「常にブロック」として扱う。
+
+### 10.12 第10次監査 (round 23) — socraticPrompts 優先順位機構(docs/FEATURE-AUDIT.md §1-1)
+
+`docs/FEATURE-AUDIT.md` §1-1 が「前提条件: 実装前に共起分析を行うこと」としていた項目に着手。
+
+- **共起分析**: `socraticPrompts` の約20条件を verdict 状態別に整理した結果、
+  `verdict==='open'` の語だけでも `falsifier-seen` / `certain-unresolved` / `verdict-churn` /
+  `disabled-still-open` / `no-questions` / `silence` / `unreviewed` の最大7条件が独立に
+  (相互排他ではなく)同時成立し得ることを確認。無効化+問い未設定+ソース沈黙+未確認多数、
+  といった「よくある放置状態」がまさにこの組み合わせに該当するため、飢餓は理論的リスクでは
+  なく実際に起こり得ると判断した。
+- W20: **push 順 `slice(0,3)` による構造的飢餓**(既に §1-1 で不足として記録済み)。
+  → C21: 関数冒頭の既存コメント「結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り」
+  を `TIER_VALIDITY=1..TIER_NEGLECT=5` として数値化し、各 `out.push()` に `tier` を付与。
+  末尾で `out.sort((a,b)=>a.tier-b.tier)` してから `slice(0,3)`(Array.sort は ES2019+ で
+  安定ソートのため同一 tier 内の push 順=既存の優先意図は無変更)。各 if/else-if 内の
+  既存の相互排他性(falsifier-seen が stale 系を抑制、confirmed-certain と no-falsifier の
+  排他等)も無変更。`docs/FEATURE-AUDIT.md` §1-1 を解決済みへ更新。

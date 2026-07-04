@@ -24,17 +24,27 @@
 優先順に列挙。着手時は CLAUDE.md のワークフロー(Plan.md 整合確認 → 影響大なら ADR → 実装 →
 テスト → CHANGELOG)に従うこと。
 
-### 1-1. socraticPrompts の優先順位機構【最優先・中規模】
+### 1-1. socraticPrompts の優先順位機構【解決済み】
 
-- **問題**: `index.html` の `function socraticPrompts(word,events)` は約18の発火条件を持つが、
-  出力は `return out.slice(0,3)` で **push 順の先頭3件** に切られる。優先度・関連度による選別は
-  存在しない。条件が同時に多数成立する語では、関数後段に置かれたプロンプト
-  (`verdict-churn` / `resolved-from-agnostic` / `only-research` / `disabled-still-open` など)が
-  構造的に表示されない(飢餓)。
-- **前提条件**: 実装前に、どの条件が実際に同時成立しやすいかの共起分析を行うこと。
-  現在も一部は意図的な優先制御がある(例: `falsifier-seen` は先頭 push + stale 系を抑制する
-  `!fhits.length` ガード)。この既存の意図を壊さずに全体の順位付けへ一般化する設計が必要。
-- **アンカー**: `function socraticPrompts` / `return out.slice(0,3)`
+- **問題**: `index.html` の `function socraticPrompts(word,events)` は約20の発火条件を持つが、
+  出力は `return out.slice(0,3)` で **push 順の先頭3件** に切られていた。優先度・関連度による
+  選別は存在せず、条件が同時に多数成立する語(例: 無効化 + 問い未設定 + ソース沈黙 +
+  未確認10件超、といった「よくある放置状態」でも容易に4件以上同時成立する)では、関数後段の
+  プロンプト(`verdict-churn` / `resolved-from-agnostic` / `only-research` /
+  `disabled-still-open` 等)が構造的に表示されない(飢餓)ことをコードで確認した。
+- **共起分析の結果**: `verdict==='open'` の語だけでも `falsifier-seen` / `certain-unresolved` /
+  `verdict-churn` / `disabled-still-open` / `no-questions` / `silence` / `unreviewed` の
+  最大7条件が独立に同時成立し得る(相互排他ではない)。starvation は理論上ではなく実際に
+  起こり得ると判断し、実装に進んだ。
+- **状態**: 修正済み。関数冒頭のコメントで既に宣言されていた優先順位
+  「結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り」を
+  `TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5`
+  として数値化し、各 `out.push()` に `tier` を付与。末尾で
+  `out.sort((a,b)=>a.tier-b.tier)` してから `slice(0,3)` する(Array.sort は ES2019+ で
+  安定ソートのため、同一 tier 内は既存の push 順=優先意図を保ったまま)。
+  既存の各 if/else-if ブロック内の相互排他性(例: falsifier-seen が stale 系を抑制)は無変更。
+- **アンカー**: `const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;` /
+  `out.sort((a,b)=>a.tier-b.tier);`
 
 ### 1-2. キーワード検知 OS アラート【小〜中規模】
 
@@ -140,10 +150,8 @@
 
 ## 4. 推奨着手順
 
-1. **§1-1 プロンプト優先順位** — 直近で追加した5プロンプトの価値が実際にユーザーへ届くかを
-   左右するため最優先。まず共起頻度の実態調査から。
-2. **§1-2 キーワードアラート** — 既存通知経路の小拡張で費用対効果が高い。
-3. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。
-4. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
+1. **§1-2 キーワードアラート** — 既存通知経路の小拡張で費用対効果が高い。次の最優先候補。
+2. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。
+3. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
 
-§1-6・§1-7 は解決済み(2026-07-02)。
+§1-1・§1-6・§1-7 は解決済み(2026-07-02)。残る未対応は §1-2・§1-3・§1-4・§1-5。

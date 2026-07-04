@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-bqRU8/AEwjfdfHK2d3EwNceIcuIf0sc24uKT1qTFJx4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-qUTd2Fd/e+GtK4QlNekoVyW/aXP49X9YOTdn8mhUqLo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2503,18 +2503,25 @@ function socraticPrompts(word,events){
   const unreviewed=newSinceReview(events,word.reviewedAt).length;
   const qs=(word.questions||[]);
   const openQs=openQuestions(word);
+  // 優先順位機構(第9次監査 W-priority): 全条件を5段階の tier に割り当て、push 順ではなく
+  // tier 昇順(同 tier 内は Array.sort の安定性により push 順を維持)で並べ替えてから上位3件を
+  // 返す。理由: 条件数が増えるにつれ、同一語で複数条件が同時に真になる場面(神経質でない
+  // 普通の「放置された語」でも disabled-still-open + no-questions + silence + unreviewed が
+  // 容易に共起する)で、関数後段の条件が構造的に一度も表示されない飢餓が起きていた。
+  // tier 自体は元々のコメント「結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り」を
+  // そのまま数値化したもの(1が最優先)。既存の各 if/else-if ブロック内の相互排他性は変更しない。
+  const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;
   // 最優先: 宣言した反証条件に該当しうる証拠が実際に届いたなら、それが最も鋭い論駁。
   // 漠然と「現れたか?」ではなく「該当する N 件がここにある」と具体的に突きつける。
   const fhits=falsifierHits(word,events);
-  if(fhits.length&&word.falsifier)out.push({key:'falsifier-seen',ja:`収集物 ${fhits.length} 件があなたの反証条件「${word.falsifier}」に該当しうる。結論を見直すべきか?`,en:`${fhits.length} collected item(s) may match your falsifier "${word.falsifier}". Re-examine the verdict?`});
-  // 優先順: 結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り
+  if(fhits.length&&word.falsifier)out.push({key:'falsifier-seen',tier:TIER_VALIDITY,ja:`収集物 ${fhits.length} 件があなたの反証条件「${word.falsifier}」に該当しうる。結論を見直すべきか?`,en:`${fhits.length} collected item(s) may match your falsifier "${word.falsifier}". Re-examine the verdict?`});
   // verdictStale records staleness for ALL settled verdicts, so the challenge must fire for both.
   // 具体的な該当(falsifier-seen)が出ているなら、漠然とした stale 系プロンプトは抑制する。
   if(SETTLED_VERDICTS.has(verdict)&&stale>0&&!fhits.length){
     // 反証条件があれば、漠然と「妥当か?」ではなく「その条件は現れたか?」と問える(鋭い論駁)。
-    if(word.falsifier)out.push({key:'stale-falsifier',ja:`裁決後に${stale}件。あなたは「${word.falsifier}」なら覆ると述べた — それは現れたか?`,en:`${stale} new since your verdict. You said it changes if: "${word.falsifier}" — has it?`});
-    else if(verdict==='suspended')out.push({key:'stale-suspended',ja:`保留後に${stale}件の新情報。再検討の余地はあるか?`,en:`${stale} new item(s) arrived after suspension. Worth revisiting?`});
-    else out.push({key:'stale',ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
+    if(word.falsifier)out.push({key:'stale-falsifier',tier:TIER_VALIDITY,ja:`裁決後に${stale}件。あなたは「${word.falsifier}」なら覆ると述べた — それは現れたか?`,en:`${stale} new since your verdict. You said it changes if: "${word.falsifier}" — has it?`});
+    else if(verdict==='suspended')out.push({key:'stale-suspended',tier:TIER_VALIDITY,ja:`保留後に${stale}件の新情報。再検討の余地はあるか?`,en:`${stale} new item(s) arrived after suspension. Worth revisiting?`});
+    else out.push({key:'stale',tier:TIER_VALIDITY,ja:`裁決後に${stale}件の新証拠。結論はまだ妥当か?`,en:`${stale} new item(s) since your verdict. Does it still hold?`});
   }
   // 反証条件を述べられない結論は知ではなく独断(可謬性の自己適用)。
   // 'suspended' means "we could not conclude" — the prompt must not say "you concluded".
@@ -2522,41 +2529,44 @@ function socraticPrompts(word,events){
   // so the two must be mutually exclusive — otherwise both consume 2 of 3 elenchus slots
   // with near-identical intent (prior=certain+verdict=answered+!falsifier trips both).
   if((verdict==='answered'||verdict==='converging')&&!word.falsifier){
-    if(prior==='certain')out.push({key:'confirmed-certain',ja:'確信して始め、確信のまま終わった。本当に反証を探したか?',en:'You began certain and concluded affirmatively. Did you genuinely seek counterevidence?'});
-    else if(verdict==='answered')out.push({key:'no-falsifier',ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
+    if(prior==='certain')out.push({key:'confirmed-certain',tier:TIER_FALSIFIABILITY,ja:'確信して始め、確信のまま終わった。本当に反証を探したか?',en:'You began certain and concluded affirmatively. Did you genuinely seek counterevidence?'});
+    else if(verdict==='answered')out.push({key:'no-falsifier',tier:TIER_FALSIFIABILITY,ja:'結論を出したが、何があれば覆るか述べていない。それは知か、独断か?',en:'You concluded, yet never said what would change your mind. Knowledge, or dogma?'});
   }
-  if(verdict==='suspended'&&!word.falsifier)out.push({key:'no-reopener',ja:'探究を保留したが、何があれば再開するかを述べていない。探究はいつ終わるのか?',en:'You suspended, but never stated what would reopen the inquiry. When does inquiry end?'});
-  if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
+  if(verdict==='suspended'&&!word.falsifier)out.push({key:'no-reopener',tier:TIER_FALSIFIABILITY,ja:'探究を保留したが、何があれば再開するかを述べていない。探究はいつ終わるのか?',en:'You suspended, but never stated what would reopen the inquiry. When does inquiry end?'});
+  if(n>0&&!hasResearch&&onlyTalk)out.push({key:'no-research',tier:TIER_EVIDENCE,ja:'一次情報(研究)がない。これは検証された事実か、それとも意見か?',en:'No primary research. Is this verified fact, or opinion?'});
   // no-research の対称形: 学術論文のみで報道・議論が一切無い場合、実世界での検証や
   // 実践知が欠けている可能性を問う(理論と実践の乖離)。
-  if(tiers.length>0&&tiers.every(t=>t.tier==='research'))out.push({key:'only-research',ja:'学術論文のみで、報道・議論が無い。実世界で検証されているか、理論に留まるか?',en:'Only academic papers — no press or discussion coverage. Validated in practice, or still theoretical?'});
-  if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
-  if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
+  if(tiers.length>0&&tiers.every(t=>t.tier==='research'))out.push({key:'only-research',tier:TIER_EVIDENCE,ja:'学術論文のみで、報道・議論が無い。実世界で検証されているか、理論に留まるか?',en:'Only academic papers — no press or discussion coverage. Validated in practice, or still theoretical?'});
+  if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',tier:TIER_CONTRADICTION,ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
+  if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',tier:TIER_CONTRADICTION,ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
   // 裁決の動揺: verdictHistory は変遷の記録として蓄積されるだけで、これまで振り返りの対象では
   // なかった。3件以上(=最低2往復)の変遷は、基準が一貫しているか証拠が真に不安定かを問う価値がある。
-  if((word.verdictHistory||[]).length>=3)out.push({key:'verdict-churn',ja:`裁決を${word.verdictHistory.length}回変更した。基準は一貫しているか、それとも証拠が本当に不安定なのか?`,en:`Verdict changed ${word.verdictHistory.length} times. Is your criteria consistent, or is the evidence genuinely unstable?`});
+  if((word.verdictHistory||[]).length>=3)out.push({key:'verdict-churn',tier:TIER_CONTRADICTION,ja:`裁決を${word.verdictHistory.length}回変更した。基準は一貫しているか、それとも証拠が本当に不安定なのか?`,en:`Verdict changed ${word.verdictHistory.length} times. Is your criteria consistent, or is the evidence genuinely unstable?`});
   // 認識の逆転: 先入観と正反対の結論になった場合のみ(可謬性の自己体験として最も価値が高い)。
-  if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
-  if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});
+  if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',tier:TIER_CONTRADICTION,ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
+  if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',tier:TIER_CONTRADICTION,ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});
   // agnostic/curious は PRIOR_DIRECTION が'open'のため shift.shifted を構造上決して立てない
   // (shifted は priorDir!=='open' を要求)。しかし agnostic は既定値 curious と違い、
   // 「これは知り得ない」という意図的な選択であり、それが確信的な結論に至ることは
   // certain/skeptical の逆転と同じくらい鋭い自己矛盾たりうる。curious は既定値で
   // ほぼ全ての語に該当し信号として薄まるため対象外(agnostic のみを特例化)。
-  if(prior==='agnostic'&&(verdict==='answered'||verdict==='converging'))out.push({key:'resolved-from-agnostic',ja:'「わからない」と始めたが、結論に至った。それは本当に知り得たのか、それとも決めつけただけか?',en:"You began agnostic ('unknowable'), yet reached a conclusion. Did you truly come to know it, or did you just decide?"});
+  if(prior==='agnostic'&&(verdict==='answered'||verdict==='converging'))out.push({key:'resolved-from-agnostic',tier:TIER_CONTRADICTION,ja:'「わからない」と始めたが、結論に至った。それは本当に知り得たのか、それとも決めつけただけか?',en:"You began agnostic ('unknowable'), yet reached a conclusion. Did you truly come to know it, or did you just decide?"});
   // 無効化による静かな放棄: enabled=false は収集を止めるだけで、裁決には何の作用もしない。
   // suspended(保留)という明示的な誠実さの選択があるのに、無効化すれば open のまま
   // 探究を静かに放棄でき、他の全プロンプトが強いる自己吟味の圧力を回避できてしまう。
-  if(word.enabled===false&&verdict==='open'&&n>0)out.push({key:'disabled-still-open',ja:'収集を無効化したが、探究はまだ探究中のまま。再開するか、保留として記録すべきか?',en:'Collection is disabled, yet the verdict remains open. Resume the inquiry, or record it as suspended?'});
+  if(word.enabled===false&&verdict==='open'&&n>0)out.push({key:'disabled-still-open',tier:TIER_CONTRADICTION,ja:'収集を無効化したが、探究はまだ探究中のまま。再開するか、保留として記録すべきか?',en:'Collection is disabled, yet the verdict remains open. Resume the inquiry, or record it as suspended?'});
   // 収束の長期停滞: 収束中のまま多くの証拠を蓄えているなら、結論を避けているか再考が必要。
   if(verdict==='converging'&&word.verdictAt){
     const sinceConverging=events.filter(e=>(e.timestamp||0)>word.verdictAt).length;
-    if(sinceConverging>=10)out.push({key:'prolonged-converging',ja:`収束中として${sinceConverging}件の新情報を得た。結論を出す準備はできているか?`,en:`${sinceConverging} new item(s) while converging. Ready to conclude, or is the inquiry drifting?`});
+    if(sinceConverging>=10)out.push({key:'prolonged-converging',tier:TIER_CONTRADICTION,ja:`収束中として${sinceConverging}件の新情報を得た。結論を出す準備はできているか?`,en:`${sinceConverging} new item(s) while converging. Ready to conclude, or is the inquiry drifting?`});
   }
   // word.note IS a question (the primary inquiry intent); fire no-questions only when neither note nor sub-questions exist.
-  if(n>0&&qs.length===0&&!word.note)out.push({key:'no-questions',ja:'問いも意図も未設定。この探究は何を目指しているか?',en:'No question or intent set. What is this inquiry trying to resolve?'});
-  if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
-  if(unreviewed>=10)out.push({key:'unreviewed',ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
+  if(n>0&&qs.length===0&&!word.note)out.push({key:'no-questions',tier:TIER_NEGLECT,ja:'問いも意図も未設定。この探究は何を目指しているか?',en:'No question or intent set. What is this inquiry trying to resolve?'});
+  if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',tier:TIER_EVIDENCE,ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
+  if(unreviewed>=10)out.push({key:'unreviewed',tier:TIER_NEGLECT,ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
+  // Array.prototype.sort is stable (ES2019+): ties keep their push order, so the original
+  // within-tier priority (e.g. falsifier-seen before stale-*) is preserved unchanged.
+  out.sort((a,b)=>a.tier-b.tier);
   return out.slice(0,3);
 }
 // WORDSビュー俯瞰: 全探究の状態を一望する集計。裁決分布・要再検討・未確認・未収集・問答保留。純粋関数。
