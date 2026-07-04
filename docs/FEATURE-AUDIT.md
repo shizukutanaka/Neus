@@ -74,6 +74,30 @@
   Bonsai WebGPU オンデバイス推論。`Plan.md` §4.9〜4.10 に定義済みで、繰延は設計判断
   (ADR-0004 / ADR-0006)。欠陥ではないが「不足」としては最大の項目群。
 
+### 1-6. `summarizer.budget-exceeded` トースト連発【小規模・解決済み】
+
+- **問題**: `index.html` の `Summarizer.summarize()` は日次予算超過後、
+  `if(s.budget&&dailyCount>=s.budget){Bus.publish('summarizer.budget-exceeded',{});return null;}`
+  で毎回イベント発火していた。購読側 `Bus.subscribe('summarizer.budget-exceeded',()=>toast(...))`
+  に一度きりのガードが無く、`event.tagged`(新規イベントがタグ付けされるたび)ごとに同じ
+  エラートーストが連続表示されていた。POLL/COLLECT ALL で一括取り込みされると特に顕著。
+  トーストは `role="status"` の aria-live 領域のため、スクリーンリーダーが同一メッセージを
+  連続読み上げるアクセシビリティ上の問題も伴っていた。
+- **状態**: 修正済み。`Summarizer` の閉包内に日付キーごとの通知済みフラグを持たせ、
+  1日1回のみ通知するように変更。
+- **アンカー**: `Bus.publish('summarizer.budget-exceeded',{})` / `budgetNotified`
+
+### 1-7. BYOK 日次予算に `0` を設定すると意味が反転し無制限になる【小規模・解決済み】
+
+- **問題**: 設定画面 `<input type="number" id="set-byok-budget" min="0" value="100">` は `0`
+  の入力を許可していたが、保存時 `budget:Number($('#set-byok-budget').value)||0` を経て、
+  消費判定 `if(s.budget&&dailyCount>=s.budget)` の短絡評価により `budget:0`(falsy)は
+  予算チェック自体をスキップしていた。「日次0件に制限したい」つもりで `0` を入力したユーザーは、
+  意図と正反対に無制限に課金が発生していた。
+- **状態**: 修正済み。判定を `typeof s.budget==='number'&&dailyCount>=s.budget` へ変更し、
+  `0` を明示的な「予算ゼロ=常にブロック」として扱うようにした。
+- **アンカー**: `typeof s.budget==='number'&&dailyCount>=s.budget`
+
 ---
 
 ## 2. 過剰(却下済み — 再提案しないこと)
@@ -121,3 +145,5 @@
 2. **§1-2 キーワードアラート** — 既存通知経路の小拡張で費用対効果が高い。
 3. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。
 4. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
+
+§1-6・§1-7 は解決済み(2026-07-02)。

@@ -457,3 +457,20 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   記録すること)を回避したまま、他の全プロンプトの自己吟味圧力からも逃れられていた。
   → C18: `word.enabled===false&&verdict==='open'&&n>0` で `disabled-still-open`
   プロンプトを追加。「再開するか、保留として記録すべきか」を問う。§6.3 に追記。
+
+### 10.11 第9次監査 (round 22) — BYOK / Summarizer
+
+探究モデル以外の未監査領域(BYOK/Summarizer)をコード検証した。`docs/FEATURE-AUDIT.md` §1-6・
+§1-7 に対応。
+
+- W18: **`summarizer.budget-exceeded` のトースト連発** — 日次予算超過後、`event.tagged` の
+  たびに `Summarizer.summarize()` が同一イベントを再発火し、`role="status"` の同一エラー
+  トーストが連続表示(スクリーンリーダーの連続読み上げも伴う)。POLL/COLLECT ALL の
+  一括取り込みで顕著。
+  → C19: `Summarizer` 閉包内に `budgetNotified` フラグを追加し、`resetIfNewDay` で
+  `dailyCount` と同時にリセット。1日1回のみ通知。
+- W19: **BYOK 日次予算 `0` が「無制限」に反転する** — `<input type="number" min="0">` は
+  `0` を許可するが、判定 `if(s.budget&&dailyCount>=s.budget)` は `budget:0` を falsy として
+  スキップし、「0件に制限」の意図が「無制限」へ反転していた。
+  → C20: 判定を `typeof s.budget==='number'&&dailyCount>=s.budget` へ変更し、`0` を
+  明示的な「常にブロック」として扱う。

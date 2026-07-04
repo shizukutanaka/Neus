@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-hFLTnn8Qzi3cc6uVRE85tyAnWYXWB9L/xlYkLzNMZBE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-bqRU8/AEwjfdfHK2d3EwNceIcuIf0sc24uKT1qTFJx4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2226,11 +2226,14 @@ Bus.subscribe('event.stored',async(ev)=>{try{
 // ===== SUMMARIZER =======================================================
 const Summarizer=(()=>{
   let dailyCount=0;let dailyKey=new Date().toISOString().slice(0,10);let loaded=false;
+  // その日は既に予算超過を通知済みか。無いと event.tagged のたび(ingest 1件ごと)に
+  // 同一のエラートーストが連発し、role="status" の aria-live 領域を連続読み上げさせる。
+  let budgetNotified=false;
   // 予算カウンタは IndexedDB に永続化する。これが無いとリロードで dailyCount が 0 に
   // 戻り、日次予算(BYOK 課金上限)がページ再読込だけで回避できてしまう。
   async function persist(){await Store.putSetting('summary-budget',{key:dailyKey,count:dailyCount});}
   async function load(){const b=await Store.getSetting('summary-budget');const today=new Date().toISOString().slice(0,10);if(b&&b.key===today){dailyKey=today;dailyCount=b.count||0;}else{dailyKey=today;dailyCount=0;}loaded=true;}
-  async function resetIfNewDay(){const today=new Date().toISOString().slice(0,10);if(today!==dailyKey){dailyKey=today;dailyCount=0;await persist();}}
+  async function resetIfNewDay(){const today=new Date().toISOString().slice(0,10);if(today!==dailyKey){dailyKey=today;dailyCount=0;budgetNotified=false;await persist();}}
   async function callAnthropic(prompt,s){const res=await fetch(CONFIG.byokDefaults.anthropic.endpoint,{method:'POST',headers:{'content-type':'application/json','x-api-key':s,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.anthropic.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`anthropic_${res.status}`);return((await res.json()).content?.[0]?.text||'');}
   async function callOpenAI(prompt,s){const res=await fetch(CONFIG.byokDefaults.openai.endpoint,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.openai.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`openai_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
   async function callGemini(prompt,s){const model=(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.gemini.model;const url=CONFIG.byokDefaults.gemini.endpoint.replace('{model}',model)+`?key=${encodeURIComponent(s)}`;const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:400}})});if(!res.ok)throw new Error(`gemini_${res.status}`);return((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'');}
@@ -2239,7 +2242,12 @@ const Summarizer=(()=>{
     await resetIfNewDay();const s=await Store.getSetting('byok');
     if(!s?.enabled)return null;
     const apiKey=await getApiKey();if(!apiKey)return null;
-    if(s.budget&&dailyCount>=s.budget){Bus.publish('summarizer.budget-exceeded',{});return null;}
+    // typeof チェック(falsy判定ではない): budget:0 は「日次0件に制限」の明示的な意図であり、
+    // 0 は falsy なので `s.budget&&...` だと無視され無制限になってしまう(意味の反転)。
+    if(typeof s.budget==='number'&&dailyCount>=s.budget){
+      if(!budgetNotified){budgetNotified=true;Bus.publish('summarizer.budget-exceeded',{});}
+      return null;
+    }
     const prompt=CONFIG.summaryPrompt.replace('{title}',ev.content.title).replace('{content}',(ev.content.body||ev.content.snippet||'').slice(0,4000));
     let text;
     try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){Bus.publish('summarizer.error',{ev,error:err.message});return null;}

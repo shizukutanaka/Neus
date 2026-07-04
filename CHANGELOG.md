@@ -131,6 +131,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **only-research プロンプト**: ソクラテス式問答法の第4ラウンドで発見した非対称性。`no-research`(証拠が全て discussion/other=一次研究皆無)には「事実か意見か」と問うプロンプトがあるのに、その裏返し(証拠が全て research 層のみで報道・議論皆無)には何の反応も無かった。純粋に学術論文のみに基づく結論は実世界での検証を経ていない可能性がある。`tiers.every(t=>t.tier==='research')` で追加(no-research とは構造上排他的) / Add an only-research prompt, symmetric to no-research: evidence composed entirely of academic papers with zero press/discussion coverage now surfaces a reflection on whether it's been validated in practice
 - **disabled-still-open プロンプト**: ソクラテス式問答法の第5ラウンドで発見した非対称性。探究モデルは至る所で誠実さを強制するが、`word.enabled=false`(収集無効化)は裁決に何の作用も持たず `socraticPrompts` から一度も参照されていなかった。ユーザーは収集を止めるだけで `open` のまま探究を静かに放棄でき、`suspended`(保留)という誠実な明示的選択を回避したまま他の全プロンプトの自己吟味圧力からも逃れられていた。無効化かつ未裁決かつ証拠有りで「再開するか、保留として記録すべきか」を問うプロンプトを追加 / Add a disabled-still-open prompt: disabling collection no longer offers a silent escape from the verdict-honesty pressure the rest of the inquiry model applies
 
+### Fixed
+- **BYOK 日次予算 `0` が「無制限」に反転していた**: `budget:0` は falsy 判定 `if(s.budget&&dailyCount>=s.budget)` によりスキップされ、「日次0件に制限」の意図が正反対の「無制限」になっていた。判定を `typeof s.budget==='number'&&dailyCount>=s.budget` へ変更し、`0` を明示的な「常にブロック」として扱うよう修正 / Fix BYOK daily budget: setting it to 0 no longer inverts to "unlimited" — a typeof check replaces the falsy check so 0 is honored as "always block"
+- **要約予算超過トーストの連発**: 日次予算超過後、`event.tagged` のたびに同一のエラートーストが再表示されていた(`role="status"` のため読み上げも連続)。POLL/COLLECT ALL の一括取り込みで顕著。`Summarizer` に日付キー単位の通知済みフラグを追加し、1日1回のみ通知するよう修正 / Fix summarizer budget-exceeded toast spam: notify at most once per day instead of once per tagged event
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)
