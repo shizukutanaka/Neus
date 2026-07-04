@@ -136,6 +136,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **要約予算超過トーストの連発**: 日次予算超過後、`event.tagged` のたびに同一のエラートーストが再表示されていた(`role="status"` のため読み上げも連続)。POLL/COLLECT ALL の一括取り込みで顕著。`Summarizer` に日付キー単位の通知済みフラグを追加し、1日1回のみ通知するよう修正 / Fix summarizer budget-exceeded toast spam: notify at most once per day instead of once per tagged event
 - **socraticPrompts の push 順による構造的飢餓**: 約20の発火条件が push 順の先頭3件で切られていたため、無効化+問い未設定+ソース沈黙+未確認多数といった「よくある放置状態」で同時成立する条件のうち、関数後段のプロンプト(verdict-churn・resolved-from-agnostic・disabled-still-open 等)が構造的に一度も表示されなかった。関数冒頭の既存コメント「結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り」を tier 番号として数値化し、push 順ソートではなく tier 昇順の安定ソートで並べ替えてから上位3件を返すよう変更(同一 tier 内は既存の push 順=優先意図を維持) / Fix socraticPrompts starvation: prompts are now stable-sorted by a priority tier (matching the function's own documented priority order) before being capped to 3, instead of a raw push-order cutoff that structurally starved out later-declared prompts
 
+### Added
+- **キーワード検知 OS アラート**: `Plan.md` §4.9 (v1.1) 記載の未実装項目。`KeywordRules` の WATCH ルールに独立した `notify` 真偽値を追加(既存の star/highlight/tag アクションと併用可能)。簡易UIのチェックボックスを ON にすると保存時に既存の `AutoSync.requestNotificationPerm()` を呼ぶ opt-in 設計。block によるアーカイブ後は抑制(既存の block優先規約と一貫)し、共有 tag `'neus-watch'` により連続一致で通知が積み上がらず最新の一致に置き換わる / Add opt-in OS notifications for KeywordRules WATCH matches, reusing the existing notification-permission flow; suppressed when a block rule archives the event, and coalesced via a shared notification tag so matches don't pile up
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)

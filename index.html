@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-qUTd2Fd/e+GtK4QlNekoVyW/aXP49X9YOTdn8mhUqLo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-FZjrFUgt+Nqj3ga4vwoH+E+ySKmi/d8qYou8jLRmioU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -586,6 +586,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
       <option value="star">自動スター</option>
       <option value="tag">自動タグ追加</option>
     </select>
+    <label><input type="checkbox" id="kw-watch-notify"> 一致時にOS通知(要許可)</label>
     <label for="kw-watch-chipinput" id="lbl-kw-watch">キーワード(入力してEnter)</label>
     <div class="chip-field" id="kw-watch-chips" data-kind="watch">
       <input type="text" id="kw-watch-chipinput" class="chip-input" placeholder="Rust と入力 → Enter" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" inputmode="text" aria-label="WATCHキーワードを追加">
@@ -2070,6 +2071,12 @@ Bus.subscribe('event.normalized',async(ev)=>{
     const matched=KeywordRules.evaluate(ev);
     const skip=KeywordRules.apply(ev,matched);
     if(skip){Bus.publish('event.blocked',{ev,reason:'keyword-rule',patterns:matched.block.map(r=>r.pattern)});return;}
+    // WATCH検知アラート(opt-in): block によるアーカイブ後は watch アクション同様に抑制する
+    // (block優先の既存規約と一貫)。同一 tag で最新の一致に置き換わり通知が積み上がらない。
+    if(!ev.state.archived&&Notification.permission==='granted'){
+      const notifyRule=matched.watch.find(r=>r.notify);
+      if(notifyRule){try{new Notification(`Neus — ${notifyRule.pattern}`,{body:ev.content.title||'',tag:'neus-watch'});}catch{}}
+    }
     await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
   }catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}
 });
@@ -3821,6 +3828,7 @@ async function openKeywordsModal(){
   const advBlock=r.block.filter(rl=>!isSimple(rl));
   // 単純ルールのaction共通値を取得(なければデフォルト)
   $('#kw-watch-action').value=simpleWatch[0]?.action||'highlight';
+  $('#kw-watch-notify').checked=!!simpleWatch[0]?.notify;
   $('#kw-block-action').value=simpleBlock[0]?.action||'archive';
   kwSetChips('watch',simpleWatch.map(rl=>rl.pattern));
   kwSetChips('block',simpleBlock.map(rl=>rl.pattern));
@@ -3961,8 +3969,11 @@ $('#word-list').addEventListener('keydown',(e)=>{
 
 $('#kw-save').addEventListener('click',async()=>{
   const watchAction=$('#kw-watch-action').value;
+  const watchNotify=$('#kw-watch-notify').checked;
   const blockAction=$('#kw-block-action').value;
-  const watchSimple=kwGetChips('watch').map(p=>({pattern:p,mode:'contains',scope:'all',case:false,action:watchAction}));
+  // 通知はopt-in: チェック時のみ許可をリクエスト(既存の AutoSync.requestNotificationPerm を再利用)。
+  if(watchNotify)await AutoSync.requestNotificationPerm();
+  const watchSimple=kwGetChips('watch').map(p=>({pattern:p,mode:'contains',scope:'all',case:false,action:watchAction,notify:watchNotify}));
   const blockSimple=kwGetChips('block').map(p=>({pattern:p,mode:'contains',scope:'all',case:false,action:blockAction}));
   let advWatch=[],advBlock=[];
   const advText=$('#kw-adv-input').value.trim();

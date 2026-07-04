@@ -492,3 +492,16 @@ OPML import / Conditional GET / AutoSync / 各種 a11y。詳細は README 参照
   安定ソートのため同一 tier 内の push 順=既存の優先意図は無変更)。各 if/else-if 内の
   既存の相互排他性(falsifier-seen が stale 系を抑制、confirmed-certain と no-falsifier の
   排他等)も無変更。`docs/FEATURE-AUDIT.md` §1-1 を解決済みへ更新。
+
+### 10.13 第11次監査 (round 24) — キーワード検知 OS アラート(docs/FEATURE-AUDIT.md §1-2)
+
+`Plan.md` §4.9 (v1.1) の「通知 / アラート(購読キーワード検知)」に対応。`KeywordRules` の
+WATCH ルールは star/highlight/tag のみで OS 通知経路が無かった。
+
+- C22: WATCH ルールに独立した `notify` 真偽値を追加(既存の `action` と排他ではなく併用可能
+  — 「スターしつつ通知」が自然な組み合わせのため)。簡易UIの `#kw-watch-notify` チェックボックス
+  で ON にすると保存時に `AutoSync.requestNotificationPerm()`(既存ヘルパーを再利用、
+  新規実装なし)を呼ぶ opt-in 設計。パイプラインでは block によるアーカイブ後は抑制
+  (star/highlight/tag と同じ block優先規約、`ev.state.archived` ガード)し、
+  共有 tag `'neus-watch'` で通知するため連続一致で通知が積み上がらず最新の一致に置き換わる。
+  `docs/FEATURE-AUDIT.md` §1-2 を解決済みへ更新。

@@ -46,14 +46,20 @@
 - **アンカー**: `const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;` /
   `out.sort((a,b)=>a.tier-b.tier);`
 
-### 1-2. キーワード検知 OS アラート【小〜中規模】
+### 1-2. キーワード検知 OS アラート【解決済み】
 
-- **問題**: `Plan.md` §4.9 (v1.1) に「通知 / アラート(購読キーワード検知)」とあるが未実装。
-  現状 `KeywordRules` の WATCH ルールは一致時に star / highlight / tag しかできず、
-  OS 通知は `AutoSync` の「新着 N 件」通知(内容非依存)しか存在しない。
-- **実装の入口**: WATCH 一致時に既存の通知経路(`new Notification(...)` を使う
-  periodic-poll-request ハンドラ付近のパターン)を拡張する。通知は opt-in にすること。
-- **アンカー**: `KeywordRules` / `matched.watch` / `'neus-new'`(通知 tag)
+- **問題**: `Plan.md` §4.9 (v1.1) に「通知 / アラート(購読キーワード検知)」とあったが未実装
+  だった。`KeywordRules` の WATCH ルールは一致時に star / highlight / tag しかできず、
+  OS 通知は `AutoSync` の「新着 N 件」通知(内容非依存)しか存在しなかった。
+- **状態**: 修正済み。WATCH ルールに独立した `notify` 真偽値フィールドを追加(既存の
+  `action`(star/highlight/tag)とは排他ではなく併用可能 — 「スターしつつ通知」の
+  ような組み合わせが自然なため)。簡易UIに `#kw-watch-notify` チェックボックスを追加し、
+  ON で保存すると `AutoSync.requestNotificationPerm()`(既存の許可リクエストヘルパーを再利用)
+  を呼ぶ。パイプラインは block によるアーカイブ後は抑制(star/highlight/tag と同じ block優先
+  規約)し、同一 tag `'neus-watch'` で通知を出すため連続一致で通知が積み上がらない
+  (最新の一致に置き換わる)。
+- **アンカー**: `id="kw-watch-notify"` / `const notifyRule=matched.watch.find(r=>r.notify);` /
+  `tag:'neus-watch'`
 
 ### 1-3. イベント間の関連自動リンク【中規模・要 ADR】
 
@@ -150,8 +156,7 @@
 
 ## 4. 推奨着手順
 
-1. **§1-2 キーワードアラート** — 既存通知経路の小拡張で費用対効果が高い。次の最優先候補。
-2. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。
-3. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
+1. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。次の最優先候補。
+2. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
 
-§1-1・§1-6・§1-7 は解決済み(2026-07-02)。残る未対応は §1-2・§1-3・§1-4・§1-5。
+§1-1・§1-2・§1-6・§1-7 は解決済み(2026-07-02)。残る未対応は §1-3・§1-4・§1-5。
