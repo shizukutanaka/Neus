@@ -114,6 +114,23 @@
   `0` を明示的な「予算ゼロ=常にブロック」として扱うようにした。
 - **アンカー**: `typeof s.budget==='number'&&dailyCount>=s.budget`
 
+### 1-8. `event.normalized` の hash 重複レコード競合【小規模・解決済み】
+
+- **問題**: `Store.findByHash`→`Store.putEvent` は非アトミックな check-then-act。
+  `Bus.publish` は fire-and-forget(購読ハンドラを await しない)で、`_collectOne` は
+  1単語の全有効フィードを `Promise.all` で並行取得するため、同一記事が2つの異なる
+  ソース(例: Google News と Hatena の両方)から取得されると、2つの `event.normalized`
+  呼び出しが両方とも `findByHash` で「未存在」を読んでから書き込み、重複レコードを
+  作り得た。`hash` インデックスは意図的に `unique:false`(unique 制約にすると、この
+  バグに起因する既存の重複ハッシュを持つインストールで IDB スキーマアップグレード自体が
+  失敗するリスクがあり、競合そのものより危険)。
+- **状態**: 修正済み。同一 hash の処理をインメモリの `Map` ベースゲートで直列化。
+  後続の呼び出しは先行する処理の完了を待ってから `findByHash` を再評価し、正しく
+  「既存」ヒットとして autoTag マージ経路に入る(タグ結合を失わない)。
+  `InformationEvent` のスキーマ・IndexedDB インデックス・`links[]` の意味論には
+  一切触れない、純粋な内部並行制御機構(データモデル変更ではない)。
+- **アンカー**: `const inFlightHash=new Map();` / `if(prior)await prior.catch(()=>{});`
+
 ---
 
 ## 2. 過剰(却下済み — 再提案しないこと)

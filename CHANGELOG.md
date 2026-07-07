@@ -139,6 +139,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Added
 - **キーワード検知 OS アラート**: `Plan.md` §4.9 (v1.1) 記載の未実装項目。`KeywordRules` の WATCH ルールに独立した `notify` 真偽値を追加(既存の star/highlight/tag アクションと併用可能)。簡易UIのチェックボックスを ON にすると保存時に既存の `AutoSync.requestNotificationPerm()` を呼ぶ opt-in 設計。block によるアーカイブ後は抑制(既存の block優先規約と一貫)し、共有 tag `'neus-watch'` により連続一致で通知が積み上がらず最新の一致に置き換わる / Add opt-in OS notifications for KeywordRules WATCH matches, reusing the existing notification-permission flow; suppressed when a block rule archives the event, and coalesced via a shared notification tag so matches don't pile up
 
+### Fixed
+- **`event.normalized` の hash 重複レコード競合**: `Store.findByHash`→`Store.putEvent` が非アトミックな check-then-act で、`Bus.publish` は fire-and-forget(購読ハンドラを await しない)。`_collectOne` が1単語の全有効フィードを `Promise.all` で並行取得するため、同一記事が2つの異なるソースから取得されると、2つの `event.normalized` 呼び出しが両方とも「未存在」を読んでから書き込み、重複レコードを作り得た。同一 hash の処理をインメモリの `Map` ベースゲートで直列化し、後続の呼び出しは先行の完了を待ってから正しく「既存」ヒットの autoTag マージ経路に入るよう修正(タグ結合を失わない)/ Fix a hash-collision race in event.normalized: concurrent processing of the same article from two sources could create duplicate records; in-memory serialization per hash now ensures the second call correctly merges into the first instead
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)

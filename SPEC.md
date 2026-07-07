@@ -505,3 +505,23 @@ WATCH ルールは star/highlight/tag のみで OS 通知経路が無かった�
   (star/highlight/tag と同じ block優先規約、`ev.state.archived` ガード)し、
   共有 tag `'neus-watch'` で通知するため連続一致で通知が積み上がらず最新の一致に置き換わる。
   `docs/FEATURE-AUDIT.md` §1-2 を解決済みへ更新。
+
+### 10.14 第12次監査 (round 25) — ShareTarget/コア取り込みパイプラインの並行性
+
+ADR-0020(関連イベント自動リンク)は PROPOSED のまま実装を見合わせた(対話承認ツールの
+失敗を承認とみなしたのは誤りと判断し撤回、`docs/FEATURE-AUDIT.md` §1-3 は未解決に復帰)。
+その過程で ShareTarget/コア取り込みパイプラインを監査し、別の独立した欠陥を発見・修正した。
+
+- W20: **`event.normalized` の hash 重複レコード競合** — `Store.findByHash`→
+  `Store.putEvent` が非アトミックな check-then-act。`Bus.publish` は fire-and-forget
+  (購読ハンドラを await しない)で、`_collectOne` は1単語の全有効フィードを
+  `Promise.all` で並行取得するため、同一記事が2つの異なるソースから取得されると、
+  2つの `event.normalized` 呼び出しが両方とも「未存在」を読んでから書き込み、
+  重複レコードを作り得た。`hash` インデックスは意図的に `unique:false`
+  (unique 制約は、このバグに起因する既存の重複ハッシュを持つインストールで
+  IDB スキーマアップグレード自体を失敗させるリスクがあり、競合そのものより危険)。
+  → C24: 同一 hash の処理をインメモリの `Map` ベースゲートで直列化。後続の呼び出しは
+  先行する処理の完了を待ってから `findByHash` を再評価し、正しく「既存」ヒットとして
+  autoTag マージ経路に入る(タグ結合を失わない)。`InformationEvent` のスキーマ・
+  IndexedDB インデックス・`links[]` の意味論には触れない内部並行制御機構のため、
+  データモデル変更の承認ゲート対象外と判断。`docs/FEATURE-AUDIT.md` §1-8 に追記。
