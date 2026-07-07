@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-FZjrFUgt+Nqj3ga4vwoH+E+ySKmi/d8qYou8jLRmioU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-fUBQ9krRjt+Zsh8AVPvH+/V8ebAK/JeyEKrxLiN3U5Q='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2049,7 +2049,19 @@ Bus.subscribe('inbound.fetched',async({raw,source})=>{
   }catch(err){console.error('[inbound.fetched]',err);Bus.publish('inbound.error',{source,error:'normalize'});}
 });
 
+// findByHash→putEvent が非アトミックなため、同一記事が複数ソースから並行取得されると
+// (Bus.publish は fire-and-forget で await しない。_collectOne の Promise.all で並行
+// フェッチした複数フィードに同じ記事が出現するのが典型例)、両方の event.normalized 呼び出しが
+// 「未存在」を読んでから書き込み、重複レコードを作り得た。同一 hash の処理を Promise で
+// 直列化することで、後続の呼び出しは先行の書き込み完了を待ってから findByHash を再評価し、
+// 正しく「既存」ヒットとして autoTag マージ経路に入る(タグ結合を失わない)。
+// 複数タブでの完全同時実行までは対象としない(個人利用規模では稀すぎて費用対効果が低い)。
+const inFlightHash=new Map();
 Bus.subscribe('event.normalized',async(ev)=>{
+  const prior=inFlightHash.get(ev.hash);
+  if(prior)await prior.catch(()=>{});
+  let settle;const gate=new Promise(r=>settle=r);
+  inFlightHash.set(ev.hash,gate);
   try{
     const existing=await Store.findByHash(ev.hash);
     if(existing){
@@ -2079,6 +2091,7 @@ Bus.subscribe('event.normalized',async(ev)=>{
     }
     await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
   }catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}
+  finally{if(inFlightHash.get(ev.hash)===gate)inFlightHash.delete(ev.hash);settle();}
 });
 
 Bus.subscribe('inbound.error',({source,error})=>{console.warn(`[RSS] ${source.name}: ${error}`);});
