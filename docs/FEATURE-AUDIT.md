@@ -49,6 +49,11 @@
   保証されない条件に小数のサブ優先度(`TIER_CONTRADICTION+0.1` 等)を付与して解消。
 - **アンカー**: `const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;` /
   `out.sort((a,b)=>a.tier-b.tier);` / `tier:TIER_CONTRADICTION+0.1`
+- **既知の残債**: 上記の修正は starvation を解消したが、`socraticPrompts` 自体は
+  CLAUDE.md の関数 ≤40行規約を約95行で超過したままである(条件分岐約20件+tier
+  優先順位の説明コメント)。小数サブ優先度の付与は行数を削減しない。真に解消するには
+  tier ごとの評価を独立関数へ切り出す refactor が必要 — 詳細は `SPEC.md` の
+  「記録のみ(修正見送り)」を参照。
 
 ### 1-2. キーワード検知 OS アラート【解決済み】
 
