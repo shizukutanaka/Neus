@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-fUBQ9krRjt+Zsh8AVPvH+/V8ebAK/JeyEKrxLiN3U5Q='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-uWqEsJsfcHgY5N4DrJPyMQ2TcDne8KlxKuZ7wRaqw8M='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1768,11 +1768,15 @@ const ShareTarget={
     if(safeHref(nu)==='#'){toast(currentLang==='ja'?'無効なURL':'invalid url','err');return;}
     const displayTitle=title||nu;
     const hash=await sha256(nu+'|'+displayTitle);
-    const existing=await Store.findByHash(hash);
-    if(existing){toast(currentLang==='ja'?'既に保存済み':'already saved');return;}
-    const ev={id:uuid(),timestamp:Date.now(),publishedAt:undefined,source:{id:'share',type:'share',name:currentLang==='ja'?'共有':'Shared',url:undefined},content:{title:displayTitle,snippet:'',summary:undefined,body:undefined},meta:{autoTags:[],userTags:[],score:70,lang:undefined,author:undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:nu,hash};
-    await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
-    toast(t('share.added'),'ok');
+    // findByHash→putEvent の非アトミック性は withHashGate で直列化する(RSS取り込みと
+    // 同じ hash に同時到達しても重複レコードを作らない。event.normalized と共有)。
+    await withHashGate(hash,async()=>{
+      const existing=await Store.findByHash(hash);
+      if(existing){toast(currentLang==='ja'?'既に保存済み':'already saved');return;}
+      const ev={id:uuid(),timestamp:Date.now(),publishedAt:undefined,source:{id:'share',type:'share',name:currentLang==='ja'?'共有':'Shared',url:undefined},content:{title:displayTitle,snippet:'',summary:undefined,body:undefined},meta:{autoTags:[],userTags:[],score:70,lang:undefined,author:undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:nu,hash};
+      await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
+      toast(t('share.added'),'ok');
+    });
   },
 };
 
@@ -1819,9 +1823,13 @@ const RSSPoller=(()=>{
         // Google News appends " - {publisher}" to every headline and supplies the publisher
         // in the item's <source> element. Strip exactly that suffix: cleaner display, and the
         // bare headline title-dedups against the same article fetched directly (Qiita/Zenn/HN).
-        // General + safe: only fires when the title ends with its own <source> name; no-op otherwise.
-        const pub=item.querySelector('source')?.textContent?.trim()||'';
-        if(pub&&title.length>pub.length+3&&title.endsWith(' - '+pub))title=title.slice(0,-(pub.length+3)).trim();
+        // Scoped to Google News specifically via source.url — <source> is a generic RSS 2.0
+        // element any aggregator feed may populate; a custom user-added feed (#src-add) whose
+        // own house style is "Title - PublisherName" would otherwise get silently truncated.
+        if(source?.url?.includes('news.google.com')){
+          const pub=item.querySelector('source')?.textContent?.trim()||'';
+          if(pub&&title.length>pub.length+3&&title.endsWith(' - '+pub))title=title.slice(0,-(pub.length+3)).trim();
+        }
         const summaryRaw=get('description')||get('summary')||get('content');
         const summary=decodeEntities(summaryRaw).replace(/<[^>]+>/g,'').trim().slice(0,500);
         const pubDate=get('pubDate')||get('published')||get('updated')||get('dc\\:date');
@@ -1901,6 +1909,10 @@ const RSSPoller=(()=>{
 // 単語(watchword)を登録し、その単語に関する情報をRSS検索フィード経由で自動収集する。
 // 各ソースは検索クエリ付きのRSS/Atomを返すため、既存の /rss プロキシをそのまま再利用する。
 // Wikipedia要約のみJSONのため、ワーカーの /json 中継(ドメイン許可リスト付き)を使う。
+// トピックスラグ系ソース(Zenn/GitHub)が共有する前処理。プラットフォーム別の許可文字・
+// 連結規則(ハイフン有無等)はそれぞれの build() 内の .replace() に残す(正規表現自体は
+// 各プラットフォームの実際のスラグ規約に合わせて異なるため統合しない)。
+const normalizeSlugInput=(q)=>decodeURIComponent(q).trim().toLowerCase();
 const WORD_FEEDS={
   news:  {label:'Google News', build:(q,lang)=>{const hl=lang==='ja'?'ja':'en-US',gl=lang==='ja'?'JP':'US',ceid=lang==='ja'?'JP:ja':'US:en';return`https://news.google.com/rss/search?q=${q}&hl=${hl}&gl=${gl}&ceid=${ceid}`;}},
   reddit:{label:'Reddit',      build:(q)=>`https://www.reddit.com/search.rss?q=${q}&sort=new`},
@@ -1919,7 +1931,9 @@ const WORD_FEEDS={
     parse:(text)=>{const d=JSON.parse(text);return Array.isArray(d)?d.map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)})):[];}},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
-  zenn:  {label:'Zenn', build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},
+  // topicStyle:true = トピックフィード設計(一致トピックが無ければ 404、取得失敗ではなく
+  // 沈黙として扱う。signalGaps の topicFeeds はこのフラグから構造的に導出する)。
+  zenn:  {label:'Zenn', topicStyle:true, build:(q)=>`https://zenn.dev/topics/${encodeURIComponent(normalizeSlugInput(q).replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/g,''))}/feed`},
   // はてなブックマーク: 全文検索 RSS。単一プラットフォームではなく日本語Web全体の被ブックマーク
   // 記事を横断的に拾う(Qiita/Zenn を補完)。検索語は verbatim(検索エンジン側が処理)。RSSのため /rss 流用。
   // users=3: 最低3ブックマークの品質フロア。「広く参照された記事」という役割に沿い、
@@ -1931,7 +1945,7 @@ const WORD_FEEDS={
   // 既存の /rss プロキシで取得可能(Worker 変更なし)。一致トピックが無ければ 404 →
   // signalGaps が「沈黙」として扱う(Zenn と同じトピックフィード設計)。
   // 英語のみ対応(GitHub Topics は日本語スラグを持たない)のため、日本語語のデフォルト OFF。
-  github:{label:'GitHub', build:(q)=>{const slug=decodeURIComponent(q).trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');return`https://github.com/topics/${encodeURIComponent(slug)}.atom`;}},
+  github:{label:'GitHub', topicStyle:true, build:(q)=>{const slug=normalizeSlugInput(q).replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'');return`https://github.com/topics/${encodeURIComponent(slug)}.atom`;}},
 };
 const WordCollector=(()=>{
   // 収集の同時実行ガード: 手動COLLECT / POLL / periodicsync が重なると同一フィードを
@@ -2051,17 +2065,38 @@ Bus.subscribe('inbound.fetched',async({raw,source})=>{
 
 // findByHash→putEvent が非アトミックなため、同一記事が複数ソースから並行取得されると
 // (Bus.publish は fire-and-forget で await しない。_collectOne の Promise.all で並行
-// フェッチした複数フィードに同じ記事が出現するのが典型例)、両方の event.normalized 呼び出しが
-// 「未存在」を読んでから書き込み、重複レコードを作り得た。同一 hash の処理を Promise で
-// 直列化することで、後続の呼び出しは先行の書き込み完了を待ってから findByHash を再評価し、
-// 正しく「既存」ヒットとして autoTag マージ経路に入る(タグ結合を失わない)。
+// フェッチした複数フィードに同じ記事が出現するのが典型例)、複数の書き込み経路が
+// 「未存在」を読んでから書き込み、重複レコードを作り得た。findByHash→putEvent を伴う
+// 全ての書き込み経路(event.normalized・ShareTarget.ingest・ドシエ import)がこの
+// 共有ヘルパーを経由することで、将来どの経路を追加してもこの保護を自動的に受ける
+// (単一箇所に限定した場当たり的なガードにしない)。
+//
+// map への書き込みは await の前に同期的に行う(Promise チェーンを .then() で構築する
+// 標準的な keyed-mutex パターン)。3件以上の同時到着でも、後着の呼び出しは常に
+// 「その時点で map にある最新のチェーン」に正しく連結されるため、2者間だけでなく
+// N者間の直列化が保証される(先行が settle した後に次を map から読む方式だと、
+// 複数の後着呼び出しが同じ「先行」を見て互いを追い越し得るため不十分)。
+const hashGates=new Map();
+function withHashGate(hash,fn){
+  const chained=(hashGates.get(hash)||Promise.resolve()).then(fn,fn);
+  hashGates.set(hash,chained);
+  chained.catch(()=>{}).finally(()=>{if(hashGates.get(hash)===chained)hashGates.delete(hash);});
+  return chained;
+}
 // 複数タブでの完全同時実行までは対象としない(個人利用規模では稀すぎて費用対効果が低い)。
-const inFlightHash=new Map();
-Bus.subscribe('event.normalized',async(ev)=>{
-  const prior=inFlightHash.get(ev.hash);
-  if(prior)await prior.catch(()=>{});
-  let settle;const gate=new Promise(r=>settle=r);
-  inFlightHash.set(ev.hash,gate);
+
+// WATCH検知アラート(opt-in): block によるアーカイブ後は watch アクション同様に抑制する
+// (block優先の既存規約と一貫)。同一 tag で最新の一致に置き換わり通知が積み上がらない。
+// 独立レビュー指摘: 呼び出し元(event.normalized)にインラインで書くとネストが CLAUDE.md の
+// 上限(≤3)を超えるため、単体の小関数として切り出す。
+function notifyWatchMatch(ev,matched){
+  if(ev.state.archived||Notification.permission!=='granted')return;
+  const notifyRule=matched.watch.find(r=>r.notify);
+  if(!notifyRule)return;
+  try{new Notification(`Neus — ${notifyRule.pattern}`,{body:ev.content.title||'',tag:'neus-watch'});}catch{}
+}
+
+Bus.subscribe('event.normalized',(ev)=>withHashGate(ev.hash,async()=>{
   try{
     const existing=await Store.findByHash(ev.hash);
     if(existing){
@@ -2083,16 +2118,10 @@ Bus.subscribe('event.normalized',async(ev)=>{
     const matched=KeywordRules.evaluate(ev);
     const skip=KeywordRules.apply(ev,matched);
     if(skip){Bus.publish('event.blocked',{ev,reason:'keyword-rule',patterns:matched.block.map(r=>r.pattern)});return;}
-    // WATCH検知アラート(opt-in): block によるアーカイブ後は watch アクション同様に抑制する
-    // (block優先の既存規約と一貫)。同一 tag で最新の一致に置き換わり通知が積み上がらない。
-    if(!ev.state.archived&&Notification.permission==='granted'){
-      const notifyRule=matched.watch.find(r=>r.notify);
-      if(notifyRule){try{new Notification(`Neus — ${notifyRule.pattern}`,{body:ev.content.title||'',tag:'neus-watch'});}catch{}}
-    }
+    notifyWatchMatch(ev,matched);
     await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
   }catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}
-  finally{if(inFlightHash.get(ev.hash)===gate)inFlightHash.delete(ev.hash);settle();}
-});
+}));
 
 Bus.subscribe('inbound.error',({source,error})=>{console.warn(`[RSS] ${source.name}: ${error}`);});
 
@@ -2460,10 +2489,13 @@ function signalGaps(word,events){
   const errs=word.lastErrors||{};
   const active=[],silent=[],errored=[];
   // 取得失敗(errored)は沈黙(silent)と区別する。失敗は「空白」ではなく「未知」。
-  // 例外: Zenn/GitHub はトピックフィード設計で、一致トピックが無ければ 404 が返る(設計上)。
-  // これは「取得不能な死角」ではなく「この語に該当トピック無し=信号なし」なので沈黙(silent)
-  // に分類する。他ソースは 0 件でも 404 を返さないため、この特例はトピックフィードの http_404 のみ。
-  const topicFeeds=new Set([WORD_FEEDS.zenn.label,WORD_FEEDS.github.label]);
+  // 例外: トピックフィード設計(WORD_FEEDS の topicStyle:true)のソースは、一致トピックが
+  // 無ければ 404 が返る(設計上)。これは「取得不能な死角」ではなく「この語に該当トピック
+  // 無し=信号なし」なので沈黙(silent)に分類する。他ソースは 0 件でも 404 を返さないため、
+  // この特例はトピックフィードの http_404 のみ。独立レビュー指摘: 3つ目のトピックフィード
+  // ソースを追加する際にこの Set を個別に更新し忘れないよう、WORD_FEEDS 自体から構造的に
+  // 導出する(新規ソース追加は WORD_FEEDS への1行のみで完結する)。
+  const topicFeeds=new Set(Object.values(WORD_FEEDS).filter(f=>f.topicStyle).map(f=>f.label));
   const classify=(label,has)=>{
     const err=errs[label];
     if(err&&!(topicFeeds.has(label)&&err==='http_404'))errored.push({label,error:err});
@@ -2523,13 +2555,20 @@ function socraticPrompts(word,events){
   const unreviewed=newSinceReview(events,word.reviewedAt).length;
   const qs=(word.questions||[]);
   const openQs=openQuestions(word);
-  // 優先順位機構(第9次監査 W-priority): 全条件を5段階の tier に割り当て、push 順ではなく
-  // tier 昇順(同 tier 内は Array.sort の安定性により push 順を維持)で並べ替えてから上位3件を
-  // 返す。理由: 条件数が増えるにつれ、同一語で複数条件が同時に真になる場面(神経質でない
-  // 普通の「放置された語」でも disabled-still-open + no-questions + silence + unreviewed が
-  // 容易に共起する)で、関数後段の条件が構造的に一度も表示されない飢餓が起きていた。
+  // 優先順位機構(第9次監査 W-priority、独立レビューで補正): 全条件を5段階の tier に割り当て、
+  // push 順ではなく tier 昇順で並べ替えてから上位3件を返す。理由: 条件数が増えるにつれ、
+  // 同一語で複数条件が同時に真になる場面(disabled-still-open + no-questions + silence +
+  // unreviewed が容易に共起する)で、関数後段の条件が構造的に一度も表示されない飢餓が起きていた。
   // tier 自体は元々のコメント「結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り」を
-  // そのまま数値化したもの(1が最優先)。既存の各 if/else-if ブロック内の相互排他性は変更しない。
+  // そのまま数値化したもの(1が最優先)。
+  //
+  // 補正(独立レビューで発覚): 単に5段階を Array.sort するだけでは、同一 tier 内で
+  // 相互排他でない条件同士(例: TIER_CONTRADICTION は questions-remain/certain-unresolved/
+  // verdict-churn/... の7条件が独立に共起しうる)が Array.sort の安定性=push 順で
+  // タイブレークされ、tier 内で同じ飢餓が再発していた(3スロットを同一 tier の条件が
+  // 埋め尽くせば、他 tier は元の bug と同様に一度も出ない)。相互排他が保証されない条件は
+  // tier に小数のオフセットを足して個別の値にすることで、tier 内でも同順位を作らない
+  // (相互排他が既に保証されている組(if/else-if 一本化済み)はオフセット無しで共有可)。
   const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;
   // 最優先: 宣言した反証条件に該当しうる証拠が実際に届いたなら、それが最も鋭い論駁。
   // 漠然と「現れたか?」ではなく「該当する N 件がここにある」と具体的に突きつける。
@@ -2557,33 +2596,42 @@ function socraticPrompts(word,events){
   // no-research の対称形: 学術論文のみで報道・議論が一切無い場合、実世界での検証や
   // 実践知が欠けている可能性を問う(理論と実践の乖離)。
   if(tiers.length>0&&tiers.every(t=>t.tier==='research'))out.push({key:'only-research',tier:TIER_EVIDENCE,ja:'学術論文のみで、報道・議論が無い。実世界で検証されているか、理論に留まるか?',en:'Only academic papers — no press or discussion coverage. Validated in practice, or still theoretical?'});
+  // TIER_CONTRADICTION の8条件は相互排他ではない(例: certain-unresolved と
+  // disabled-still-open は open+certain+enabled=false の語で同時に成立しうる)。
+  // 独立レビューで、5段階の粗い tier だけでは同一 tier 内のタイブレークが push 順
+  // (=元のバグと同じ機構)に戻ってしまうと指摘されたため、各条件に一意な小数
+  // オフセットを与える(shifted-from-certain/-skeptical は verdict の値で相互排他が
+  // 保証されているため共有可)。
   if(verdict==='answered'&&openQs.length>0)out.push({key:'questions-remain',tier:TIER_CONTRADICTION,ja:'解決としたが、未解決の問いが残っている。本当に解決したか?',en:'Marked answered, yet open questions remain. Truly resolved?'});
-  if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',tier:TIER_CONTRADICTION,ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
+  if(prior==='certain'&&verdict==='open'&&n>=5)out.push({key:'certain-unresolved',tier:TIER_CONTRADICTION+0.1,ja:'確信して始めたが、まだ結論が出ていない。何が決め手に欠けるか?',en:'You began certain, yet reached no verdict. What is still missing?'});
   // 裁決の動揺: verdictHistory は変遷の記録として蓄積されるだけで、これまで振り返りの対象では
   // なかった。3件以上(=最低2往復)の変遷は、基準が一貫しているか証拠が真に不安定かを問う価値がある。
-  if((word.verdictHistory||[]).length>=3)out.push({key:'verdict-churn',tier:TIER_CONTRADICTION,ja:`裁決を${word.verdictHistory.length}回変更した。基準は一貫しているか、それとも証拠が本当に不安定なのか?`,en:`Verdict changed ${word.verdictHistory.length} times. Is your criteria consistent, or is the evidence genuinely unstable?`});
+  if((word.verdictHistory||[]).length>=3)out.push({key:'verdict-churn',tier:TIER_CONTRADICTION+0.2,ja:`裁決を${word.verdictHistory.length}回変更した。基準は一貫しているか、それとも証拠が本当に不安定なのか?`,en:`Verdict changed ${word.verdictHistory.length} times. Is your criteria consistent, or is the evidence genuinely unstable?`});
   // 認識の逆転: 先入観と正反対の結論になった場合のみ(可謬性の自己体験として最も価値が高い)。
-  if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',tier:TIER_CONTRADICTION,ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
-  if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',tier:TIER_CONTRADICTION,ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});
+  if(shift.shifted&&prior==='certain'&&verdict==='suspended')out.push({key:'shifted-from-certain',tier:TIER_CONTRADICTION+0.3,ja:'確信して始めたが保留になった。何があなたの確信を崩したか?',en:'You began certain, yet suspended. What eroded that certainty?'});
+  if(shift.shifted&&prior==='skeptical'&&(verdict==='answered'||verdict==='converging'))out.push({key:'shifted-from-skeptical',tier:TIER_CONTRADICTION+0.3,ja:'懐疑から始まり、収束した。疑念を覆したのは何か?',en:'You began skeptical, yet converged. What overcame the doubt?'});
   // agnostic/curious は PRIOR_DIRECTION が'open'のため shift.shifted を構造上決して立てない
   // (shifted は priorDir!=='open' を要求)。しかし agnostic は既定値 curious と違い、
   // 「これは知り得ない」という意図的な選択であり、それが確信的な結論に至ることは
   // certain/skeptical の逆転と同じくらい鋭い自己矛盾たりうる。curious は既定値で
   // ほぼ全ての語に該当し信号として薄まるため対象外(agnostic のみを特例化)。
-  if(prior==='agnostic'&&(verdict==='answered'||verdict==='converging'))out.push({key:'resolved-from-agnostic',tier:TIER_CONTRADICTION,ja:'「わからない」と始めたが、結論に至った。それは本当に知り得たのか、それとも決めつけただけか?',en:"You began agnostic ('unknowable'), yet reached a conclusion. Did you truly come to know it, or did you just decide?"});
+  if(prior==='agnostic'&&(verdict==='answered'||verdict==='converging'))out.push({key:'resolved-from-agnostic',tier:TIER_CONTRADICTION+0.4,ja:'「わからない」と始めたが、結論に至った。それは本当に知り得たのか、それとも決めつけただけか?',en:"You began agnostic ('unknowable'), yet reached a conclusion. Did you truly come to know it, or did you just decide?"});
   // 無効化による静かな放棄: enabled=false は収集を止めるだけで、裁決には何の作用もしない。
   // suspended(保留)という明示的な誠実さの選択があるのに、無効化すれば open のまま
   // 探究を静かに放棄でき、他の全プロンプトが強いる自己吟味の圧力を回避できてしまう。
-  if(word.enabled===false&&verdict==='open'&&n>0)out.push({key:'disabled-still-open',tier:TIER_CONTRADICTION,ja:'収集を無効化したが、探究はまだ探究中のまま。再開するか、保留として記録すべきか?',en:'Collection is disabled, yet the verdict remains open. Resume the inquiry, or record it as suspended?'});
+  if(word.enabled===false&&verdict==='open'&&n>0)out.push({key:'disabled-still-open',tier:TIER_CONTRADICTION+0.5,ja:'収集を無効化したが、探究はまだ探究中のまま。再開するか、保留として記録すべきか?',en:'Collection is disabled, yet the verdict remains open. Resume the inquiry, or record it as suspended?'});
   // 収束の長期停滞: 収束中のまま多くの証拠を蓄えているなら、結論を避けているか再考が必要。
   if(verdict==='converging'&&word.verdictAt){
     const sinceConverging=events.filter(e=>(e.timestamp||0)>word.verdictAt).length;
-    if(sinceConverging>=10)out.push({key:'prolonged-converging',tier:TIER_CONTRADICTION,ja:`収束中として${sinceConverging}件の新情報を得た。結論を出す準備はできているか?`,en:`${sinceConverging} new item(s) while converging. Ready to conclude, or is the inquiry drifting?`});
+    if(sinceConverging>=10)out.push({key:'prolonged-converging',tier:TIER_CONTRADICTION+0.6,ja:`収束中として${sinceConverging}件の新情報を得た。結論を出す準備はできているか?`,en:`${sinceConverging} new item(s) while converging. Ready to conclude, or is the inquiry drifting?`});
   }
   // word.note IS a question (the primary inquiry intent); fire no-questions only when neither note nor sub-questions exist.
   if(n>0&&qs.length===0&&!word.note)out.push({key:'no-questions',tier:TIER_NEGLECT,ja:'問いも意図も未設定。この探究は何を目指しているか?',en:'No question or intent set. What is this inquiry trying to resolve?'});
-  if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',tier:TIER_EVIDENCE,ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
-  if(unreviewed>=10)out.push({key:'unreviewed',tier:TIER_NEGLECT,ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
+  // silence は no-research/only-research と共起しうる(相互排他ではない)ため tier に
+  // +0.1 のオフセットを与え、同一 tier 内でのタイブレークを push 順の偶然に委ねない。
+  if(word.lastCollectedAt&&gaps.silent.length>0)out.push({key:'silence',tier:TIER_EVIDENCE+0.1,ja:`${gaps.silent.join(', ')} が沈黙。別の角度から探したか?`,en:`${gaps.silent.join(', ')} returned nothing. Have you looked elsewhere?`});
+  // no-questions と共起しうる(相互排他ではない)ため tier に +0.1 のオフセットを与える。
+  if(unreviewed>=10)out.push({key:'unreviewed',tier:TIER_NEGLECT+0.1,ja:`${unreviewed}件が未確認。読まずに判断していないか?`,en:`${unreviewed} unreviewed. Are you concluding without reading?`});
   // Array.prototype.sort is stable (ES2019+): ties keep their push order, so the original
   // within-tier priority (e.g. falsifier-seen before stale-*) is preserved unchanged.
   out.sort((a,b)=>a.tier-b.tier);
@@ -2883,8 +2931,12 @@ const WordExporter={
     let imported=0;
     for(const ev of (Array.isArray(dump.items)?dump.items:[])){
       if(!ev||!ev.hash||!ev.id)continue;
-      if(await Store.findByHash(ev.hash))continue;
-      await Store.putEvent(ev);FTSIndex.add(ev);imported++;
+      // withHashGate: 同じ hash へ書き込む他経路(RSS取り込み等)と直列化する。
+      const wasImported=await withHashGate(ev.hash,async()=>{
+        if(await Store.findByHash(ev.hash))return false;
+        await Store.putEvent(ev);FTSIndex.add(ev);return true;
+      });
+      if(wasImported)imported++;
     }
     await renderWordList();await refreshCounts();await renderView();
     toast(currentLang==='ja'?`「${word.term}」を取込(${imported}件)`:`imported "${word.term}" (${imported} items)`,'ok');

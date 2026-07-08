@@ -142,6 +142,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Fixed
 - **`event.normalized` の hash 重複レコード競合**: `Store.findByHash`→`Store.putEvent` が非アトミックな check-then-act で、`Bus.publish` は fire-and-forget(購読ハンドラを await しない)。`_collectOne` が1単語の全有効フィードを `Promise.all` で並行取得するため、同一記事が2つの異なるソースから取得されると、2つの `event.normalized` 呼び出しが両方とも「未存在」を読んでから書き込み、重複レコードを作り得た。同一 hash の処理をインメモリの `Map` ベースゲートで直列化し、後続の呼び出しは先行の完了を待ってから正しく「既存」ヒットの autoTag マージ経路に入るよう修正(タグ結合を失わない)/ Fix a hash-collision race in event.normalized: concurrent processing of the same article from two sources could create duplicate records; in-memory serialization per hash now ensures the second call correctly merges into the first instead
 
+### Fixed (独立した敵対的レビューで発見・修正、round 26)
+- **Google News タイトル剥がしが全 RSS ソースに無条件適用されていた**: 共有 `parseFeed` 内にあり `source` を見ていなかったため、ユーザー追加のカスタム RSS(`<source>` 要素を持つアグリゲータ系)のタイトルも誤って切り詰められ得た。`source?.url?.includes('news.google.com')` でスコープを限定 / Scope the Google News title-suffix strip to Google News feeds specifically (via source.url), instead of applying it inside the shared parseFeed() to every RSS/Atom source
+- **hash 重複ゲート自身が3者以上の同時到達で直列化に失敗していた**: 「先行を読んで await してから自分のゲートを map に書く」方式では、2番目・3番目の呼び出しが同じ「先行」を見た後に互いを追い越し得た。map への書き込みを await 前に同期的に行う keyed-promise-chain へ変更し、N者間の直列化を保証 / Fix the hash-collision gate itself: the original pattern only correctly serialized 2-way contention; a keyed-promise-chain now generalizes to N-way
+- **hash ゲートが event.normalized にしか適用されず、同じ非アトミック性を持つ `ShareTarget.ingest` とドシエ import ループが無防備だった**: 共有ヘルパー `withHashGate` を切り出し、findByHash→putEvent を伴う3経路全てが経由するよう統一 / Extend the hash-collision protection to ShareTarget.ingest and the dossier-import loop, not just event.normalized
+- **socraticPrompts の tier 優先順位機構(round 23)が tier 内タイブレークで飢餓を再現していた**: 同一 tier 内の条件は相互排他とは限らないため、tier が並ぶと Array.sort の安定性=push 順に戻り元のバグが tier 内で再発。相互排他が保証されない条件に小数のサブ優先度を付与し解消 / Fix within-tier starvation in socraticPrompts' priority sort: non-mutually-exclusive same-tier conditions now get unique decimal sub-priorities
+- **新規 WATCH 通知コードが CLAUDE.md のネスト上限(≤3)を超過**: `notifyWatchMatch(ev,matched)` として単体関数に切り出し / Extract the WATCH notification logic to a standalone function to stay within the nesting limit
+
+### Changed
+- **GitHub/Zenn の topic slug 正規化前処理を共有ヘルパーへ集約**、**topicFeeds を WORD_FEEDS の `topicStyle:true` から構造的に導出**(3つ目のトピックソース追加が WORD_FEEDS への1行で完結するように)/ Extract shared slug-normalization prefix; derive signalGaps' topicFeeds Set structurally from WORD_FEEDS instead of a separate hardcoded literal
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)

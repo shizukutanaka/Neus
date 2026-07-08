@@ -161,8 +161,13 @@ describe('signal-gap wiring (index.html)', () => {
     expect(html).toContain('const active=[],silent=[],errored=[]');
     expect(html).toContain('const errs=word.lastErrors||{}');
   });
-  it('uses a topicFeeds Set to unify Zenn and GitHub 404-as-silence logic', () => {
-    expect(html).toContain('const topicFeeds=new Set([WORD_FEEDS.zenn.label,WORD_FEEDS.github.label])');
+  it('derives topicFeeds structurally from WORD_FEEDS.topicStyle (adding a 3rd topic source needs no signalGaps change)', () => {
+    // Found via an independent adversarial review: a hardcoded Set literal required editing
+    // signalGaps every time a new topic-feed-style source was added (Zenn, then GitHub). A
+    // topicStyle:true marker on the WORD_FEEDS entry lets a future addition be a one-line change.
+    expect(html).toContain('const topicFeeds=new Set(Object.values(WORD_FEEDS).filter(f=>f.topicStyle).map(f=>f.label));');
+    expect(html).toContain("zenn:  {label:'Zenn', topicStyle:true,");
+    expect(html).toContain("github:{label:'GitHub', topicStyle:true,");
     expect(html).toContain('topicFeeds.has(label)&&err===\'http_404\'');
   });
   it('records per-source errors on the word during collection', () => {

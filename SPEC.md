@@ -525,3 +525,66 @@ ADR-0020(関連イベント自動リンク)は PROPOSED のまま実装を見合
   autoTag マージ経路に入る(タグ結合を失わない)。`InformationEvent` のスキーマ・
   IndexedDB インデックス・`links[]` の意味論には触れない内部並行制御機構のため、
   データモデル変更の承認ゲート対象外と判断。`docs/FEATURE-AUDIT.md` §1-8 に追記。
+
+### 10.15 第13次監査 (round 26) — 独立した敵対的レビュー(8観点 × 検証)
+
+`このプロダクトの次のステップを考えて実装を続ける` の一環として `/code-review --effort high`
+を `48af75e..HEAD`(このセッションの全変更、index.html 差分約480行)に対して実施。8観点
+(行単位走査・削除挙動監査・横断呼び出し追跡・再利用・簡素化・効率・altitude・CLAUDE.md準拠)
+を並列エージェントで実行し、候補を1票検証した。C24(hash 重複ゲート)自身と round 23
+(tier優先順位)自身に、追加補正が必要な欠陥が見つかった。
+
+**却下した仮説(反証)**:
+- GitHub デフォルト OFF(ja/en 両方)がコメントと矛盾 → 反証: ADR-0018 本文
+  (「GitHub: 英語スラグのみのため言語に関わらずデフォルト OFF」)が明示的に意図した設計。
+  インラインコメントが ADR の全理由を再掲していないだけ。
+- dedup ウィンドウの300件上限が保証を狭めた → 反証: ADR-0019 で既に検討・受容済みの
+  トレードオフ(round 25 以前)。新規の欠陥ではない。
+
+**生き残った仮説(修正済み)**:
+- W21: **Google News タイトル剥がしが全 RSS ソースに無条件適用** — `parseFeed` 共有関数
+  内にあり `source` を見ていなかったため、ユーザーが追加した任意のカスタム RSS
+  (アグリゲータ系で `<source>` 要素を持つもの)のタイトルも誤って切り詰められ得た。
+  → C25: `source?.url?.includes('news.google.com')` でスコープを限定。
+- W22: **hash ゲート(C24)自身が3者以上の同時到達で直列化に失敗** — 「先行を読んで
+  await してから自分のゲートを map に書く」方式では、2番目・3番目の呼び出しが同じ
+  「先行」を見た後、互いを追い越して map の自分のエントリを上書きし合い、3者間以上の
+  競合では元のバグが再現していた。
+  → C26: map への書き込みを await 前に同期的に行う keyed-promise-chain
+  (`(hashGates.get(hash)||Promise.resolve()).then(fn,fn)`)へ変更。N者間の直列化を
+  正しく保証する。
+- W23: **hash ゲートが event.normalized にしか適用されず、同じ非アトミック性を持つ
+  `ShareTarget.ingest` とドシエ import ループが無防備だった** — 特定の呼び出し口だけを
+  場当たり的に保護していた。
+  → C27: `withHashGate(hash,fn)` を共有ヘルパーとして切り出し、3箇所全てが経由するよう
+  変更。将来の取り込み経路追加でも自動的に保護を受ける。
+- W24: **socraticPrompts の tier 優先順位(round 23)が tier 内タイブレークで飢餓を
+  再現** — 同一 tier 内の条件が相互排他とは限らない(例: certain-unresolved と
+  disabled-still-open は同時に真になりうる)ため、tier が並んだ際は Array.sort の安定性
+  =push 順に戻り、元のバグが tier 内で再発していた。
+  → C28: 相互排他が保証されない条件に小数のサブ優先度(`TIER_CONTRADICTION+0.1` 等)を
+  付与し、tier 内でも同順位を作らない。
+- W25: **GitHub/Zenn の topic slug 正規化前処理が重複**、**topicFeeds Set が WORD_FEEDS
+  外の独立リテラルで二重メンテナンス箇所になっていた** →
+  C29: 共有 `normalizeSlugInput(q)` ヘルパーを抽出。
+  C30: `WORD_FEEDS` の各エントリに `topicStyle:true` を付与し、`topicFeeds` を
+  `Object.values(WORD_FEEDS).filter(f=>f.topicStyle)` から構造的に導出(3つ目の
+  トピックソース追加が WORD_FEEDS への1行で完結するようにした)。
+- W26: **新規 WATCH 通知コードが CLAUDE.md のネスト上限(≤3)を超過** →
+  C31: `notifyWatchMatch(ev,matched)` として単体関数に切り出し。
+
+**記録のみ(修正見送り)**:
+- GitHub Topics の実装コミットが承認 ADR-0018 より先行していた(CLAUDE.md「外部API追加」
+  の人間承認要件に反する)。ADR 自身が「事後的に記録」と認めている過去の事実であり、
+  既にプッシュ済みの commit 順序は書き換えない。今後の外部ソース追加では実装前に ADR を
+  起票する規律を徹底する。
+- Notification アイコンが3つ目の手描きブランドマーク複製(favicon・apple-touch-icon・
+  今回の通知アイコン)になっている。視覚的な同期漏れリスクはあるが低優先度。
+- Google News タイトル剥がしが既存の保存済みイベントに遡及適用されない
+  (理論上、剥離後の類似度が旧保存版より下がり得る)。この種の遡及未適用はコードベース内の
+  他の正規化変更(URL正規化・エンティティ復号修正等)にも共通する既存の性質であり、
+  バックフィル機構自体が存在しない。優先度低。
+- `falsifierHits`/`questionHits`/`socraticPrompts` が同一語の items に対して bigram 計算を
+  重複実行(非効率だが個人利用規模では体感影響が無い)。
+- StorageGuard 自動退避トーストの `'ok'` 化(このセッション内の既存の判断)を再検討する
+  提案があったが、既に検討済みの判断であり再度覆さない。

@@ -99,4 +99,16 @@ describe('Google News publisher-suffix stripping (parseFeed)', () => {
     expect(html).toContain("const pub=item.querySelector('source')?.textContent?.trim()||''");
     expect(html).toContain("if(pub&&title.length>pub.length+3&&title.endsWith(' - '+pub))title=title.slice(0,-(pub.length+3)).trim()");
   });
+  it('is scoped to Google News via source.url, not applied to every RSS/Atom feed', () => {
+    // Found via an adversarial review: <source> is a generic RSS 2.0 element any aggregator
+    // feed may populate, not exclusive to Google News. A custom user-added feed (#src-add)
+    // whose own house style is "Title - PublisherName" would otherwise get silently truncated.
+    expect(html).toContain("if(source?.url?.includes('news.google.com')){");
+    // The strip logic itself must live inside that gate, not run unconditionally for every item.
+    const gateIdx = html.indexOf("if(source?.url?.includes('news.google.com')){");
+    const stripIdx = html.indexOf("if(pub&&title.length>pub.length+3", gateIdx);
+    const gateCloseIdx = html.indexOf('\n        }', gateIdx);
+    expect(stripIdx).toBeGreaterThan(gateIdx);
+    expect(stripIdx).toBeLessThan(gateCloseIdx);
+  });
 });

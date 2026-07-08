@@ -58,8 +58,13 @@ describe('keyword watch notification wiring (index.html)', () => {
     expect(html).toContain("action:watchAction,notify:watchNotify}));");
   });
   it('fires a Notification only when unarchived, permission granted, and a matched rule requests it', () => {
-    expect(html).toContain("if(!ev.state.archived&&Notification.permission==='granted'){");
+    // Extracted to a standalone function (notifyWatchMatch) to keep the event.normalized
+    // handler's nesting within CLAUDE.md's limit — found via an independent adversarial review.
+    expect(html).toContain('function notifyWatchMatch(ev,matched){');
+    expect(html).toContain("if(ev.state.archived||Notification.permission!=='granted')return;");
     expect(html).toContain('const notifyRule=matched.watch.find(r=>r.notify);');
+    expect(html).toContain('if(!notifyRule)return;');
+    expect(html).toContain('notifyWatchMatch(ev,matched);');
   });
   it('uses a shared tag so repeated matches replace rather than pile up', () => {
     expect(html).toContain("tag:'neus-watch'");

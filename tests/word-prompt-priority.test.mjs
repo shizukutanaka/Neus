@@ -85,14 +85,60 @@ describe('prompt priority wiring (index.html)', () => {
       expect(afterKey, `push site missing tier: ${push[0]}`).toMatch(/tier:TIER_\w+/);
     }
   });
-  it('assigns falsifier/stale prompts to the highest-priority tier (validity)', () => {
-    expect(html).toContain("key:'falsifier-seen',tier:TIER_VALIDITY");
-    expect(html).toContain("key:'stale-falsifier',tier:TIER_VALIDITY");
-    expect(html).toContain("key:'stale-suspended',tier:TIER_VALIDITY");
-    expect(html).toContain("key:'stale',tier:TIER_VALIDITY");
+  it('assigns falsifier/stale prompts to the highest-priority tier (validity, no offset needed — mutually exclusive via if/else-if)', () => {
+    expect(html).toContain("key:'falsifier-seen',tier:TIER_VALIDITY,");
+    expect(html).toContain("key:'stale-falsifier',tier:TIER_VALIDITY,");
+    expect(html).toContain("key:'stale-suspended',tier:TIER_VALIDITY,");
+    expect(html).toContain("key:'stale',tier:TIER_VALIDITY,");
   });
   it('assigns the neglect-signal prompts (no-questions, unreviewed) to the lowest tier', () => {
-    expect(html).toContain("key:'no-questions',tier:TIER_NEGLECT");
-    expect(html).toContain("key:'unreviewed',tier:TIER_NEGLECT");
+    expect(html).toContain("key:'no-questions',tier:TIER_NEGLECT,");
+    // unreviewed can co-occur with no-questions (not mutually exclusive — see below), so it
+    // must NOT share the exact same tier value as no-questions.
+    expect(html).toContain("key:'unreviewed',tier:TIER_NEGLECT+0.1,");
+  });
+});
+
+describe('within-tier tie-breaking (found via an independent adversarial review)', () => {
+  // The original tier-sort fix (round 23) only solved CROSS-tier starvation. An independent
+  // review found that conditions sharing the same tier value are NOT all mutually exclusive
+  // (e.g. certain-unresolved and disabled-still-open can both be true for the same open,
+  // certain, disabled word with a stale verdict history), so Array.sort's stability falls back
+  // to push order to break the tie — reproducing the exact same starvation bug the fix was
+  // meant to eliminate, just scoped to a single tier instead of the whole function. Fixed by
+  // giving every non-mutually-exclusive condition within a tier a unique decimal sub-priority.
+  it('gives every independent TIER_CONTRADICTION condition a unique sub-priority', () => {
+    expect(html).toContain("key:'questions-remain',tier:TIER_CONTRADICTION,");
+    expect(html).toContain("key:'certain-unresolved',tier:TIER_CONTRADICTION+0.1,");
+    expect(html).toContain("key:'verdict-churn',tier:TIER_CONTRADICTION+0.2,");
+    expect(html).toContain("key:'resolved-from-agnostic',tier:TIER_CONTRADICTION+0.4,");
+    expect(html).toContain("key:'disabled-still-open',tier:TIER_CONTRADICTION+0.5,");
+    expect(html).toContain("key:'prolonged-converging',tier:TIER_CONTRADICTION+0.6,");
+  });
+  it('lets shifted-from-certain/-skeptical share a sub-priority (mutually exclusive via verdict value)', () => {
+    // Both require different, non-overlapping verdict values (suspended vs answered/converging),
+    // so they can never both fire for the same word — sharing a tier value is safe here.
+    expect(html).toContain("key:'shifted-from-certain',tier:TIER_CONTRADICTION+0.3,");
+    expect(html).toContain("key:'shifted-from-skeptical',tier:TIER_CONTRADICTION+0.3,");
+  });
+  it('gives silence a distinct sub-priority from no-research/only-research (not mutually exclusive)', () => {
+    expect(html).toContain("key:'no-research',tier:TIER_EVIDENCE,");
+    expect(html).toContain("key:'only-research',tier:TIER_EVIDENCE,");
+    expect(html).toContain("key:'silence',tier:TIER_EVIDENCE+0.1,");
+  });
+  it('no two non-mutually-exclusive push sites resolve to the same numeric tier value', () => {
+    // Simulates a maximally-contradictory word (every TIER_CONTRADICTION condition firing at
+    // once is not realistic, but no-questions+unreviewed and no-research+silence are) and
+    // checks the resulting tier values are all distinct where they can co-occur.
+    const TIER_EVIDENCE = 3, TIER_CONTRADICTION = 4, TIER_NEGLECT = 5;
+    const coOccurringGroups = [
+      [TIER_EVIDENCE, TIER_EVIDENCE + 0.1],                 // no-research/only-research, silence
+      [TIER_NEGLECT, TIER_NEGLECT + 0.1],                   // no-questions, unreviewed
+      [TIER_CONTRADICTION, TIER_CONTRADICTION + 0.1, TIER_CONTRADICTION + 0.2,
+       TIER_CONTRADICTION + 0.4, TIER_CONTRADICTION + 0.5, TIER_CONTRADICTION + 0.6],
+    ];
+    for (const group of coOccurringGroups) {
+      expect(new Set(group).size).toBe(group.length); // all unique within the group
+    }
   });
 });

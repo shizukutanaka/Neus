@@ -24,7 +24,7 @@
 優先順に列挙。着手時は CLAUDE.md のワークフロー(Plan.md 整合確認 → 影響大なら ADR → 実装 →
 テスト → CHANGELOG)に従うこと。
 
-### 1-1. socraticPrompts の優先順位機構【解決済み】
+### 1-1. socraticPrompts の優先順位機構【解決済み・round 26 で補正】
 
 - **問題**: `index.html` の `function socraticPrompts(word,events)` は約20の発火条件を持つが、
   出力は `return out.slice(0,3)` で **push 順の先頭3件** に切られていた。優先度・関連度による
@@ -43,8 +43,12 @@
   `out.sort((a,b)=>a.tier-b.tier)` してから `slice(0,3)` する(Array.sort は ES2019+ で
   安定ソートのため、同一 tier 内は既存の push 順=優先意図を保ったまま)。
   既存の各 if/else-if ブロック内の相互排他性(例: falsifier-seen が stale 系を抑制)は無変更。
+- **round 26 の補正**: 独立レビューで、同一 tier 内の条件が全て相互排他とは限らないと
+  発覚(例: `certain-unresolved` と `disabled-still-open` は共起しうる)。同一 tier が
+  並ぶと Array.sort の安定性=push 順に戻り、tier 内で同じ飢餓が再発していた。相互排他が
+  保証されない条件に小数のサブ優先度(`TIER_CONTRADICTION+0.1` 等)を付与して解消。
 - **アンカー**: `const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;` /
-  `out.sort((a,b)=>a.tier-b.tier);`
+  `out.sort((a,b)=>a.tier-b.tier);` / `tier:TIER_CONTRADICTION+0.1`
 
 ### 1-2. キーワード検知 OS アラート【解決済み】
 
@@ -114,22 +118,29 @@
   `0` を明示的な「予算ゼロ=常にブロック」として扱うようにした。
 - **アンカー**: `typeof s.budget==='number'&&dailyCount>=s.budget`
 
-### 1-8. `event.normalized` の hash 重複レコード競合【小規模・解決済み】
+### 1-8. findByHash→putEvent の hash 重複レコード競合【解決済み・round 26 で補正】
 
 - **問題**: `Store.findByHash`→`Store.putEvent` は非アトミックな check-then-act。
   `Bus.publish` は fire-and-forget(購読ハンドラを await しない)で、`_collectOne` は
   1単語の全有効フィードを `Promise.all` で並行取得するため、同一記事が2つの異なる
-  ソース(例: Google News と Hatena の両方)から取得されると、2つの `event.normalized`
-  呼び出しが両方とも `findByHash` で「未存在」を読んでから書き込み、重複レコードを
-  作り得た。`hash` インデックスは意図的に `unique:false`(unique 制約にすると、この
-  バグに起因する既存の重複ハッシュを持つインストールで IDB スキーマアップグレード自体が
-  失敗するリスクがあり、競合そのものより危険)。
-- **状態**: 修正済み。同一 hash の処理をインメモリの `Map` ベースゲートで直列化。
-  後続の呼び出しは先行する処理の完了を待ってから `findByHash` を再評価し、正しく
-  「既存」ヒットとして autoTag マージ経路に入る(タグ結合を失わない)。
-  `InformationEvent` のスキーマ・IndexedDB インデックス・`links[]` の意味論には
-  一切触れない、純粋な内部並行制御機構(データモデル変更ではない)。
-- **アンカー**: `const inFlightHash=new Map();` / `if(prior)await prior.catch(()=>{});`
+  ソースから取得されると、複数の書き込み経路(`event.normalized` / `ShareTarget.ingest` /
+  ドシエ import)が「未存在」を読んでから書き込み、重複レコードを作り得た。`hash`
+  インデックスは意図的に `unique:false`(unique 制約にすると、このバグに起因する既存の
+  重複ハッシュを持つインストールで IDB スキーマアップグレード自体が失敗するリスクがあり、
+  競合そのものより危険)。
+- **round 25 の初回修正には2つの欠陥が独立レビューで発覚**: (1) 「先行を読んで await
+  してから自分のゲートを map に書く」方式は2者間の競合しか正しく直列化できず、3者以上が
+  同時到達すると2番目・3番目が互いのゲート登録を追い越し合い、同じ競合が再現していた。
+  (2) ゲートは `event.normalized` にのみ適用され、同じ非アトミック性を持つ
+  `ShareTarget.ingest` とドシエ import ループは無防備だった。
+- **状態**: 修正済み(round 26)。共有ヘルパー `withHashGate(hash,fn)` に一般化し、
+  map への書き込みを await 前に同期的に行う keyed-promise-chain
+  (`(hashGates.get(hash)||Promise.resolve()).then(fn,fn)`)へ変更(N者間の直列化を
+  正しく保証)。`event.normalized`・`ShareTarget.ingest`・ドシエ import の3経路全てが
+  この共有ヘルパーを経由する。`InformationEvent` のスキーマ・IndexedDB インデックス・
+  `links[]` の意味論には一切触れない、純粋な内部並行制御機構(データモデル変更ではない)。
+- **アンカー**: `const hashGates=new Map();` / `function withHashGate(hash,fn){` /
+  `const chained=(hashGates.get(hash)||Promise.resolve()).then(fn,fn);`
 
 ---
 
