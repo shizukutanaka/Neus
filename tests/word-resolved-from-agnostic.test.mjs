@@ -61,9 +61,9 @@ describe('resolved-from-agnostic wiring (index.html)', () => {
   it('maps both curious and agnostic to the open direction (why curious is excluded)', () => {
     expect(html).toContain("const PRIOR_DIRECTION={certain:'affirm',skeptical:'deny',curious:'open',agnostic:'open'};");
   });
-  it('is registered inside socraticPrompts, within the 3-prompt cap', () => {
-    const fnStart = html.indexOf('function socraticPrompts(word,events){');
-    const fnEnd = html.indexOf('return out.slice(0,3);', fnStart);
+  it('is registered inside contradictionPrompts, one of the tier-helpers socraticPrompts aggregates into its 3-prompt cap', () => {
+    const fnStart = html.indexOf('function contradictionPrompts(word,events){');
+    const fnEnd = html.indexOf('return out;', fnStart);
     const idx = html.indexOf("key:'resolved-from-agnostic'", fnStart);
     expect(fnStart).toBeGreaterThan(-1);
     expect(fnEnd).toBeGreaterThan(fnStart);

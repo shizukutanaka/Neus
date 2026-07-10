@@ -72,9 +72,12 @@ describe('prompt priority wiring (index.html)', () => {
   it('stable-sorts by tier immediately before the slice(0,3) cutoff', () => {
     expect(html).toMatch(/out\.sort\(\(a,b\)=>a\.tier-b\.tier\);\s*return out\.slice\(0,3\);/);
   });
-  it('every out.push call site inside socraticPrompts tags a tier', () => {
-    const fnStart = html.indexOf('function socraticPrompts(word,events){');
-    const fnEnd = html.indexOf('return out.slice(0,3);', fnStart);
+  it('every out.push call site across the tier-helper functions tags a tier', () => {
+    // round 27: socraticPrompts' ~20 conditions were split into 5 tier-scoped helper
+    // functions (validityPrompts..neglectPrompts) to fit CLAUDE.md's function <=40-line
+    // rule; socraticPrompts itself now just aggregates + sorts + slices their output.
+    const fnStart = html.indexOf('function validityPrompts(word,events){');
+    const fnEnd = html.indexOf('function socraticPrompts(word,events){');
     expect(fnStart).toBeGreaterThan(-1);
     expect(fnEnd).toBeGreaterThan(fnStart);
     const body = html.slice(fnStart, fnEnd);

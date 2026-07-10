@@ -49,9 +49,9 @@ describe('disabled-still-open wiring (index.html)', () => {
   it('checks word.enabled directly, a dimension no other prompt in the function references', () => {
     expect(html).toContain("if(word.enabled===false&&verdict==='open'&&n>0)out.push({key:'disabled-still-open'");
   });
-  it('is registered inside socraticPrompts, within the 3-prompt cap', () => {
-    const fnStart = html.indexOf('function socraticPrompts(word,events){');
-    const fnEnd = html.indexOf('return out.slice(0,3);', fnStart);
+  it('is registered inside contradictionPrompts, one of the tier-helpers socraticPrompts aggregates into its 3-prompt cap', () => {
+    const fnStart = html.indexOf('function contradictionPrompts(word,events){');
+    const fnEnd = html.indexOf('return out;', fnStart);
     const idx = html.indexOf("key:'disabled-still-open'", fnStart);
     expect(fnStart).toBeGreaterThan(-1);
     expect(fnEnd).toBeGreaterThan(fnStart);

@@ -1,6 +1,6 @@
 # FEATURE-AUDIT.md — 機能過不足の監査リスト
 
-**検証日**: 2026-07-02
+**検証日**: 2026-07-10
 **対象**: v0.12.0 + Unreleased(ブランチ `claude/word-registration-app-t1kbaq`)
 **ステータス**: 全項目コード検証済み(推測による所見は含まない)
 
@@ -49,11 +49,17 @@
   保証されない条件に小数のサブ優先度(`TIER_CONTRADICTION+0.1` 等)を付与して解消。
 - **アンカー**: `const TIER_VALIDITY=1,TIER_FALSIFIABILITY=2,TIER_EVIDENCE=3,TIER_CONTRADICTION=4,TIER_NEGLECT=5;` /
   `out.sort((a,b)=>a.tier-b.tier);` / `tier:TIER_CONTRADICTION+0.1`
-- **既知の残債**: 上記の修正は starvation を解消したが、`socraticPrompts` 自体は
-  CLAUDE.md の関数 ≤40行規約を約95行で超過したままである(条件分岐約20件+tier
-  優先順位の説明コメント)。小数サブ優先度の付与は行数を削減しない。真に解消するには
-  tier ごとの評価を独立関数へ切り出す refactor が必要 — 詳細は `SPEC.md` の
-  「記録のみ(修正見送り)」を参照。
+- **残債解消(round 27)**: `socraticPrompts` 自体は CLAUDE.md の関数 ≤40行規約を約95行で
+  超過していた。tier ごとの判定を5つのヘルパー関数(`validityPrompts`/
+  `falsifiabilityPrompts`/`evidencePrompts`/`contradictionPrompts`/`neglectPrompts`)へ
+  切り出す refactor で解消(各12〜24行)。`socraticPrompts` は5関数の出力を連結し、
+  `sort`+`slice(0,3)` するだけの13行の集約関数になった。tier定数・各条件のロジック・
+  発火文言・優先順位(小数サブ優先度含む)は一切不変(振る舞いのテストは全て既存の
+  ままパス)。「`function socraticPrompts` 内に留まる」ことを前提に書かれていた5件の
+  index.html 文字列位置アサーション(`tests/word-prompt-priority.test.mjs` 等)は
+  該当ヘルパー関数の範囲を見るよう更新。
+- **アンカー**: `function validityPrompts(word,events){` / `function contradictionPrompts(word,events){` /
+  `...validityPrompts(word,events),...falsifiabilityPrompts(word),...evidencePrompts(word,events),...contradictionPrompts(word,events),...neglectPrompts(word,events),`
 
 ### 1-2. キーワード検知 OS アラート【解決済み】
 

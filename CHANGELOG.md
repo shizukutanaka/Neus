@@ -10,6 +10,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **反証候補 (Falsifier Watch)**: ソクラテス式問答から導いた新機能。システムは探究者に反証条件(「何があれば結論を覆すか」=最も鋭い論駁)を述べさせるのに、述べられた反証条件は受動的なテキストにすぎず、収集し続ける証拠と接続されていなかった — 人に手動確認を促すだけだった。反証条件の文字bigram集合と各収集物の被覆率(言語非依存、CJKも可)で、宣言した反証条件に該当しうるアイテムを能動検出。WORDSビューに `word-fwatch` ブロック(該当アイテム + 一致率)、最優先の `falsifier-seen` 問答プロンプト(具体的該当があれば漠然とした stale 系を抑制)、ドシエの `## 反証候補` セクションを追加。反証条件が「証拠を監視する能動センサー」になる / Falsifier Watch: actively scan collected evidence against the user's stated falsifier and surface possible matches (language-agnostic bigram coverage)
 
 ### Fixed
+- **`socraticPrompts` がCLAUDE.mdの関数≤40行規約を約95行で超過**: tierごとの判定を
+  `validityPrompts`/`falsifiabilityPrompts`/`evidencePrompts`/`contradictionPrompts`/
+  `neglectPrompts` の5ヘルパー関数(各12〜24行)へ切り出し、`socraticPrompts` 自体は
+  それらを連結して `sort`+`slice(0,3)` するだけの13行の集約関数に変更。tier定数・各条件の
+  発火ロジック・文言・優先順位は完全に不変(全既存テストが無変更でパス)/ Split
+  socraticPrompts' ~20 conditions into 5 tier-scoped helper functions to satisfy CLAUDE.md's
+  function <=40-line rule; socraticPrompts itself is now a 13-line aggregator (behavior unchanged)
 - **Worker名/ブックマークレットに旧プロジェクト名 "Lensy" のドメイン残骸**: `wrangler.toml` の Worker 名が `lensy-proxy` のままで、実際にデプロイ・参照される `neus-proxy`(`_worker.js`/`DEPLOY.md`/`README.md`/`index.html` の既定値)と食い違っていた。存在しない・案内していないドメイン `lensy-proxy.*.workers.dev` をコメントごと `neus-proxy` に修正。`bookmarklet.js` のプレースホルダ `YOUR_LENSY_URL` も `YOUR_NEUS_URL` に統一(CLAUDE.md「競合ソフト名混入」防止規約)/ Fix stale "Lensy" (old project name) domain references in wrangler.toml's Worker name and bookmarklet.js's placeholder URL — both now consistently say neus-proxy/YOUR_NEUS_URL, matching every other file
 - **健全なソースが自動無効化され得た(SourceFailTracker)**: 失敗カウンタは `inbound.fetched`(アイテム取得)でしかリセットされず、更新の少ないフィード(常に 304 Not Modified や 0 件)はカウンタが下がらなかった。散発的な一時失敗が累積し、連続失敗の意図に反して健全なソースが `sourceMaxFails` 回で自動無効化され得た。健全なフェッチ(304 / 2xx の0件 / アイテム有り)で `source.ok` を発行し、それでカウンタをリセットするよう変更。連続失敗のみが無効化につながる本来の意味論を回復 / Stop auto-disabling healthy but rarely-updating feeds: reset the fail counter on any successful fetch (304/empty/items), not just when items arrive
 - **Markdown 書き出しの YAML frontmatter インジェクション**: イベント書き出しの frontmatter は `source`/`source_url`/`tags` を生のまま埋め込んでいたため、フィードのタイトルやソース名によくある `:`・改行・カンマが YAML を壊したり任意キーを注入し得た(単語ドシエ側は `ys()` で対策済みだった)。共有の `yamlScalar()` エスケーパを新設し両エクスポータで使用。値は二重引用符で包み `\` `"` 改行をエスケープ / Escape YAML frontmatter scalars in the event exporter (shared yamlScalar); a colon/newline in a feed title no longer corrupts or injects into exported notes

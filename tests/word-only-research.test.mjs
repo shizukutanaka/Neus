@@ -75,9 +75,9 @@ describe('only-research wiring (index.html)', () => {
   it('checks tiers.every for the research tier, symmetric to onlyTalk\'s discussion/other check', () => {
     expect(html).toContain("if(tiers.length>0&&tiers.every(t=>t.tier==='research'))out.push({key:'only-research'");
   });
-  it('is registered inside socraticPrompts, within the 3-prompt cap', () => {
-    const fnStart = html.indexOf('function socraticPrompts(word,events){');
-    const fnEnd = html.indexOf('return out.slice(0,3);', fnStart);
+  it('is registered inside evidencePrompts, one of the tier-helpers socraticPrompts aggregates into its 3-prompt cap', () => {
+    const fnStart = html.indexOf('function evidencePrompts(word,events){');
+    const fnEnd = html.indexOf('return out;', fnStart);
     const idx = html.indexOf("key:'only-research'", fnStart);
     expect(fnStart).toBeGreaterThan(-1);
     expect(fnEnd).toBeGreaterThan(fnStart);

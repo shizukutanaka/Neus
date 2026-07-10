@@ -588,8 +588,26 @@ ADR-0020(関連イベント自動リンク)は PROPOSED のまま実装を見合
   重複実行(非効率だが個人利用規模では体感影響が無い)。
 - StorageGuard 自動退避トーストの `'ok'` 化(このセッション内の既存の判断)を再検討する
   提案があったが、既に検討済みの判断であり再度覆さない。
-- `socraticPrompts` は CLAUDE.md の関数 ≤40行規約を超過している(約95行、条件分岐
-  約20件+tier優先順位の説明コメント)。round 26 の小数サブ優先度による修正は starvation
-  自体は解消したが行数は削減しない。真に解消するには tier ごとに評価を独立関数へ切り出す
-  refactor が必要だが、既にテスト済みの優先順位ロジックへの無関係な変更を招きかねないため、
-  今回のスコープ外として記録のみとする。
+
+### 10.16 第14次監査 (round 27) — 過不足リストの残債解消
+
+`docs/FEATURE-AUDIT.md` §1 の「不足」リストから、人間の承認や専用環境を要さない残り2件
+(§1-1 の残債・過去の名称変更残骸)に対応した。
+
+- **`socraticPrompts` の CLAUDE.md 関数≤40行規約違反(§1-1 の既知の残債)**:
+  約95行(条件分岐約20件+tier優先順位の説明コメント)を、tierごとの判定を
+  `validityPrompts`/`falsifiabilityPrompts`/`evidencePrompts`/`contradictionPrompts`/
+  `neglectPrompts` の5ヘルパー関数(各12〜24行)へ切り出す refactor で解消。
+  `socraticPrompts` 自体は5関数の出力を連結し `sort`+`slice(0,3)` するだけの13行の
+  集約関数になった。tier定数・各条件の発火ロジック・文言・優先順位(小数サブ優先度含む)
+  は完全に不変で、既存の振る舞いテストは無変更で全てパスした。「`function socraticPrompts`
+  内に留まる」ことを前提に文字列位置で検証していた5件のテスト
+  (`tests/word-prompt-priority.test.mjs`・`word-disabled-still-open.test.mjs`・
+  `word-only-research.test.mjs`・`word-resolved-from-agnostic.test.mjs`・
+  `word-verdict-churn.test.mjs`)は、該当するヘルパー関数の範囲を見るよう更新した。
+- **旧プロジェクト名 "Lensy" のドメイン残骸**: `wrangler.toml` の Worker 名が
+  `lensy-proxy` のままで、実際にデプロイ・案内される `neus-proxy`(`_worker.js`/
+  `DEPLOY.md`/`README.md`/`index.html` の既定プロキシ値)と食い違っていた。存在しない・
+  案内していないドメイン `lensy-proxy.*.workers.dev` をコメントごと `neus-proxy` に修正。
+  `bookmarklet.js` のプレースホルダ `YOUR_LENSY_URL` も `YOUR_NEUS_URL` に統一
+  (CLAUDE.md「競合ソフト名混入」防止規約)。

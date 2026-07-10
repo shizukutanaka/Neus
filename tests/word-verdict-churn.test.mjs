@@ -67,11 +67,11 @@ describe('verdict-churn wiring (index.html)', () => {
     expect(html).toContain('裁決を${word.verdictHistory.length}回変更した');
     expect(html).toContain('Verdict changed ${word.verdictHistory.length} times');
   });
-  it('is registered inside the same function that returns at most 3 prompts', () => {
-    // Anchor: the churn check must live between the prompt-list start and its slice(0,3) cap,
-    // i.e. inside socraticPrompts, not some unrelated function.
-    const fnStart = html.indexOf('function socraticPrompts(word,events){');
-    const fnEnd = html.indexOf('return out.slice(0,3);', fnStart);
+  it('is registered inside contradictionPrompts, one of the tier-helpers socraticPrompts aggregates into its 3-prompt cap', () => {
+    // Anchor: the churn check must live inside contradictionPrompts (round 27 split
+    // socraticPrompts' ~20 conditions into 5 tier-scoped helpers), not some unrelated function.
+    const fnStart = html.indexOf('function contradictionPrompts(word,events){');
+    const fnEnd = html.indexOf('return out;', fnStart);
     const churnIdx = html.indexOf("key:'verdict-churn'", fnStart);
     expect(fnStart).toBeGreaterThan(-1);
     expect(fnEnd).toBeGreaterThan(fnStart);
