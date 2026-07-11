@@ -219,18 +219,21 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain("data-wact=\"collectall\"${_busy?' disabled':''}");
     expect(html).toContain("${_busy?'..':t('word.collectall')}");
   });
-  it('resets aria-busy to false in the digest view', () => {
-    // Indentation-agnostic: digest branch renders then clears aria-busy before returning.
-    expect(html).toMatch(/view\.innerHTML=await renderDigest\(\);\s*view\.setAttribute\('aria-busy','false'\);return;/);
+  it('resets aria-busy to false in the digest view via commit()', () => {
+    // round 28: renderView routes every write through commit(html), which sets aria-busy
+    // false itself (and only if this call is still the latest — see the renderSeq guard
+    // tested in tests/render-race.test.mjs) instead of each branch setting it directly.
+    expect(html).toContain('commit(await renderDigest());return;');
+    expect(html).toContain("const commit=(html)=>{if(myRender!==renderSeq)return false;view.innerHTML=html;view.setAttribute('aria-busy','false');return true;};");
   });
-  it('resets aria-busy to false in the search view (no query and with results paths)', () => {
-    // no-query path: empty search prompt then clears aria-busy
-    expect(html).toMatch(/'type to search'}.*?`;view\.setAttribute\('aria-busy','false'\);return;/);
-    // results path: clears aria-busy before the default (timeline) branch reads VIEW_FILTERS
-    expect(html).toMatch(/view\.setAttribute\('aria-busy','false'\);return;\s*}\s*const filter=VIEW_FILTERS/);
+  it('resets aria-busy to false in the search view (no query and with results paths) via commit()', () => {
+    // no-query path: empty search prompt committed then returns
+    expect(html).toMatch(/'type to search'}<\/div><\/div>`\);return;/);
+    // results path: commit() before the default (timeline) branch reads VIEW_FILTERS
+    expect(html).toMatch(/events\.map\(\(\{ev,score\}\)=>cardHtml\(ev,score\)\)\.join\(''\)\);return;\s*}\s*const filter=VIEW_FILTERS/);
   });
   it('renderView clears aria-busy even when a branch throws (no permanent loading state)', () => {
-    expect(html).toContain("catch(err){console.error('[renderView]',err);view.setAttribute('aria-busy','false');}");
+    expect(html).toContain("catch(err){console.error('[renderView]',err);if(myRender===renderSeq)view.setAttribute('aria-busy','false');}");
   });
 });
 

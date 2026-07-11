@@ -62,10 +62,12 @@ describe('view filter wiring (index.html)', () => {
   it('listEvents honors the later flag (the dropped filter that broke LATER)', () => {
     expect(html).toContain('if(filter.later!==undefined&&!!ev.state.later!==filter.later)m=false;');
   });
-  it('still honors read / starred / archived', () => {
-    expect(html).toContain('if(filter.read!==undefined&&ev.state.read!==filter.read)m=false;');
-    expect(html).toContain('if(filter.starred!==undefined&&ev.state.starred!==filter.starred)m=false;');
-    expect(html).toContain('if(filter.archived!==undefined&&ev.state.archived!==filter.archived)m=false;');
+  it('still honors read / starred / archived, coerced with !! like later (round 28)', () => {
+    // round 28: a restored backup can have state.read/starred/archived undefined rather than
+    // false; undefined!==false previously excluded such events from every list view.
+    expect(html).toContain('if(filter.read!==undefined&&!!ev.state.read!==filter.read)m=false;');
+    expect(html).toContain('if(filter.starred!==undefined&&!!ev.state.starred!==filter.starred)m=false;');
+    expect(html).toContain('if(filter.archived!==undefined&&!!ev.state.archived!==filter.archived)m=false;');
   });
   it('declares the LATER view filter as later+non-archived', () => {
     expect(html).toContain('later:{later:true,archived:false}');
@@ -330,7 +332,7 @@ describe('SW periodic-poll-request error handling (index.html)', () => {
   it('wraps periodic-poll-request handler in try/catch', () => {
     const idx = html.indexOf("e.data?.type==='periodic-poll-request'");
     expect(idx).toBeGreaterThan(0);
-    const slice = html.slice(idx, idx + 1200);
+    const slice = html.slice(idx, idx + 1800);
     expect(slice).toContain('try{');
     expect(slice).toContain("catch(err){console.error('[SW message] periodic-poll-request failed:',err);}");
   });

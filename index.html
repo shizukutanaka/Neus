@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Q+98BEViXpMSeHKvsDh7y17kwA2jqS7Wnv3jpgbN18k='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-UdROhwHjUJ0jQXr4O2Kn9V3YQyvJ4HiXcbclPTHgW4c='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1151,7 +1151,11 @@ const Store=(()=>{
     async deleteEvent(id){return r2p(tx(['events'],'readwrite').objectStore('events').delete(id));},
     async listEvents({filter={},limit=CONFIG.maxViewItems}={}){
       const idx=tx(['events']).objectStore('events').index('timestamp');const results=[];
-      return new Promise((resolve,reject)=>{const req=idx.openCursor(null,'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c||results.length>=limit)return resolve(results);const ev=c.value;let m=true;if(filter.read!==undefined&&ev.state.read!==filter.read)m=false;if(filter.starred!==undefined&&ev.state.starred!==filter.starred)m=false;if(filter.archived!==undefined&&ev.state.archived!==filter.archived)m=false;if(filter.later!==undefined&&!!ev.state.later!==filter.later)m=false;if(m)results.push(ev);c.continue();};req.onerror=()=>reject(req.error);});
+      // Booleans are coerced with !! on both sides: a restored backup (older export, hand-
+      // edited, or from a future schema) can have state.read/starred/archived/later
+      // undefined rather than false, and undefined!==false would wrongly exclude the event
+      // from every list view (inbox/all/later all filter archived:false).
+      return new Promise((resolve,reject)=>{const req=idx.openCursor(null,'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c||results.length>=limit)return resolve(results);const ev=c.value;let m=true;if(filter.read!==undefined&&!!ev.state.read!==filter.read)m=false;if(filter.starred!==undefined&&!!ev.state.starred!==filter.starred)m=false;if(filter.archived!==undefined&&!!ev.state.archived!==filter.archived)m=false;if(filter.later!==undefined&&!!ev.state.later!==filter.later)m=false;if(m)results.push(ev);c.continue();};req.onerror=()=>reject(req.error);});
     },
     async allEvents(){return r2p(tx(['events']).objectStore('events').getAll());},
     async recentEvents(windowMs){
@@ -1692,6 +1696,19 @@ const KeywordRules=(()=>{
 const AutoSync=(()=>{
   async function getSettings(){return(await Store.getSetting('auto-sync'))||{enabled:false,interval:'6h',notify:false};}
   async function setSettings(s){await Store.putSetting('auto-sync',s);}
+  // SWはIndexedDBを読めないため、notify設定をCache API経由でミラーする(periodicsync の
+  // 「クライアント無し」ウェイク通知が、ユーザーが実際にnotifyをONにしているかを判定できる
+  // 唯一の手段)。activate ハンドラの CACHE 以外全削除ロジックから外すため、専用の
+  // PREFS_CACHE 名前空間を使う(sw.js 側と名前を揃える必要がある)。
+  async function syncPrefsToSW(){
+    if(!('caches'in window))return;
+    try{
+      const s=await getSettings();
+      const notify=!!(s.notify&&'Notification'in window&&Notification.permission==='granted');
+      const cache=await caches.open('neus-prefs-v1');
+      await cache.put('/__prefs',new Response(JSON.stringify({notify}),{headers:{'content-type':'application/json'}}));
+    }catch{}
+  }
   async function isSupported(){
     if(!('serviceWorker'in navigator))return false;
     // navigator.serviceWorker.ready never resolves if no SW is registered (e.g. file://).
@@ -1730,7 +1747,7 @@ const AutoSync=(()=>{
     if(Notification.permission==='denied')return false;
     return(await Notification.requestPermission())==='granted';
   }
-  return{getSettings,setSettings,isSupported,isRegistered,register,unregister,requestNotificationPerm};
+  return{getSettings,setSettings,isSupported,isRegistered,register,unregister,requestNotificationPerm,syncPrefsToSW};
 })();
 
 // Service Worker からのメッセージ受信(periodicsync完了通知)
@@ -1744,16 +1761,24 @@ if('serviceWorker'in navigator){
         await WordCollector.collectAll();
         const after=await Store.countAll();
         const fetched=after-before;
+        // UI更新をnotificationより先に行う: new Notification()はモバイルChromeでは
+        // illegal constructorとして例外を投げるため、同じtry内で後に置くと成功した
+        // POLL結果の反映(refreshCounts/renderView)まで巻き込んで失敗扱いになっていた。
+        await refreshCounts();await renderView();
         const s=await AutoSync.getSettings();
         if(s.notify&&fetched>0&&Notification.permission==='granted'){
-          new Notification(currentLang==='ja'?'Neus 新着':'Neus new items',{
-            body:currentLang==='ja'?`${fetched}件の新着があります`:`${fetched} new event(s)`,
-            // Reuses the manifest's 192x192 app icon (inline SVG) — no separate PNG asset exists.
-            icon:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230a0d0e'/><circle cx='96' cy='96' r='80' fill='none' stroke='%2300C4CC' stroke-width='14'/><circle cx='96' cy='96' r='28' fill='%2300C4CC'/></svg>",
-            tag:'neus-new',
-          });
+          try{
+            // new Notification()ではなくSW登録のshowNotificationを使う
+            // (new Notification()はAndroid Chromeでillegal constructorとして例外)。
+            const reg=await navigator.serviceWorker.ready;
+            await reg.showNotification(currentLang==='ja'?'Neus 新着':'Neus new items',{
+              body:currentLang==='ja'?`${fetched}件の新着があります`:`${fetched} new event(s)`,
+              // Reuses the manifest's 192x192 app icon (inline SVG) — no separate PNG asset exists.
+              icon:"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230a0d0e'/><circle cx='96' cy='96' r='80' fill='none' stroke='%2300C4CC' stroke-width='14'/><circle cx='96' cy='96' r='28' fill='%2300C4CC'/></svg>",
+              tag:'neus-new',
+            });
+          }catch(nErr){console.warn('[periodic-poll-request] notification failed:',nErr);}
         }
-        await refreshCounts();await renderView();
       }catch(err){console.error('[SW message] periodic-poll-request failed:',err);}
     }
   });
@@ -1763,8 +1788,17 @@ if('serviceWorker'in navigator){
 const ShareTarget={
   async handle(){
     const params=new URLSearchParams(location.search);
-    const url=params.get('share_url');const rawTitle=params.get('share_title')||params.get('share_text')||'';
-    if(!url)return;
+    const shareText=params.get('share_text')||'';
+    let url=params.get('share_url');
+    // 一部の共有元(Android の多くのアプリ等)は専用の url フィールドを持たず、
+    // text にURLを埋め込む。share_url が無ければ share_text から最初のURLを抽出する。
+    if(!url&&shareText){const m=shareText.match(/https?:\/\/\S+/);if(m)url=m[0];}
+    const rawTitle=params.get('share_title')||shareText||'';
+    if(!url){
+      if(params.has('share_url')||params.has('share_text')||params.has('share_title'))
+        toast(currentLang==='ja'?'共有内容からURLが見つかりませんでした':'no URL found in the shared content','err');
+      return;
+    }
     history.replaceState({},'','/');
     await this.ingest(url,rawTitle);
   },
@@ -2989,6 +3023,10 @@ const WordExporter={
 
 // ===== VIEWS ============================================================
 let currentView='inbox';let searchQuery='';let searchResults=[];
+// Generation counter: renderView has several awaits before each view.innerHTML write, so
+// overlapping calls (e.g. a slow inbox render still in flight when the user switches to
+// STARRED) can otherwise resolve out of order and the older one clobbers the newer result.
+let renderSeq=0;
 let wordViewFilter=null; // WORDS俯瞰チップによる絞り込み(null=全件)
 let wordSortKey='date'; // WORDS view sort: 'date'|'new'|'verdict'
 let wordNameFilter=''; // WORDS view text filter on word name
@@ -3547,19 +3585,21 @@ $('#view').addEventListener('input',(e)=>{
 });
 
 async function renderView(){
-  const view=$('#view');view.setAttribute('aria-busy','true');
+  const view=$('#view');const myRender=++renderSeq;view.setAttribute('aria-busy','true');
+  // Commits html only if no newer renderView() call has started since this one began —
+  // otherwise a slow render (e.g. a large inbox listing) could resolve after a faster,
+  // newer render (e.g. the user switched to STARRED) and overwrite it with stale content.
+  const commit=(html)=>{if(myRender!==renderSeq)return false;view.innerHTML=html;view.setAttribute('aria-busy','false');return true;};
   try{
     if(currentView==='digest'){
-      view.innerHTML=await renderDigest();
-      view.setAttribute('aria-busy','false');return;
+      commit(await renderDigest());return;
     }
     if(currentView==='words'){
       view.scrollTop=0;
-      view.innerHTML=await renderWords();
-      view.setAttribute('aria-busy','false');return;
+      commit(await renderWords());return;
     }
     if(currentView==='search'){
-      if(!searchQuery){view.innerHTML=`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`;view.setAttribute('aria-busy','false');return;}
+      if(!searchQuery){commit(`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`);return;}
       const events=[];const wordHits=[];
       for(const r of searchResults){
         if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w)wordHits.push({w,score:r.score});}
@@ -3569,20 +3609,20 @@ async function renderView(){
       const srNorm=normalizeTerm(searchQuery);
       const alreadyWord=wordHits.some(({w})=>w.normalized===srNorm)||(await Store.findWordByTerm(srNorm))!=null;
       const srBanner=alreadyWord?'':`<div class="sr-word-banner"><span class="sr-word-label">${currentLang==='ja'?`「${escapeHtml(searchQuery)}」を探究登録`:`Register "${escapeHtml(searchQuery)}" as a watchword`}</span><button class="sr-word-btn" data-wact="regword" data-term="${escapeAttr(searchQuery)}">${currentLang==='ja'?'+ 登録':'+ Register'}</button></div>`;
-      if(events.length===0&&wordHits.length===0){view.innerHTML=srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`;view.setAttribute('aria-busy','false');return;}
-      view.innerHTML=srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join('');view.setAttribute('aria-busy','false');return;
+      if(events.length===0&&wordHits.length===0){commit(srBanner+`<div class="empty"><div class="icon">[ ]</div><div>${escapeHtml(searchQuery)} — ${currentLang==='ja'?'該当なし':'no match'}</div></div>`);return;}
+      commit(srBanner+wordHits.map(({w,score})=>wordResultHtml(w,score)).join('')+events.map(({ev,score})=>cardHtml(ev,score)).join(''));return;
     }
     const filter=VIEW_FILTERS[currentView];let events=await Store.listEvents({filter,limit:CONFIG.maxViewItems*2});
     // applyFilter()で設定されたソース/タグフィルタ適用
     if(activeFilter)events=events.filter(matchesFilter);
     events=events.slice(0,CONFIG.maxViewItems);
     if(events.length===0){
-      view.innerHTML=`<div class="empty"><div class="icon">[ ]</div><div>${t('empty.inbox')}</div><div class="hint">${t('empty.hint')}</div><button id="empty-sources" type="button">${t('btn.sources')}</button></div>`;
-      $('#empty-sources')?.addEventListener('click',openSourcesModal);view.setAttribute('aria-busy','false');return;
+      if(commit(`<div class="empty"><div class="icon">[ ]</div><div>${t('empty.inbox')}</div><div class="hint">${t('empty.hint')}</div><button id="empty-sources" type="button">${t('btn.sources')}</button></div>`))
+        $('#empty-sources')?.addEventListener('click',openSourcesModal);
+      return;
     }
-    view.innerHTML=events.map(ev=>cardHtml(ev)).join('');
-    view.setAttribute('aria-busy','false');
-  }catch(err){console.error('[renderView]',err);view.setAttribute('aria-busy','false');}
+    commit(events.map(ev=>cardHtml(ev)).join(''));
+  }catch(err){console.error('[renderView]',err);if(myRender===renderSeq)view.setAttribute('aria-busy','false');}
 }
 
 // 検索結果に表示された単語カードをクリックすると WORDSビューに遷移してフィルタを適用する
@@ -3770,11 +3810,22 @@ $('#search-input').addEventListener('input',(e)=>doSearch(e.target.value));
 
 // ===== DETAIL MODAL =====================================================
 let currentDetailId=null;
+// Module-level (not per-open-closure) so the single delegated #detail-card click handler
+// below always reads the current state — #detail-card is a persistent container (only its
+// innerHTML is replaced per open), so a handler bound inside openDetailModal would accumulate
+// one stale copy per open instead of being garbage-collected with the old content.
+let detailTags=[];
 const renderTagChips=(tags)=>tags.map((t,i)=>`<span class="tag-chip">${escapeHtml(t)}<button type="button" data-tag-rm="${i}">×</button></span>`).join('');
+const refreshDetailTagsRow=()=>{$('#user-tags-row').innerHTML=renderTagChips(detailTags)+'<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter">';bindDetailTagInput();};
+function bindDetailTagInput(){$('#tag-input').addEventListener('keydown',(e)=>{if(e.key!=='Enter'||!e.target.value.trim())return;e.preventDefault();const nt=e.target.value.trim().toLowerCase();if(!detailTags.includes(nt))detailTags.push(nt);e.target.value='';refreshDetailTagsRow();});}
+$('#detail-card').addEventListener('click',(e)=>{
+  const rm=e.target.closest('[data-tag-rm]');if(rm){detailTags.splice(+rm.dataset.tagRm,1);refreshDetailTagsRow();}
+  const promote=e.target.closest('[data-auto-promote]');if(promote){const t2=promote.dataset.autoTag;if(!detailTags.includes(t2))detailTags.push(t2);refreshDetailTagsRow();promote.style.display='none';}
+});
 
 async function openDetailModal(ev){
-  currentDetailId=ev.id;const tags=[...(ev.meta.userTags||[])];
-  const autoTags=(ev.meta.autoTags||[]).filter(t=>!tags.includes(t));
+  currentDetailId=ev.id;detailTags=[...(ev.meta.userTags||[])];
+  const autoTags=(ev.meta.autoTags||[]).filter(t=>!detailTags.includes(t));
   const vaultLinks=(ev.links||[]).filter(l=>l.startsWith('vault:'));
   const summary=ev.content.summary?`<div class="detail-summary">${escapeHtml(ev.content.summary)}</div>`:'';
   const snippet=ev.content.snippet?`<div class="detail-body">${escapeHtml(ev.content.snippet)}</div>`:'';
@@ -3785,7 +3836,7 @@ async function openDetailModal(ev){
     <h2 class="detail-title"><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
     ${summary}${snippet}${vaultHtml}
     <h4>USER TAGS</h4>
-    <div class="tag-input-row" id="user-tags-row">${renderTagChips(tags)}<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter"></div>
+    <div class="tag-input-row" id="user-tags-row">${renderTagChips(detailTags)}<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter"></div>
     ${autoTags.length?`<h4>AUTO TAGS</h4><div class="tag-input-row" id="auto-tags-row">${autoTags.map((t,i)=>`<span class="tag-chip" data-auto-promote="${i}" data-auto-tag="${escapeAttr(t)}" style="cursor:pointer;">${escapeHtml(t)}</span>`).join('')}</div>`:''}
     <h4>USER QUOTE</h4><textarea id="user-quote" placeholder="抜粋・引用">${escapeHtml(ev.user?.quote||'')}</textarea>
     <h4>USER NOTE</h4><textarea id="user-note" placeholder="自分のメモ">${escapeHtml(ev.user?.note||'')}</textarea>
@@ -3797,15 +3848,9 @@ async function openDetailModal(ev){
       <button id="detail-save" class="primary" type="button">SAVE</button>
     </div>`;
   $('#modal-detail').classList.add('show');
-  const refreshTagsRow=()=>{$('#user-tags-row').innerHTML=renderTagChips(tags)+'<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter">';bindTagInput();};
-  function bindTagInput(){$('#tag-input').addEventListener('keydown',(e)=>{if(e.key!=='Enter'||!e.target.value.trim())return;e.preventDefault();const nt=e.target.value.trim().toLowerCase();if(!tags.includes(nt))tags.push(nt);e.target.value='';refreshTagsRow();});}
-  bindTagInput();
-  $('#detail-card').addEventListener('click',(e)=>{
-    const rm=e.target.closest('[data-tag-rm]');if(rm){tags.splice(+rm.dataset.tagRm,1);refreshTagsRow();}
-    const promote=e.target.closest('[data-auto-promote]');if(promote){const t2=promote.dataset.autoTag;if(!tags.includes(t2))tags.push(t2);refreshTagsRow();promote.style.display='none';}
-  });
+  bindDetailTagInput();
   $('#detail-close').addEventListener('click',()=>$('#modal-detail').classList.remove('show'));
-  $('#detail-save').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=tags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast('saved','ok');$('#modal-detail').classList.remove('show');await renderView();}catch(err){console.error('[detail-save]',err);toast('save failed','err');}});
+  $('#detail-save').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=detailTags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast('saved','ok');$('#modal-detail').classList.remove('show');await renderView();}catch(err){console.error('[detail-save]',err);toast('save failed','err');}});
   $('#detail-copy').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(cur)MarkdownExporter.copy(cur);});
   $('#detail-vault').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(cur);if(ok){toast(currentLang==='ja'?'書出完了':'exported','ok');$('#modal-detail').classList.remove('show');await renderView();}else toast('vault export failed','err');});
   $('#detail-resummarize').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast('summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast('summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast('summary updated','ok');openDetailModal(cur);}catch(err){console.error('[detail-resummarize]',err);toast('summarize failed','err');}});
@@ -4253,30 +4298,53 @@ function matchesFilter(ev){
 
 // ===== FOCUS TRAP (a11y) ================================================
 // Trap focus inside the active modal for keyboard users
-let lastFocusedBeforeModal=null;
-function trapFocus(modal){
-  const focusables=modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])');
-  if(focusables.length===0)return;
-  const first=focusables[0],last=focusables[focusables.length-1];
-  modal.addEventListener('keydown',function trap(e){
-    if(e.key!=='Tab')return;
-    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
-    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
-  });
-  // 最初のfocusableに自動フォーカス
-  setTimeout(()=>first.focus(),50);
+// Stack of prior-focus elements, one per currently-open modal-like element (push on show,
+// pop on hide) — a single slot lost the opener whenever a second modal-like element (e.g.
+// confirmAsync's #modal-confirm) showed while a first was still open, since it overwrote the
+// slot with an element inside the first modal.
+let focusStack=[];
+const MODAL_LIKE_CLASSES=['modal','onboarding','lock-screen','sheet-backdrop'];
+function isModalLike(el){return MODAL_LIKE_CLASSES.some(c=>el.classList.contains(c));}
+function liveFocusables(modal){
+  return modal.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])');
 }
-// MutationObserver でモーダル開閉を監視
+function autoFocusFirst(modal){
+  const focusables=liveFocusables(modal);
+  if(focusables.length===0)return;
+  // 最初のfocusableに自動フォーカス
+  setTimeout(()=>focusables[0].focus(),50);
+}
+function trapFocus(modal){
+  // keydownリスナーはモーダルごとに一度だけ束縛する(束縛時に固定した first/last は、
+  // 同じ永続要素が開くたびに変わりうるfocusable集合 — 例: detail modalのタグchip数や
+  // AUTO TAGSセクションの有無 — に対して古いまま固定されてしまうため、ハンドラ内で
+  // 毎回 liveFocusables() を再取得する)。
+  if(!modal.dataset.trapBound){
+    modal.dataset.trapBound='1';
+    modal.addEventListener('keydown',(e)=>{
+      if(e.key!=='Tab')return;
+      const focusables=liveFocusables(modal);
+      if(focusables.length===0)return;
+      const first=focusables[0],last=focusables[focusables.length-1];
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+      else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+    });
+  }
+  autoFocusFirst(modal);
+}
+// MutationObserver でモーダル開閉を監視(kw-sheetはsheet-backdropとして role="dialog"
+// aria-modal="true" を宣言しているため、他のモーダルと同じくフォーカストラップ+復元対象に含める)
 new MutationObserver((muts)=>{
   for(const m of muts){
     if(m.attributeName!=='class')continue;
     const el=m.target;
-    if(el.classList.contains('show')&&(el.classList.contains('modal')||el.classList.contains('onboarding')||el.classList.contains('lock-screen'))){
-      lastFocusedBeforeModal=document.activeElement;
+    if(!isModalLike(el))continue;
+    if(el.classList.contains('show')){
+      focusStack.push(document.activeElement);
       trapFocus(el);
-    }else if(!el.classList.contains('show')&&lastFocusedBeforeModal&&(el.classList.contains('modal')||el.classList.contains('onboarding')||el.classList.contains('lock-screen'))){
-      try{lastFocusedBeforeModal.focus();}catch{}
-      lastFocusedBeforeModal=null;
+    }else if(focusStack.length){
+      const prev=focusStack.pop();
+      try{prev?.focus();}catch{}
     }
   }
 }).observe(document.body,{attributes:true,attributeFilter:['class'],subtree:true});
@@ -4316,6 +4384,18 @@ function currentCardEvent(){
   const cards=getVisibleCards();
   if(kbCursor<0||kbCursor>=cards.length)return null;
   return Store.getEvent(cards[kbCursor].dataset.id);
+}
+
+// s/e/r/l/vのカード操作は現在のカードをリストから外すことがある(例: eでアーカイブする
+// とINBOXから消える)。renderView()後もkbCursorは据え置かれたままで、かつ古いカードノード
+// 上に付けたoutlineはview.innerHTML再描画で消えるため、次のj/k/操作が視覚上どこにも
+// カーソルが無いまま「見えているのと違うカード」に対して働いていた。renderView()後は
+// 必ずこれを呼び、新しいカード数に収まるようkbCursorを詰め、outlineを再適用する。
+function reclampCursor(){
+  const cards=getVisibleCards();
+  if(cards.length===0){kbCursor=-1;return;}
+  if(kbCursor>=cards.length)kbCursor=cards.length-1;
+  if(kbCursor>=0)highlightCard(kbCursor);
 }
 
 document.addEventListener('keydown',async(e)=>{
@@ -4388,8 +4468,8 @@ document.addEventListener('keydown',async(e)=>{
       if(k==='e'){ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;}
       if(k==='r'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
       if(k==='l'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
-      if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();return;}
-      await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
+      if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();reclampCursor();return;}
+      await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();reclampCursor();
     }catch(err){console.error('[kb/action]',err);toast('action failed','err');}
   }
 });
@@ -4477,6 +4557,7 @@ $('#set-save').addEventListener('click',async()=>{
     const r=await AutoSync.register(intervalSec);
     if(!r.ok)toast(currentLang==='ja'?`自動取得登録失敗: ${r.reason}`:`auto-sync register failed: ${r.reason}`,'err');
   }else{await AutoSync.unregister();}
+  await AutoSync.syncPrefsToSW();
   toast('settings saved','ok');$('#modal-settings').classList.remove('show');
  }catch(err){console.error('[set-save]',err);toast(currentLang==='ja'?'設定の保存に失敗しました':'failed to save settings','err');}
 });
@@ -4669,6 +4750,9 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
     await KeywordRules.load();
     await Summarizer.load();
     await MarkdownExporter.load();
+    // notify設定がSW側(Cache API経由)と食い違わないよう、起動時にも同期しておく
+    // (設定を保存していなくても、通知許可がブラウザ側で変化している場合がある)。
+    await AutoSync.syncPrefsToSW();
     await InterestProfile.load();
     await FTSIndex.rebuild();
     Perf.mark('fts');
