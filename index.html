@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-BM5GapNMGjiB96at5vXrm+0m2/ao1Bz5bJJo9M84dWQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Q+98BEViXpMSeHKvsDh7y17kwA2jqS7Wnv3jpgbN18k='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -563,6 +563,11 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
     <label for="set-sync-notify">新着通知</label>
     <select id="set-sync-notify"><option value="false">無効</option><option value="true">有効</option></select>
     <div id="sync-status" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-3);margin-bottom:8px;"></div>
+
+    <h4>VAULT EXPORT</h4>
+    <label for="set-export-template">ノート本文テンプレート(空欄で既定形式)</label>
+    <p class="hint-text">プレースホルダ: {{title}} {{url}} {{link}} {{source}} {{date}} {{tags}} {{summary}} {{snippet}} {{note}} {{quote}}。空行区切りのブロック内の全プレースホルダが空なら、そのブロックごと出力されない。frontmatter は常に固定。</p>
+    <textarea id="set-export-template" rows="6" style="font-family:var(--font-mono);font-size:11px;" placeholder="# {{title}}&#10;&#10;## 要約&#10;{{summary}}&#10;&#10;{{link}}"></textarea>
 
     <h4>STATUS</h4>
     <div id="byok-status" style="font-family:var(--font-mono);font-size:11px;color:var(--fg-2);"></div>
@@ -2310,11 +2315,42 @@ Bus.subscribe('summarizer.error',({ev,error})=>{console.warn('[Summarizer]',erro
 Bus.subscribe('summarizer.budget-exceeded',()=>toast('daily summary budget reached','err'));
 
 // ===== MARKDOWN EXPORTER ================================================
+// Render a user-defined export template. {{key}} placeholders are replaced from values.
+// Block rule (deliberately no control-flow syntax — loops/conditionals would need an
+// eval-grade parser, against the zero-dependency and simplicity principles): the template
+// splits on blank lines; a block whose every known placeholder resolves empty is dropped
+// whole, so "## Summary\n\n{{summary}}" vanishes cleanly when there is no summary.
+// Unknown placeholders are left as literal text so typos stay visible instead of
+// silently deleting content.
+function renderExportTemplate(tpl,values){
+  const out=[];
+  for(const block of String(tpl).split(/\n{2,}/)){
+    let known=0,empty=0;
+    const rendered=block.replace(/\{\{(\w+)\}\}/g,(m,key)=>{
+      if(!(key in values))return m;
+      known++;const v=String(values[key]??'');
+      if(!v)empty++;
+      return v;
+    });
+    if(known>0&&known===empty)continue;
+    out.push(rendered);
+  }
+  return out.join('\n\n');
+}
 const MarkdownExporter={
+  // User-defined body template ('export-template' setting). null = built-in fixed format.
+  // The YAML frontmatter is NOT templatable: it stays fixed and yamlScalar-escaped so a
+  // template can never break YAML parsing or drop the machine-readable keys (neus_id, hash).
+  template:null,
+  async load(){this.template=(await Store.getSetting('export-template'))||null;},
   toMarkdown(ev){
     const tags=[...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])];
     const vaultLinks=(ev.links||[]).filter(l=>l.startsWith('vault:')).map(l=>l.slice(6));
     const fm=['---',`neus_id: ${ev.id}`,`source: ${yamlScalar(ev.source.name)}`,`source_url: ${yamlScalar(ev.source.url||'')}`,ev.publishedAt?`published_at: ${isoDate(ev.publishedAt)}`:null,`ingested_at: ${isoDate(ev.timestamp)}`,`tags: [${tags.map(yamlScalar).join(', ')}]`,`score: ${ev.meta.score}`,`hash: ${ev.hash}`,'---'].filter(Boolean).join('\n');
+    if(typeof this.template==='string'&&this.template.trim()){
+      const values={title:ev.content.title||'',url:ev.url?safeHref(ev.url):'',link:ev.url?mdLink('原文を開く',ev.url):'',source:ev.source.name||'',date:isoDate(ev.publishedAt||ev.timestamp),tags:tags.map(t=>`#${t}`).join(' '),summary:ev.content.summary||'',snippet:ev.content.snippet||'',note:ev.user?.note||'',quote:ev.user?.quote||''};
+      return fm+'\n\n'+renderExportTemplate(this.template,values);
+    }
     const parts=[fm,'',`# ${ev.content.title}`,''];
     if(ev.user?.quote)parts.push(`> ${ev.user.quote.split('\n').join('\n> ')}`,'');
     if(ev.user?.note)parts.push(`**メモ**: ${ev.user.note}`,'');
@@ -4397,6 +4433,7 @@ async function openSettingsModal(){
   const supported=await AutoSync.isSupported();
   const registered=supported?await AutoSync.isRegistered():false;
   $('#sync-status').textContent=supported?(registered?(currentLang==='ja'?'登録済み':'registered'):(currentLang==='ja'?'未登録':'not registered')):(currentLang==='ja'?'このブラウザは未対応(手動POLLのみ)':'unsupported in this browser');
+  $('#set-export-template').value=MarkdownExporter.template||'';
   $('#modal-settings').classList.add('show');
 }
 $('#set-byok-provider').addEventListener('change',(e)=>{const def=CONFIG.byokDefaults[e.target.value];if(def)$('#set-byok-model').value=def.model;});
@@ -4427,6 +4464,10 @@ $('#set-save').addEventListener('click',async()=>{
   if(!s.apiKey&&existingSettings?.apiKey)s.apiKey=existingSettings.apiKey;
   if(s.apiKey!==undefined)await Store.putSetting('byok',s);
   if(lang!==currentLang){currentLang=lang;await Store.putSetting('lang',lang);applyI18N();}
+  // エクスポートテンプレート保存(空欄 = 既定形式に戻す)
+  const tplRaw=$('#set-export-template').value;
+  if(tplRaw.trim()){await Store.putSetting('export-template',tplRaw);MarkdownExporter.template=tplRaw;}
+  else{await Store.deleteSetting('export-template');MarkdownExporter.template=null;}
   // AutoSync 保存
   const syncSettings={enabled:$('#set-sync-enabled').value==='true',interval:$('#set-sync-interval').value,notify:$('#set-sync-notify').value==='true'};
   await AutoSync.setSettings(syncSettings);
@@ -4627,6 +4668,7 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
     // 各モジュール初期化
     await KeywordRules.load();
     await Summarizer.load();
+    await MarkdownExporter.load();
     await InterestProfile.load();
     await FTSIndex.rebuild();
     Perf.mark('fts');
