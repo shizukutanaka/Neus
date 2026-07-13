@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-jHLa/Qz0nyQD3YwhjrodzAL9blpq8GYwZhF2StVQr/A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-DarZHNSVEHMszNl9Y6fQ9u1pXQeppvaP07AClbk4glM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1514,7 +1514,13 @@ const NetworkMonitor=(()=>{
 // ===== SOURCE FAIL TRACKER ==============================================
 const SourceFailTracker=(()=>{
   const fails=new Map();
-  Bus.subscribe('inbound.error',async({source})=>{
+  // 'normalize'/'pipeline' はNeus自身の内部処理(URL正規化・重複排除・キーワード適用・
+  // DB書込)で起きるエラーで、フィード/ソース自体の健全性とは無関係。これらをカウントすると、
+  // 自ソフト側の一時的なバグが健全なソースを誤って自動無効化しうる。ソース自体の障害
+  // (network/http_*/parse — RSSPoller.fetchOneが発行するもの)のみを対象にする。
+  function isSourceFault(error){return error==='network'||error==='parse'||(typeof error==='string'&&error.startsWith('http_'));}
+  Bus.subscribe('inbound.error',async({source,error})=>{
+    if(!isSourceFault(error))return;
     // word由来の合成ソースは登録RSSソースではないため自動無効化の対象外
     if(typeof source.id==='string'&&source.id.startsWith('word:'))return;
     const n=(fails.get(source.id)||0)+1;fails.set(source.id,n);

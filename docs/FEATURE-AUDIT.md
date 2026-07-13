@@ -232,13 +232,30 @@
   救済範囲を確認してから。アンカー: `function normalizeUrl`
 - **「fetched N」の意味が経路間で不一致**: 手動POLLトーストは生フィード件数、
   バックグラウンドは `countAll` 差分(eviction と重なると負になり通知抑制)。
-  「実際に新規保存した件数」への一本化が本筋。アンカー: `fetched ${total}` /
-  `const fetched=after-before;`
-- **SourceFailTracker が自装置側の normalize エラーも失敗計上**: クライアント側の
-  正規化バグで健全なソースが自動無効化されうる。`error:'normalize'` の除外を検討。
-  アンカー: `inbound.error` / `sourceMaxFails`
-- **skipWaiting とリロード確認の競合(化粧的)**: 新SWが確認前に制御を奪うため
-  リロード促しが半ば飾りになっている。単一ファイルPWAでは実害は小さい。
+  「実際に新規保存した件数」への一本化が本筋だが、`Bus.publish` が fire-and-forget
+  (発行元は購読ハンドラの完了を待たない)なため、正確な「今回のpollで新規保存された
+  件数」は取得系(fetchAll/collectAll)がdedup/keyword適用パイプラインの完了を
+  一切待っていない構造上の制約に触れる — 単純なカウンタ差し替えでは直らず、
+  ingestionパイプライン自体の待ち合わせ機構が必要な中〜大規模改修。round 30 で
+  着手を検討したが、この規模の変更を検証なしに投入するリスクを避け見送った。
+  アンカー: `fetched ${total}` / `const fetched=after-before;`
+- **SourceFailTracker が自装置側の normalize エラーも失敗計上【解決済み・round 30】**:
+  `inbound.error` は `network`/`http_*`/`parse`(ソース自体の障害)と
+  `normalize`/`pipeline`(Neus自身の内部処理エラー、ソースの健全性とは無関係)の
+  両方を運んでいたが、旧実装は種別を区別せず全てカウントしていた。`isSourceFault(error)`
+  で後者2種を除外し、Neus側の一時的なバグで健全なソースが誤って自動無効化されなく
+  なった。アンカー: `function isSourceFault` / `tests/source-fail-normalize-exclusion.test.mjs`
+- **skipWaiting とリロード確認の競合(化粧的)【round 30 で着手→検証不能のため見送り】**:
+  新SWが確認前に制御を奪う競合自体は実在するが、標準的な修正パターン
+  (installでskipWaiting()を呼ばず、確認後にpostMessageでskip-waitingを指示し
+  controllerchangeを待ってreload)を実装した後、Playwright実ブラウザテスト
+  (`tests/browser-sw.spec.mjs` の「SW registers and reaches activated state」)で
+  検証したところタイムアウトした。**原因切り分けのため変更前のコードでも同テストを
+  複数回再実行したところ同様にタイムアウトし、この環境のPlaywright実行基盤自体が
+  SW登録のライフサイクルを安定して検証できない(修正の有無に関係なく失敗する)ことを
+  確認した**。SWの起動更新ロジックは全ユーザーに影響するブラスト半径の大きい変更のため、
+  信頼できる検証手段が無い状態での投入を見送り、変更は完全に取り消し済み(`sw.js`は
+  無変更)。単一ファイルPWAでは実害は小さいという元の評価どおり、低優先度のまま。
 
 ---
 
@@ -303,6 +320,6 @@
 3. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
 4. **§1-5 ベクトル検索の再評価 ADR** — WebANNS の新証拠を踏まえ、人間の判断を仰ぐ。
 
-§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11・§1-12(i18n)は解決済み。
-残る未対応は §1-3・§1-4・§1-5・§1-10(§1-12のnormalizeUrl/fetched件数/SourceFailTracker/
-skipWaiting小項目は引き続き記録のみ)。
+§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11・§1-12(i18n・SourceFailTracker)は解決済み。
+残る未対応は §1-3・§1-4・§1-5・§1-10(§1-12のnormalizeUrl/fetched件数/skipWaitingは
+引き続き記録のみ — skipWaitingはround 30で実装→この環境では検証不能と判明し取り消し済み)。

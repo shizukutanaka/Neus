@@ -652,3 +652,26 @@ i18n一括スイープを実行。`toast()` 約25箇所の単一言語(成功/�
   既に呼び出し元でバイリンガル生成済みの変数、`vault: ${name}` のような
   `updateVaultStatus` と同じ「vaultは訳さない」ステータスラベル慣用句。
 - テストは 1230 → 1262 件(`tests/i18n-sweep.test.mjs` 新設32件)。
+
+### 10.19 第17次監査 (round 30) — SourceFailTracker修正、skipWaiting修正の試行と取り消し
+
+`docs/FEATURE-AUDIT.md` §1-12 の残り小項目のうち、承認ゲート不要な2件に着手。
+
+- **SourceFailTracker(解決済み)**: `inbound.error` のうち `normalize`/`pipeline`
+  (Neus自身の内部処理エラー)を自動無効化カウントの対象から除外する `isSourceFault()`
+  ガードを追加。`network`/`http_*`/`parse`(ソース自体の障害)のみ引き続きカウントする。
+  1267件のテストで検証(vitestは全て文字列アンカー方式のため信頼できる)。
+- **skipWaiting とリロード確認の競合(試行→取り消し)**: 標準的な修正パターン
+  (installでskipWaiting()を呼ばず、確認後にpostMessageでskip-waitingを指示し
+  controllerchangeを待ってreload)を実装したが、`tests/browser-sw.spec.mjs` の
+  Playwright実ブラウザテストで検証したところタイムアウトした。**原因切り分けのため
+  `git stash` で変更前のコードに戻し同テストを再実行したところ、変更前のコードでも
+  同様にタイムアウトすることを確認**(3回連続再現)。この環境のPlaywright実行基盤が
+  SW登録のライフサイクルを安定して検証できないことが原因であり、修正自体の欠陥では
+  ないと考えられるが、SWの更新ロジックは全ユーザーに影響するブラスト半径の大きい
+  変更であるため、信頼できる検証手段が無い状態での投入は見送り、変更を完全に
+  取り消した(`sw.js`・`index.html` とも無変更に復元)。
+  **教訓**: 高ブラスト半径の変更は、たとえ実装自体が標準的なパターンであっても、
+  検証環境が信頼できないなら投入を見送るべき — 「テストが落ちた」ではなく
+  「テストがそもそも当てにならない」ことを変更前後の比較で確認してから判断する。
+- テストは 1262 → 1267 件(`tests/source-fail-normalize-exclusion.test.mjs` 新設5件)。
