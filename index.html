@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-zeIm0zZFrrRC88rFx9orxnNyGZrKVaaZH+byUs5KVlI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-jHLa/Qz0nyQD3YwhjrodzAL9blpq8GYwZhF2StVQr/A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -841,6 +841,24 @@ const DICT={
     'kw.block.delete':'破棄(保存しない)',
     'kw.watched.badge':'WATCH',
     'kw.blocked.badge':'BLOCKED',
+    'kwsheet.hint':'このキーワードのルールを追加',
+    'kwsheet.watch-hl':'WATCH — ハイライト',
+    'kwsheet.watch-star':'WATCH — 自動スター',
+    'kwsheet.block-arch':'BLOCK — アーカイブ',
+    'kwsheet.block-del':'BLOCK — 破棄',
+    'kwsheet.cancel':'キャンセル',
+    'detail.title':'詳細',
+    'detail.usertags':'タグ',
+    'detail.autotags':'自動タグ',
+    'detail.quote':'引用',
+    'detail.quote.ph':'抜粋・引用',
+    'detail.note':'メモ',
+    'detail.note.ph':'自分のメモ',
+    'detail.tag.ph':'タグを追加してEnter',
+    'detail.vaultnotes':'関連Vaultノート',
+    'detail.vault':'Vaultへ書き出し',
+    'detail.resummarize':'再要約',
+    'detail.copy':'MDをコピー',
     'nav.later':'LATER',
     'nav.digest':'DIGEST',
     'digest.title':'本日のダイジェスト',
@@ -943,6 +961,24 @@ const DICT={
     'kw.block.delete':'Discard (do not save)',
     'kw.watched.badge':'WATCH',
     'kw.blocked.badge':'BLOCKED',
+    'kwsheet.hint':'Add a rule for this keyword',
+    'kwsheet.watch-hl':'WATCH — Highlight',
+    'kwsheet.watch-star':'WATCH — Auto-star',
+    'kwsheet.block-arch':'BLOCK — Archive',
+    'kwsheet.block-del':'BLOCK — Discard',
+    'kwsheet.cancel':'Cancel',
+    'detail.title':'EVENT DETAIL',
+    'detail.usertags':'USER TAGS',
+    'detail.autotags':'AUTO TAGS',
+    'detail.quote':'USER QUOTE',
+    'detail.quote.ph':'quote / excerpt',
+    'detail.note':'USER NOTE',
+    'detail.note.ph':'your note',
+    'detail.tag.ph':'add tag + Enter',
+    'detail.vaultnotes':'RELATED VAULT NOTES',
+    'detail.vault':'EXPORT TO VAULT',
+    'detail.resummarize':'RE-SUMMARIZE',
+    'detail.copy':'COPY MD',
     'nav.later':'LATER',
     'nav.digest':'DIGEST',
     'digest.title':"Today's Digest",
@@ -1026,6 +1062,17 @@ function applyI18N(){
   $('#lock-desc').textContent=t('lock.desc');
   $('#lock-skip').textContent=t('lock.skip');
   $('#lock-unlock').textContent=t('lock.unlock');
+  // kw-sheet(long-press/right-clickのアクションシート)は静的HTMLで、旧実装は日本語
+  // 固定文言のままだった。他のUIチェームと同じくapplyI18Nでdata-drivenにする。
+  // WATCH/BLOCK ボタンには先頭にドット用のspan(dot-warn/dot-err)があるため、
+  // textContentで上書きせずchildNodes[1](テキストノード)だけを差し替える
+  // (nav buttonの.count保持と同じ手法)。
+  $('#kw-sheet-hint').textContent=t('kwsheet.hint');
+  $('#kw-sheet-watch-hl').childNodes[1].nodeValue=t('kwsheet.watch-hl');
+  $('#kw-sheet-watch-star').childNodes[1].nodeValue=t('kwsheet.watch-star');
+  $('#kw-sheet-block-arch').childNodes[1].nodeValue=t('kwsheet.block-arch');
+  $('#kw-sheet-block-del').childNodes[1].nodeValue=t('kwsheet.block-del');
+  $('#kw-sheet-cancel').textContent=t('kwsheet.cancel');
   const navMap={inbox:'INBOX',all:'ALL',starred:'STARRED',archived:'ARCHIVED',search:'SEARCH'};
   $$('.nav button[data-view]').forEach(b=>{
     const cnt=b.querySelector('.count');
@@ -1257,7 +1304,7 @@ const VaultWriter=(()=>{
     if(h){
       try{const perm=await h.queryPermission({mode:'readwrite'});if(perm==='granted')return h;const req2=await h.requestPermission({mode:'readwrite'});if(req2==='granted')return h;}catch{}
     }
-    if(!('showDirectoryPicker'in window)){toast('File System Access API not supported','err');return null;}
+    if(!('showDirectoryPicker'in window)){toast(currentLang==='ja'?'File System Access APIに対応していません':'File System Access API not supported','err');return null;}
     try{
       const nh=await window.showDirectoryPicker({mode:'readwrite',id:'neus-vault'});
       await Store.putSetting('vault-handle',nh);
@@ -1408,7 +1455,7 @@ const FTSIndex=(()=>{
 const VaultMatcher=(()=>{
   let vaultHandle=null;let fileMap=new Map();let scanning=false;
   async function selectVault(){
-    if(!('showDirectoryPicker'in window)){toast('File System Access API not supported','err');return null;}
+    if(!('showDirectoryPicker'in window)){toast(currentLang==='ja'?'File System Access APIに対応していません':'File System Access API not supported','err');return null;}
     let h;try{h=await window.showDirectoryPicker({mode:'read',id:'neus-vault'});}catch(err){if(err.name!=='AbortError')console.error(err);return null;}
     vaultHandle=h;try{await Store.putSetting('vault-handle',h);}catch(e){console.warn(e);}
     await scan();return h.name;
@@ -1474,7 +1521,7 @@ const SourceFailTracker=(()=>{
     if(n>=CONFIG.sourceMaxFails){
       try{const s=await Store.findSourceByUrl(source.url);
         if(s&&s.enabled!==false){s.enabled=false;await Store.putSource(s);}
-        toast(`${source.name}: auto-disabled (${CONFIG.sourceMaxFails} failures)`,'err');
+        toast(currentLang==='ja'?`${source.name}: ${CONFIG.sourceMaxFails}回連続失敗のため自動無効化`:`${source.name}: auto-disabled (${CONFIG.sourceMaxFails} failures)`,'err');
       }catch(err){console.warn('[SourceFailTracker]',err);}
       fails.delete(source.id);
     }
@@ -1513,7 +1560,7 @@ const StorageGuard=(()=>{
     if(candidates.length>0){
       const toDelete=candidates.slice(0,Math.max(1,Math.ceil(candidates.length*0.1)));
       for(const ev of toDelete){try{await Store.deleteEvent(ev.id);FTSIndex.remove(ev.id);}catch(err){console.warn('[StorageGuard] delete failed:',ev.id,err);}}
-      if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'ok');
+      if(toDelete.length>0)toast(currentLang==='ja'?`${toDelete.length}件を自動整理(容量${Math.round(ratio*100)}%)`:`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'ok');
       return;
     }
     // Nothing safely recoverable to evict, but storage is critical. Do NOT silently
@@ -1867,7 +1914,7 @@ const Bookmarklet={
     const burl=this.generate();
     const label=currentLang==='ja'?'<p>このリンクをブックマークバーにドラッグしてください。</p>':'<p>Drag this link to your bookmarks bar.</p>';
     area.innerHTML=`<div class="bookmarklet-box">${label}<a class="bookmarklet-link" href="${escapeAttr(burl)}">Neus — Save to Hub</a><div style="margin-top:8px;"><button id="bm-copy" type="button" style="font-family:var(--font-mono);font-size:11px;color:var(--accent);border:1px solid var(--accent-line);border-radius:4px;padding:4px 10px;">${currentLang==='ja'?'URLをコピー':'Copy URL'}</button></div></div>`;
-    $('#bm-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(burl);toast('copied','ok');}catch{toast('clipboard denied','err');}});
+    $('#bm-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(burl);toast(currentLang==='ja'?'コピーしました':'copied','ok');}catch{toast(currentLang==='ja'?'クリップボードへのアクセスが拒否されました':'clipboard denied','err');}});
   },
 };
 
@@ -2392,8 +2439,8 @@ const Summarizer=(()=>{
 })();
 
 Bus.subscribe('event.tagged',async(ev)=>{try{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;ev.content.summary=sum;await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.summarized',ev);}catch(err){console.error('[event.tagged]',err);}});
-Bus.subscribe('summarizer.error',({ev,error})=>{console.warn('[Summarizer]',error);if(error?.includes('401')||error?.includes('403'))toast('BYOK key invalid','err');});
-Bus.subscribe('summarizer.budget-exceeded',()=>toast('daily summary budget reached','err'));
+Bus.subscribe('summarizer.error',({ev,error})=>{console.warn('[Summarizer]',error);if(error?.includes('401')||error?.includes('403'))toast(currentLang==='ja'?'BYOK APIキーが無効です':'BYOK key invalid','err');});
+Bus.subscribe('summarizer.budget-exceeded',()=>toast(currentLang==='ja'?'本日の要約予算に達しました':'daily summary budget reached','err'));
 
 // ===== MARKDOWN EXPORTER ================================================
 // Render a user-defined export template. {{key}} placeholders are replaced from values.
@@ -2441,7 +2488,7 @@ const MarkdownExporter={
     if(ev.url)parts.push(mdLink('原文を開く',ev.url));
     return parts.join('\n');
   },
-  async copy(ev){try{await navigator.clipboard.writeText(this.toMarkdown(ev));toast('markdown copied','ok');}catch{toast('clipboard denied','err');}}
+  async copy(ev){try{await navigator.clipboard.writeText(this.toMarkdown(ev));toast(currentLang==='ja'?'Markdownをコピーしました':'markdown copied','ok');}catch{toast(currentLang==='ja'?'クリップボードへのアクセスが拒否されました':'clipboard denied','err');}}
 };
 
 // ===== WORD EXPORTER ====================================================
@@ -2976,7 +3023,7 @@ const WordExporter={
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     try{await navigator.clipboard.writeText(this.toDossier(word,events,others));toast(currentLang==='ja'?'コピーしました':'copied','ok');}
-    catch{toast('clipboard denied','err');return;}
+    catch{toast(currentLang==='ja'?'クリップボードへのアクセスが拒否されました':'clipboard denied','err');return;}
     word.reviewedAt=Date.now();await Store.putWord(word);
   },
   async downloadMd(word){
@@ -3739,7 +3786,7 @@ $('#view').addEventListener('click',async(e)=>{
     if(act==='detail'){openDetailModal(ev);return;}
     if(act==='copy'){MarkdownExporter.copy(ev);return;}
     await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();
-  }catch(err){console.error('[view/card-action]',err);toast('action failed','err');}
+  }catch(err){console.error('[view/card-action]',err);toast(currentLang==='ja'?'操作に失敗しました':'action failed','err');}
 });
 
 // ===== CONTEXT ACTION SHEET (long-press / right-click → keyword rule) ====
@@ -3834,7 +3881,7 @@ async function addQuickRule(kind,action){
     closeKwSheet();
     toast(currentLang==='ja'?`「${rule.pattern}」を${kind==='watch'?'WATCH':'BLOCK'}に追加(${n}件適用)`:`Added "${rule.pattern}" to ${kind} (${n} applied)`,'ok');
     await refreshCounts();await renderView();
-  }catch(err){console.error('[addQuickRule]',err);toast('rule save failed','err');}
+  }catch(err){console.error('[addQuickRule]',err);toast(currentLang==='ja'?'ルールの保存に失敗しました':'rule save failed','err');}
 }
 $('#kw-sheet-watch-hl').addEventListener('click',()=>addQuickRule('watch','highlight'));
 $('#kw-sheet-watch-star').addEventListener('click',()=>addQuickRule('watch','star'));
@@ -3876,31 +3923,31 @@ async function openDetailModal(ev){
   const vaultLinks=(ev.links||[]).filter(l=>l.startsWith('vault:'));
   const summary=ev.content.summary?`<div class="detail-summary">${escapeHtml(ev.content.summary)}</div>`:'';
   const snippet=ev.content.snippet?`<div class="detail-body">${escapeHtml(ev.content.snippet)}</div>`:'';
-  const vaultHtml=vaultLinks.length?`<h4>RELATED VAULT NOTES</h4><div class="detail-vault-list">${vaultLinks.map(l=>{const p=l.slice(6);const n=p.split('/').pop().replace(/\.md$/,'');return`<a href="#" data-vault-path="${escapeAttr(p)}">[[${escapeHtml(n)}]]<span class="vault-score">${escapeHtml(p)}</span></a>`;}).join('')}</div>`:'';
+  const vaultHtml=vaultLinks.length?`<h4>${t('detail.vaultnotes')}</h4><div class="detail-vault-list">${vaultLinks.map(l=>{const p=l.slice(6);const n=p.split('/').pop().replace(/\.md$/,'');return`<a href="#" data-vault-path="${escapeAttr(p)}">[[${escapeHtml(n)}]]<span class="vault-score">${escapeHtml(p)}</span></a>`;}).join('')}</div>`:'';
   $('#detail-card').innerHTML=`
-    <h3 id="hd-detail">EVENT DETAIL</h3>
+    <h3 id="hd-detail">${t('detail.title')}</h3>
     <div class="detail-meta"><span class="accent">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span>${ev.meta.author?`<span>${escapeHtml(ev.meta.author)}</span>`:''}</div>
     <h2 class="detail-title"><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
     ${summary}${snippet}${vaultHtml}
-    <h4>USER TAGS</h4>
-    <div class="tag-input-row" id="user-tags-row">${renderTagChips(detailTags)}<input type="text" id="tag-input" maxlength="50" placeholder="add tag + Enter"></div>
-    ${autoTags.length?`<h4>AUTO TAGS</h4><div class="tag-input-row" id="auto-tags-row">${autoTags.map((t,i)=>`<span class="tag-chip" data-auto-promote="${i}" data-auto-tag="${escapeAttr(t)}" style="cursor:pointer;">${escapeHtml(t)}</span>`).join('')}</div>`:''}
-    <h4>USER QUOTE</h4><textarea id="user-quote" placeholder="抜粋・引用">${escapeHtml(ev.user?.quote||'')}</textarea>
-    <h4>USER NOTE</h4><textarea id="user-note" placeholder="自分のメモ">${escapeHtml(ev.user?.note||'')}</textarea>
+    <h4>${t('detail.usertags')}</h4>
+    <div class="tag-input-row" id="user-tags-row">${renderTagChips(detailTags)}<input type="text" id="tag-input" maxlength="50" placeholder="${escapeAttr(t('detail.tag.ph'))}"></div>
+    ${autoTags.length?`<h4>${t('detail.autotags')}</h4><div class="tag-input-row" id="auto-tags-row">${autoTags.map((tg,i)=>`<span class="tag-chip" data-auto-promote="${i}" data-auto-tag="${escapeAttr(tg)}" style="cursor:pointer;">${escapeHtml(tg)}</span>`).join('')}</div>`:''}
+    <h4>${t('detail.quote')}</h4><textarea id="user-quote" placeholder="${escapeAttr(t('detail.quote.ph'))}">${escapeHtml(ev.user?.quote||'')}</textarea>
+    <h4>${t('detail.note')}</h4><textarea id="user-note" placeholder="${escapeAttr(t('detail.note.ph'))}">${escapeHtml(ev.user?.note||'')}</textarea>
     <div class="row">
-      <button id="detail-close" type="button">CLOSE</button>
-      <button id="detail-vault" type="button">EXPORT TO VAULT</button>
-      <button id="detail-resummarize" type="button">RE-SUMMARIZE</button>
-      <button id="detail-copy" type="button">COPY MD</button>
-      <button id="detail-save" class="primary" type="button">SAVE</button>
+      <button id="detail-close" type="button">${t('btn.close')}</button>
+      <button id="detail-vault" type="button">${t('detail.vault')}</button>
+      <button id="detail-resummarize" type="button">${t('detail.resummarize')}</button>
+      <button id="detail-copy" type="button">${t('detail.copy')}</button>
+      <button id="detail-save" class="primary" type="button">${t('btn.save')}</button>
     </div>`;
   $('#modal-detail').classList.add('show');
   bindDetailTagInput();
   $('#detail-close').addEventListener('click',()=>$('#modal-detail').classList.remove('show'));
-  $('#detail-save').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=detailTags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast('saved','ok');$('#modal-detail').classList.remove('show');await renderView();}catch(err){console.error('[detail-save]',err);toast('save failed','err');}});
+  $('#detail-save').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=detailTags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast(currentLang==='ja'?'保存しました':'saved','ok');$('#modal-detail').classList.remove('show');await renderView();}catch(err){console.error('[detail-save]',err);toast(currentLang==='ja'?'保存に失敗しました':'save failed','err');}});
   $('#detail-copy').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(cur)MarkdownExporter.copy(cur);});
-  $('#detail-vault').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(cur);if(ok){toast(currentLang==='ja'?'書出完了':'exported','ok');$('#modal-detail').classList.remove('show');await renderView();}else toast('vault export failed','err');});
-  $('#detail-resummarize').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast('summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast('summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast('summary updated','ok');openDetailModal(cur);}catch(err){console.error('[detail-resummarize]',err);toast('summarize failed','err');}});
+  $('#detail-vault').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(cur);if(ok){toast(currentLang==='ja'?'書出完了':'exported','ok');$('#modal-detail').classList.remove('show');await renderView();}else toast(currentLang==='ja'?'書出に失敗しました':'vault export failed','err');});
+  $('#detail-resummarize').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'要約中...':'summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast(currentLang==='ja'?'要約に失敗しました(BYOK設定を確認)':'summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast(currentLang==='ja'?'要約を更新しました':'summary updated','ok');openDetailModal(cur);}catch(err){console.error('[detail-resummarize]',err);toast(currentLang==='ja'?'要約に失敗しました':'summarize failed','err');}});
 }
 $('#modal-detail').addEventListener('click',(e)=>{if(e.target.id==='modal-detail')$('#modal-detail').classList.remove('show');});
 
@@ -3910,7 +3957,7 @@ async function openSourcesModal(){
     const list=await Store.listSources();
     const html=list.map(s=>`<div class="source-item${s.enabled===false?' disabled':''}"><div><div class="name">${escapeHtml(s.name)}</div><div class="url">${escapeHtml(s.url)}</div></div><button data-src-del="${s.id}" type="button">DEL</button></div>`).join('')||`<div style="color:var(--fg-3);text-align:center;padding:12px;font-family:var(--font-mono);font-size:11px;">${currentLang==='ja'?'ソースなし':'no sources'}</div>`;
     $('#sources-list').innerHTML=html;$('#modal-sources').classList.add('show');
-  }catch(err){console.error('[openSourcesModal]',err);toast('failed to load sources','err');}
+  }catch(err){console.error('[openSourcesModal]',err);toast(currentLang==='ja'?'ソースの読み込みに失敗しました':'failed to load sources','err');}
 }
 $('#btn-sources').addEventListener('click',openSourcesModal);
 $('#btn-poll').addEventListener('click',async()=>{
@@ -3934,12 +3981,12 @@ $('#btn-poll').addEventListener('click',async()=>{
   document.addEventListener('keydown',(e)=>{if(e.key==='Escape'&&menu.classList.contains('show')&&!document.querySelector('.modal.show')){close();btn.focus();}});
 })();
 $('#src-cancel').addEventListener('click',()=>{$('#modal-sources').classList.remove('show');$('#bookmarklet-area').style.display='none';});
-$('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.trim();if(!url)return;if(safeHref(url)==='#'){toast('invalid url','err');return;}if(await Store.findSourceByUrl(url)){toast(currentLang==='ja'?'登録済み':'already added','err');return;}try{await Store.putSource({id:uuid(),url,name:new URL(url).hostname,enabled:true,addedAt:Date.now()});}catch(err){toast('failed to save source','err');return;}$('#src-url').value='';toast(currentLang==='ja'?'追加しました':'source added','ok');openSourcesModal();});
-$('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;try{await Store.deleteSource(del.dataset.srcDel);openSourcesModal();}catch(err){console.error('[sources-list delete]',err);toast('delete failed','err');}});
+$('#src-add').addEventListener('click',async()=>{const url=$('#src-url').value.trim();if(!url)return;if(safeHref(url)==='#'){toast(currentLang==='ja'?'無効なURL':'invalid url','err');return;}if(await Store.findSourceByUrl(url)){toast(currentLang==='ja'?'登録済み':'already added','err');return;}try{await Store.putSource({id:uuid(),url,name:new URL(url).hostname,enabled:true,addedAt:Date.now()});}catch(err){toast(currentLang==='ja'?'ソースの保存に失敗しました':'failed to save source','err');return;}$('#src-url').value='';toast(currentLang==='ja'?'追加しました':'source added','ok');openSourcesModal();});
+$('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closest('[data-src-del]');if(!del)return;try{await Store.deleteSource(del.dataset.srcDel);openSourcesModal();}catch(err){console.error('[sources-list delete]',err);toast(currentLang==='ja'?'削除に失敗しました':'delete failed','err');}});
 $('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
 $('#opml-import').addEventListener('click',()=>$('#opml-file').click());
-$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;try{const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast('invalid OPML','err');return;}if(parsed.length===0){toast('no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();}catch(err){console.error('[opml-import]',err);toast('OPML import failed','err');}});
-$('#opml-export').addEventListener('click',async()=>{try{const list=await Store.listSources();if(list.length===0){toast('no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(`exported ${list.length}`,'ok');}catch(err){console.error('[opml-export]',err);toast('OPML export failed','err');}});
+$('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;try{const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast(currentLang==='ja'?'無効なOPMLです':'invalid OPML','err');return;}if(parsed.length===0){toast(currentLang==='ja'?'OPMLにソースがありません':'no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(currentLang==='ja'?`${added}件追加、${skipped}件スキップ`:`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();}catch(err){console.error('[opml-import]',err);toast(currentLang==='ja'?'OPMLの取り込みに失敗しました':'OPML import failed','err');}});
+$('#opml-export').addEventListener('click',async()=>{try{const list=await Store.listSources();if(list.length===0){toast(currentLang==='ja'?'ソースなし':'no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(currentLang==='ja'?`${list.length}件を書き出しました`:`exported ${list.length}`,'ok');}catch(err){console.error('[opml-export]',err);toast(currentLang==='ja'?'OPMLの書き出しに失敗しました':'OPML export failed','err');}});
 $('#bookmarklet-btn').addEventListener('click',()=>Bookmarklet.showUI());
 
 // ===== VAULT MODAL ======================================================
@@ -3947,18 +3994,18 @@ function updateVaultStatus(){const s=VaultMatcher.stats();$('#vault-status').inn
 $('#btn-vault').addEventListener('click',()=>{updateVaultStatus();$('#modal-vault').classList.add('show');});
 $('#vault-cancel').addEventListener('click',()=>$('#modal-vault').classList.remove('show'));
 $('#vault-select').addEventListener('click',async()=>{const name=await VaultMatcher.selectVault();if(name)toast(`vault: ${name}`,'ok');updateVaultStatus();});
-$('#vault-rescan').addEventListener('click',async()=>{if(!VaultMatcher.isReady()){toast(currentLang==='ja'?'先にVaultを選択':'select vault first','err');return;}toast(currentLang==='ja'?'スキャン中...':'scanning...');await VaultMatcher.scan();updateVaultStatus();toast(`scanned ${VaultMatcher.stats().files} files`,'ok');});
+$('#vault-rescan').addEventListener('click',async()=>{if(!VaultMatcher.isReady()){toast(currentLang==='ja'?'先にVaultを選択':'select vault first','err');return;}toast(currentLang==='ja'?'スキャン中...':'scanning...');await VaultMatcher.scan();updateVaultStatus();toast(currentLang==='ja'?`${VaultMatcher.stats().files}件のファイルをスキャンしました`:`scanned ${VaultMatcher.stats().files} files`,'ok');});
 $('#vault-export-all').addEventListener('click',async()=>{
   toast(currentLang==='ja'?'スター済みを書出中...':'exporting starred...');
   try{
     const events=await Store.listEvents({filter:{starred:true},limit:1000});
     if(events.length===0){toast(currentLang==='ja'?'スター済みなし':'no starred events');return;}
     const count=await VaultWriter.exportBatch(events);
-    if(count>0)toast(currentLang==='ja'?`${count}件を書出完了`:`exported ${count} events`,'ok');else toast('vault export failed','err');
+    if(count>0)toast(currentLang==='ja'?`${count}件を書出完了`:`exported ${count} events`,'ok');else toast(currentLang==='ja'?'書出に失敗しました':'vault export failed','err');
     await renderView();await refreshCounts();
-  }catch(e){console.error('[vault-export-all]',e);toast('vault export failed','err');}
+  }catch(e){console.error('[vault-export-all]',e);toast(currentLang==='ja'?'書出に失敗しました':'vault export failed','err');}
 });
-$('#vault-clear').addEventListener('click',async()=>{await VaultMatcher.clear();updateVaultStatus();toast('vault disconnected','ok');});
+$('#vault-clear').addEventListener('click',async()=>{await VaultMatcher.clear();updateVaultStatus();toast(currentLang==='ja'?'Vault接続を解除しました':'vault disconnected','ok');});
 $('#modal-vault').addEventListener('click',(e)=>{if(e.target.id==='modal-vault')$('#modal-vault').classList.remove('show');});
 
 // ===== KEYWORDS MODAL ===================================================
@@ -4149,7 +4196,7 @@ $('#word-list').addEventListener('click',async(e)=>{
   if(act==='collect'){btn.disabled=true;const _o=btn.textContent;btn.textContent='...';try{await WordCollector.collectOne(word);}finally{btn.textContent=_o;btn.disabled=false;}await renderWordList();await refreshCounts();await renderView();}
   if(act==='delete'){if(await confirmAsync(currentLang==='ja'?`「${word.term}」を削除しますか?`:`Delete "${word.term}"?`,{danger:true})){
     const snap={...word};
-    try{await Store.deleteWord(word.id);FTSIndex.removeWord(word.id);}catch(err){console.error('[word-delete]',err);toast('delete failed','err');return;}
+    try{await Store.deleteWord(word.id);FTSIndex.removeWord(word.id);}catch(err){console.error('[word-delete]',err);toast(currentLang==='ja'?'削除に失敗しました':'delete failed','err');return;}
     await renderWordList();await refreshCounts();await renderView();
     UndoStack.offer(currentLang==='ja'?`「${word.term}」を削除しました`:`deleted "${word.term}"`,async()=>{await Store.putWord(snap);FTSIndex.addWord(snap);await renderWordList();await refreshCounts();await renderView();});
   }}
@@ -4215,7 +4262,7 @@ $('#kw-reapply').addEventListener('click',async()=>{
     const n=await KeywordRules.reapplyAll();
     toast(currentLang==='ja'?`${n}件に適用`:`reapplied to ${n} events`,'ok');
     await refreshCounts();await renderView();
-  }catch(err){console.error('[kw-reapply]',err);toast('reapply failed','err');}
+  }catch(err){console.error('[kw-reapply]',err);toast(currentLang==='ja'?'再適用に失敗しました':'reapply failed','err');}
 });
 
 // (legacy STATS/BACKUP/FILTER block removed; see STATS MODAL below)
@@ -4288,8 +4335,8 @@ $('#restore-file').addEventListener('change',async(e)=>{
   const file=e.target.files?.[0];if(!file)return;
   e.target.value='';
   let dump;
-  try{dump=JSON.parse(await file.text());}catch{toast('invalid JSON','err');return;}
-  if(dump.app!=='neus'||!Array.isArray(dump.events)){toast('not a Neus backup','err');return;}
+  try{dump=JSON.parse(await file.text());}catch{toast(currentLang==='ja'?'不正なJSONです':'invalid JSON','err');return;}
+  if(dump.app!=='neus'||!Array.isArray(dump.events)){toast(currentLang==='ja'?'Neusのバックアップファイルではありません':'not a Neus backup','err');return;}
   // 退避前に全レコードの形を検証する。検証を後回しにすると既存データを消した後で
   // 不正なレコードに当たり、両方を失う(復元はロールバック不能)。
   const validEvent=(ev)=>{
@@ -4302,8 +4349,8 @@ $('#restore-file').addEventListener('change',async(e)=>{
     if(w.wiki){if(w.wiki.url)w.wiki.url=safeHref(w.wiki.url);if(w.wiki.thumbnail)w.wiki.thumbnail=safeHref(w.wiki.thumbnail);}
     return true;
   };
-  if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}
-  if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast('backup has malformed words','err');return;}
+  if(!dump.events.every(validEvent)){toast(currentLang==='ja'?'バックアップのイベントデータが不正です':'backup has malformed events','err');return;}
+  if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast(currentLang==='ja'?'バックアップの単語データが不正です':'backup has malformed words','err');return;}
   if(!await confirmAsync(t('backup.confirm')))return;
   // Atomic restore in a single IDB transaction: if any write fails, IDB rolls back the
   // clears too, so existing data is preserved (the rollback-impossible problem is solved).
@@ -4515,9 +4562,9 @@ document.addEventListener('keydown',async(e)=>{
       if(k==='e'){ev.state.archived=!ev.state.archived;ev.state.archivedAt=ev.state.archived?now:undefined;}
       if(k==='r'){ev.state.read=!ev.state.read;ev.state.readAt=ev.state.read?now:undefined;}
       if(k==='l'){ev.state.later=!ev.state.later;ev.state.laterAt=ev.state.later?now:undefined;}
-      if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();reclampCursor();return;}
+      if(k==='v'){toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(ev);toast(ok?(currentLang==='ja'?'書出完了':'exported'):(currentLang==='ja'?'書出に失敗しました':'vault export failed'),ok?'ok':'err');await renderView();await refreshCounts();reclampCursor();return;}
       await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();reclampCursor();
-    }catch(err){console.error('[kb/action]',err);toast('action failed','err');}
+    }catch(err){console.error('[kb/action]',err);toast(currentLang==='ja'?'操作に失敗しました':'action failed','err');}
   }
 });
 
@@ -4572,7 +4619,7 @@ $('#set-save').addEventListener('click',async()=>{
   const newPass=$('#set-pass-new').value.trim();
   const rawKey=$('#set-byok-key').value.trim();
   const s={enabled:$('#set-byok-enabled').value==='true',provider:$('#set-byok-provider').value,model:$('#set-byok-model').value.trim()||undefined,budget:Number($('#set-byok-budget').value)||0,encrypted:false,apiKey:undefined};
-  if(s.enabled&&!rawKey&&!sessionPassphrase){toast('api key required','err');return;}
+  if(s.enabled&&!rawKey&&!sessionPassphrase){toast(currentLang==='ja'?'APIキーが必要です':'api key required','err');return;}
   // APIキー処理
   const existingSettings=await Store.getSetting('byok');
   let finalKey=rawKey||(rawKey===''?await getApiKey():null);
@@ -4605,7 +4652,7 @@ $('#set-save').addEventListener('click',async()=>{
     if(!r.ok)toast(currentLang==='ja'?`自動取得登録失敗: ${r.reason}`:`auto-sync register failed: ${r.reason}`,'err');
   }else{await AutoSync.unregister();}
   await AutoSync.syncPrefsToSW();
-  toast('settings saved','ok');$('#modal-settings').classList.remove('show');
+  toast(currentLang==='ja'?'設定を保存しました':'settings saved','ok');$('#modal-settings').classList.remove('show');
  }catch(err){console.error('[set-save]',err);toast(currentLang==='ja'?'設定の保存に失敗しました':'failed to save settings','err');}
 });
 $('#modal-settings').addEventListener('click',(e)=>{if(e.target.id==='modal-settings')$('#modal-settings').classList.remove('show');});
@@ -4822,7 +4869,7 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
     Perf.mark('fts');
     await TagLearner.rebuild();
     const restored=await VaultMatcher.tryRestoreVault();
-    if(restored)toast(`vault restored: ${VaultMatcher.stats().files} files`,'ok');
+    if(restored)toast(currentLang==='ja'?`Vault復元: ${VaultMatcher.stats().files}件`:`vault restored: ${VaultMatcher.stats().files} files`,'ok');
     await StorageGuard.check();
     StorageGuard.requestPersist();
 
@@ -4836,7 +4883,7 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
       window.__neus={Store,FTSIndex,Crypto,KeywordRules,Bus,TagLearner,InterestProfile,RSSPoller,InstallPromo,Dedup:{sha256,jaccard,tokenize},normalizeUrl,escapeHtml};
       window.dispatchEvent(new Event('neus:test-ready'));
     }
-  }catch(err){console.error('[Neus] init fail',err);toast('init failed: '+err.message,'err');}
+  }catch(err){console.error('[Neus] init fail',err);toast((currentLang==='ja'?'初期化に失敗しました: ':'init failed: ')+err.message,'err');}
 })();
 </script>
 </body>

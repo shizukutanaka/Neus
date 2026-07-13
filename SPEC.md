@@ -633,3 +633,22 @@ round 28 エントリ、残項目は `docs/FEATURE-AUDIT.md` §1-12、確認さ�
   skipWaiting とリロード確認の競合(化粧的)。
 - テストは 1154 → 1230 件(+76: round-28 系9ファイル+既存アンカーテストの更新)。
   Playwright 側 `browser-sw.spec.mjs` のキャッシュ名アサーションも v3+prefs に追随。
+
+### 10.18 第16次監査 (round 29) — i18nの系統的不統一を解消(§1-12)
+
+round 28 で「記録のみ」とした残項目のうち、人間承認ゲート不要かつ機械的な §1-12 の
+i18n一括スイープを実行。`toast()` 約25箇所の単一言語(成功/失敗ペアで言語が食い違う
+組も含む)、`#kw-sheet` の完全な日本語ハードコード(`applyI18N` 未対応)、詳細モーダルの
+英語見出し+日本語placeholder混在を、既存の `currentLang==='ja'?...:...` パターンおよび
+`DICT`/`t()` 機構へ統一した。
+
+- `kwsheet.*`(hint/watch-hl/watch-star/block-arch/block-del/cancel)と
+  `detail.*`(title/usertags/autotags/quote/quote.ph/note/note.ph/tag.ph/vaultnotes/
+  vault/resummarize/copy)のDICTキーを新設。kw-sheetのWATCH/BLOCKボタンは先頭に
+  ドット表示用のspanを持つため、`textContent` で上書きせず `childNodes[1]`
+  (テキストノード)のみを差し替える(nav buttonの `.count` span 保持と同じ手法)。
+- 意図的に対象外とした3種を明記(再提案しないこと): `[${source}] ${err.message}`
+  のような生の技術エラーメッセージ、`WordCollector.collectOne` の `msg` のように
+  既に呼び出し元でバイリンガル生成済みの変数、`vault: ${name}` のような
+  `updateVaultStatus` と同じ「vaultは訳さない」ステータスラベル慣用句。
+- テストは 1230 → 1262 件(`tests/i18n-sweep.test.mjs` 新設32件)。

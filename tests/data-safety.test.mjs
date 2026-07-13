@@ -91,8 +91,8 @@ describe('import validation wiring (index.html)', () => {
     expect(validateAt).toBeLessThan(wipeAt); // shape guard precedes the atomic replace
   });
   it('aborts (returns) on malformed events or words without wiping', () => {
-    expect(html).toContain("if(!dump.events.every(validEvent)){toast('backup has malformed events','err');return;}");
-    expect(html).toContain("if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast('backup has malformed words','err');return;}");
+    expect(html).toContain("if(!dump.events.every(validEvent)){toast(currentLang==='ja'?'バックアップのイベントデータが不正です':'backup has malformed events','err');return;}");
+    expect(html).toContain("if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast(currentLang==='ja'?'バックアップの単語データが不正です':'backup has malformed words','err');return;}");
   });
 });
 

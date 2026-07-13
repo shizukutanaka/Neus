@@ -45,7 +45,7 @@ describe('reclampCursor wiring (index.html)', () => {
     expect(html).toContain('if(kbCursor>=0)highlightCard(kbCursor);');
   });
   it('is called after renderView() in both the vault-export (v) and default action branches', () => {
-    expect(html).toContain("toast(ok?(currentLang==='ja'?'書出完了':'exported'):'vault export failed',ok?'ok':'err');await renderView();await refreshCounts();reclampCursor();return;");
+    expect(html).toContain("toast(ok?(currentLang==='ja'?'書出完了':'exported'):(currentLang==='ja'?'書出に失敗しました':'vault export failed'),ok?'ok':'err');await renderView();await refreshCounts();reclampCursor();return;");
     expect(html).toContain('await Store.putEvent(ev);FTSIndex.add(ev);await renderView();await refreshCounts();reclampCursor();');
   });
 });

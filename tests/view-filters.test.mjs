@@ -304,8 +304,9 @@ describe('StorageGuard IDB/FTS ordering (index.html)', () => {
   it('shows auto-clean as ok toast (not err) — housekeeping is a success, not an error', () => {
     // Before: toast(..., 'err') — red toast confused users into thinking something broke.
     // Fix: toast(..., 'ok') — green toast accurately reflects that cleanup succeeded.
-    expect(html).toContain("if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'ok')");
-    expect(html).not.toContain("if(toDelete.length>0)toast(`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'err')");
+    // round 28: message is now bilingual (was English-only).
+    expect(html).toContain("if(toDelete.length>0)toast(currentLang==='ja'?`${toDelete.length}件を自動整理(容量${Math.round(ratio*100)}%)`:`auto-cleaned ${toDelete.length} events (quota ${Math.round(ratio*100)}%)`,'ok')");
+    expect(html).not.toMatch(/toDelete\.length>0\)toast\(`auto-cleaned[^`]*`,'err'\)/);
   });
 });
 

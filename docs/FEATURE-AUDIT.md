@@ -214,14 +214,18 @@
   `scheduleCheck` / `recentEvents(windowMs,cap` / `function searchShort` /
   `tests/detail-modal-bindings.test.mjs` ほか round-28 系テスト9ファイル
 
-### 1-12. round 28 で記録のみとした残項目【未対応・低〜中優先】
+### 1-12. round 28 で記録のみとした残項目
 
-- **i18n の系統的不統一**: `toast()` 約25箇所が単一言語(英語のみ or 日本語のみ)。
-  同一機能の成功/失敗で言語が食い違う組もある(例: Vault書出成功はバイリンガル、失敗
-  `'vault export failed'` は英語のみ)。`#kw-sheet` のラベル群は日本語のみ、詳細モーダルは
-  英語見出し+日本語placeholderの混在。まとめて `t()` 経由に統一する一括スイープが必要
-  (拡散的だが機械的、中規模)。アンカー: `'vault export failed'` / `id="kw-sheet-hint"` /
-  `placeholder="抜粋・引用"`
+- **i18n の系統的不統一【解決済み・round 29】**: `toast()` 約25箇所の単一言語(成功/失敗で
+  言語が食い違う組も含む)、`#kw-sheet` の日本語ハードコード、詳細モーダルの英語見出し+
+  日本語placeholder混在を修正。`#kw-sheet` は `kwsheet.*` DICTキー(ja/en)を新設し
+  `applyI18N()` から反映(WATCH/BLOCKボタンの先頭ドットspanは`childNodes[1]`のみ書換えて
+  温存)。詳細モーダルは `detail.*` DICTキーを新設し `t()` 呼び出しに置換
+  (`quote`/`note`/タグ入力のplaceholderも含む)。toastは既存の
+  `currentLang==='ja'?'...':'...'` パターンへ統一。技術的な生エラーメッセージ
+  (`[${source}] ${err.message}`)・既にバイリンガルな変数(`msg`)・"vault:" のような
+  ステータスラベル慣用句は意図的に対象外(`updateVaultStatus` と同じ非翻訳慣行)。
+  アンカー: `'kwsheet.hint'` / `'detail.title'` / `tests/i18n-sweep.test.mjs`
 - **`normalizeUrl` の正規化不足**: ホスト大文字小文字・末尾スラッシュ・追加トラッカー
   (`ref`/`igshid` 等)を正規化していない。**注意**: 正規化の変更は既存保存イベントとの
   ハッシュ不一致(一時的な重複窓)を生むため、着手時はタイトルjaccardフォールバックの
@@ -295,10 +299,10 @@
 ## 4. 推奨着手順
 
 1. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。
-2. **§1-12 の i18n 一括スイープ** — 機械的・低リスク・中規模。承認ゲート不要。
-3. **§1-10 フォローアップ調査(Track 3/4)** — コード変更なしの調査タスク。
-4. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
-5. **§1-5 ベクトル検索の再評価 ADR** — WebANNS の新証拠を踏まえ、人間の判断を仰ぐ。
+2. **§1-10 フォローアップ調査(Track 3/4)** — コード変更なしの調査タスク。
+3. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
+4. **§1-5 ベクトル検索の再評価 ADR** — WebANNS の新証拠を踏まえ、人間の判断を仰ぐ。
 
-§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11 は解決済み。
-残る未対応は §1-3・§1-4・§1-5・§1-10・§1-12。
+§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11・§1-12(i18n)は解決済み。
+残る未対応は §1-3・§1-4・§1-5・§1-10(§1-12のnormalizeUrl/fetched件数/SourceFailTracker/
+skipWaiting小項目は引き続き記録のみ)。
