@@ -196,6 +196,46 @@
   該当文献を直接読む専用フォローアップ調査が次の一手。
 - **アンカー**: (コードなし)`docs/FEATURE-AUDIT.md` 本項
 
+### 1-11. 第15次監査(round 28)— 未踏3領域の15件【解決済み】
+
+- **出所**: 過去14ラウンドの監査が薄かった SW/PWA・UI/a11y/i18n・データ層/性能を
+  3並列の独立監査エージェントで走査(24件の指摘、高深刻度はコード直読で裏取り)。
+  確認済み15件を全て修正した。詳細は `CHANGELOG.md` の round 28 エントリと
+  `SPEC.md` §10 の該当ラウンド記録を参照。
+- **修正の要点**: 詳細モーダルのリスナー蓄積(2エージェントが独立発見)/ `renderView`
+  世代ガード / Android通知クラッシュとUI更新の巻き込み / 共有text欄URL救済 /
+  復元データのboolean欠落不可視化 / SWシェルキャッシュ肥大(v3バンプ)/ 起床通知の
+  同意ゲート(Cache APIミラー)/ フォーカストラップ再束縛・kw-sheet除外・復元スタック /
+  キーボードカーソル再クランプ / StorageGuardデバウンス / recentEventsカーソル早期停止 /
+  起動の初回描画優先+TagLearner yield+render計測修正 / CJK 1文字検索フォールバック。
+- **アンカー**: `let detailTags=[];` / `let renderSeq=0;` / `reg.showNotification(` /
+  `shareText.match(/https?:` / `!!ev.state.read` / `neus-shell-v3` / `neus-prefs-v1` /
+  `dataset.trapBound` / `let focusStack=[];` / `function reclampCursor()` /
+  `scheduleCheck` / `recentEvents(windowMs,cap` / `function searchShort` /
+  `tests/detail-modal-bindings.test.mjs` ほか round-28 系テスト9ファイル
+
+### 1-12. round 28 で記録のみとした残項目【未対応・低〜中優先】
+
+- **i18n の系統的不統一**: `toast()` 約25箇所が単一言語(英語のみ or 日本語のみ)。
+  同一機能の成功/失敗で言語が食い違う組もある(例: Vault書出成功はバイリンガル、失敗
+  `'vault export failed'` は英語のみ)。`#kw-sheet` のラベル群は日本語のみ、詳細モーダルは
+  英語見出し+日本語placeholderの混在。まとめて `t()` 経由に統一する一括スイープが必要
+  (拡散的だが機械的、中規模)。アンカー: `'vault export failed'` / `id="kw-sheet-hint"` /
+  `placeholder="抜粋・引用"`
+- **`normalizeUrl` の正規化不足**: ホスト大文字小文字・末尾スラッシュ・追加トラッカー
+  (`ref`/`igshid` 等)を正規化していない。**注意**: 正規化の変更は既存保存イベントとの
+  ハッシュ不一致(一時的な重複窓)を生むため、着手時はタイトルjaccardフォールバックの
+  救済範囲を確認してから。アンカー: `function normalizeUrl`
+- **「fetched N」の意味が経路間で不一致**: 手動POLLトーストは生フィード件数、
+  バックグラウンドは `countAll` 差分(eviction と重なると負になり通知抑制)。
+  「実際に新規保存した件数」への一本化が本筋。アンカー: `fetched ${total}` /
+  `const fetched=after-before;`
+- **SourceFailTracker が自装置側の normalize エラーも失敗計上**: クライアント側の
+  正規化バグで健全なソースが自動無効化されうる。`error:'normalize'` の除外を検討。
+  アンカー: `inbound.error` / `sourceMaxFails`
+- **skipWaiting とリロード確認の競合(化粧的)**: 新SWが確認前に制御を奪うため
+  リロード促しが半ば飾りになっている。単一ファイルPWAでは実害は小さい。
+
 ---
 
 ## 2. 過剰(却下済み — 再提案しないこと)
@@ -236,14 +276,29 @@
   拒否する挙動は安全側で正しい。「unknown を許可扱い」への変更はセキュリティ後退。
 - **StorageGuard の退避対象**: exported+archived のみ自動削除するのは「Vault から復元可能な
   ものだけ消す」不変条件の実装。未エクスポートデータは警告のみで削除しない。
+- **XSS 補間衛生(round 28 で全数確認)**: 全HTML組み立て箇所(`cardHtml`/
+  `wordResultHtml`/`openDetailModal`/`openSourcesModal`/`updateFilterBar` 等)で
+  ユーザー/外部由来値が `escapeHtml`/`escapeAttr`/`safeHref` を通過。バイパスは無い。
+- **バックアップ復元のアトミック性**: `Store.replaceAll` は検証済みデータのみを単一
+  readwrite トランザクションで clear+再投入し、途中失敗はロールバック。settings ストア
+  (salt/vault-handle)は意図的に保持。
+- **FTSIndex の整合性**: add/addWord は必ず remove を先行し、空になった gram は
+  index から刈り取る。削除経路も store 削除と index 削除が対で呼ばれ、stale gram が
+  蓄積しない。
+- **SourceFailTracker の健全リセット**: 304 / 2xx空応答を成功扱いして失敗カウンタを
+  リセット。更新頻度の低い健全フィードが散発的一時失敗の蓄積で誤無効化されない。
+- **periodicsync の単一クライアント委譲**: focused → visible → 任意の優先で1タブにだけ
+  ポーリングを委譲し、N タブの重複フェッチを防ぐ。
 
 ---
 
 ## 4. 推奨着手順
 
 1. **§1-3 関連リンク** — ADR 起票と人間の承認を経てから。
-2. **§1-10 フォローアップ調査(Track 3/4)** — コード変更なしの調査タスク。
-3. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
-4. **§1-5 ベクトル検索の再評価 ADR** — WebANNS の新証拠を踏まえ、人間の判断を仰ぐ。
+2. **§1-12 の i18n 一括スイープ** — 機械的・低リスク・中規模。承認ゲート不要。
+3. **§1-10 フォローアップ調査(Track 3/4)** — コード変更なしの調査タスク。
+4. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
+5. **§1-5 ベクトル検索の再評価 ADR** — WebANNS の新証拠を踏まえ、人間の判断を仰ぐ。
 
-§1-1・§1-2・§1-6・§1-7・§1-8・§1-9 は解決済み。残る未対応は §1-3・§1-4・§1-5・§1-10。
+§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11 は解決済み。
+残る未対応は §1-3・§1-4・§1-5・§1-10・§1-12。

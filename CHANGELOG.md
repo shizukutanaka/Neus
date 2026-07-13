@@ -11,6 +11,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **反証候補 (Falsifier Watch)**: ソクラテス式問答から導いた新機能。システムは探究者に反証条件(「何があれば結論を覆すか」=最も鋭い論駁)を述べさせるのに、述べられた反証条件は受動的なテキストにすぎず、収集し続ける証拠と接続されていなかった — 人に手動確認を促すだけだった。反証条件の文字bigram集合と各収集物の被覆率(言語非依存、CJKも可)で、宣言した反証条件に該当しうるアイテムを能動検出。WORDSビューに `word-fwatch` ブロック(該当アイテム + 一致率)、最優先の `falsifier-seen` 問答プロンプト(具体的該当があれば漠然とした stale 系を抑制)、ドシエの `## 反証候補` セクションを追加。反証条件が「証拠を監視する能動センサー」になる / Falsifier Watch: actively scan collected evidence against the user's stated falsifier and surface possible matches (language-agnostic bigram coverage)
 
 ### Fixed
+- **第15次監査(round 28、未踏3領域の並列監査)で15件を修正**: 過去14ラウンドが薄かった SW/PWA・UI/a11y・データ層/性能を3並列で監査し、確認済みの15件を修正。
+  - 詳細モーダル: 永続要素 `#detail-card` へ開くたびにclickリスナーが追加され、古い closure の `tags` 配列を掴んだままN重発火(2エージェントが独立に発見)。モジュールスコープの `detailTags`+一度だけの委譲ハンドラに変更 / detail modal listener accumulation fixed with module-level state
+  - `renderView`: 複数のawaitの後の `view.innerHTML` 書き込みに世代ガードがなく、遅いレンダーが新しいビューを上書きし得た。`renderSeq` カウンタ+`commit()` ゲートで解消 / stale-render race guarded by generation counter
+  - バックグラウンドpoll後の通知: `new Notification()` はAndroid Chromeで例外となり、同一try内の後続UI更新まで巻き込んでいた。UI更新を先行させ、通知は `reg.showNotification()` を独立tryで実行 / UI refresh before notification, SW-registration API instead of constructor
+  - 共有ターゲット: URLが `text` 欄のみで届く共有(Android頻出)を無言破棄していた。`share_text` から最初のURLを抽出、見つからない場合はトーストで通知 / extract URL from share_text, no more silent drops
+  - `Store.listEvents`: read/starred/archived の厳密比較 `!==` により、booleanフラグ欠落の復元データが全ビューから不可視化。`later` と同じ `!!` 強制に統一 / boolean coercion for restored backups
+  - SWシェルキャッシュ: 読みは `ignoreSearch` なのに書きは完全URLキーで、共有のたびに約325KBのシェル複製が永久蓄積。書きをpathnameキーに正規化し `neus-shell-v3` へバンプ(肥大した旧キャッシュはactivateで purge)/ SW cache write key normalized to pathname, bumped to v3
+  - periodicsync起床通知: クライアント不在時に notify=OFF でも無条件に通知(SWはIDBの設定を読めない)。`AutoSync.syncPrefsToSW()` がCache API(`neus-prefs-v1`)へ設定をミラーし、SWが同意を確認してから通知。文言も「開いても自動取得はされない」実態に合わせ修正 / wake notification now consent-gated via Cache API pref mirror
+  - フォーカストラップ: モーダル表示のたびにkeydownリスナーを再束縛し、first/lastが古い集合に固定されていた。モーダルごとに一度だけ束縛+ハンドラ内でfocusablesを毎回再取得 / trapFocus bound once with live focusables
+  - `#kw-sheet`(sheet-backdrop): `aria-modal="true"` 宣言なのにトラップ/フォーカス復元の対象外だった。モーダル類の共通クラスリストに追加 / kw-sheet included in focus management
+  - フォーカス復元: 単一変数のため、モーダル上にモーダルが開くと元のオープナーを失っていた。push/popスタックに変更 / focus restore stack for stacked modals
+  - キーボードカーソル: s/e/r/l/v操作で現在カードがビューから消えても `kbCursor` が据え置かれ、アウトラインも消失し「見えているのと違うカード」に作用していた。操作後の `reclampCursor()` でクランプ+再ハイライト / keyboard cursor reclamped after card actions
+  - StorageGuard: `event.stored` ごとに `storage.estimate()`+閾値超過時は全件スキャンをN回並行実行(evictionも重複)。トレーリングエッジのdebounce(2秒)+実行中フラグで1バースト1回に / storage check debounced and serialized
+  - `Store.recentEvents`: dedup比較の上限300件に対しカーソルが24時間窓の全件を読み出してから `.slice` していた。カーソルを上限で早期停止するよう `cap` 引数を追加 / dedup window read capped at the cursor
+  - 起動順序: 初回描画の前にFTS再構築+TagLearner(yieldなしの長タスク)+全件カウントが走り、イベント数に比例して空画面時間が伸びていた。初回描画を先行させ、重い初期化は描画後に実行。TagLearnerにもyield-every-100を追加。`Perf.mark('render')` がオンボーディング経路でしか記録されず常に0.00msだった計測バグも修正 / first paint before heavy init, TagLearner yields, render perf mark fixed
+  - CJK 1文字検索: 文書側が2-gramでしか索引されないため単漢字クエリ(「本」等)が構造的に常に0件だった。クエリを含むgramの走査による `searchShort` フォールバックを追加 / single-character CJK queries now work via substring-gram fallback
 - **`socraticPrompts` がCLAUDE.mdの関数≤40行規約を約95行で超過**: tierごとの判定を
   `validityPrompts`/`falsifiabilityPrompts`/`evidencePrompts`/`contradictionPrompts`/
   `neglectPrompts` の5ヘルパー関数(各12〜24行)へ切り出し、`socraticPrompts` 自体は

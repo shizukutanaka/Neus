@@ -611,3 +611,25 @@ ADR-0020(関連イベント自動リンク)は PROPOSED のまま実装を見合
   案内していないドメイン `lensy-proxy.*.workers.dev` をコメントごと `neus-proxy` に修正。
   `bookmarklet.js` のプレースホルダ `YOUR_LENSY_URL` も `YOUR_NEUS_URL` に統一
   (CLAUDE.md「競合ソフト名混入」防止規約)。
+
+### 10.17 第15次監査 (round 28) — 未踏3領域の並列監査(SW/PWA・UI/a11y・データ層/性能)
+
+`このプロダクトの長所短所改善点を洗い出して実行` を受け、過去14ラウンドの監査が
+薄かった3領域(Service Worker/PWA/オフライン、UIの正しさ/アクセシビリティ/i18n、
+データ層/性能)へ独立監査エージェントを3並列で投入。24件の指摘から確認済み15件を
+3バッチ(A: 正確性 / B: a11y / C: 性能)で修正した。個別の内容は `CHANGELOG.md` の
+round 28 エントリ、残項目は `docs/FEATURE-AUDIT.md` §1-12、確認された長所は同 §3 を参照。
+
+特筆事項:
+- **最重要バグは2エージェントが独立に発見**(詳細モーダルの `#detail-card` リスナー蓄積)。
+  永続要素への per-open `addEventListener` と closure 変数の組合せで、N回開くとタグ操作が
+  N重発火し別記事のタグUIを壊す。独立発見の一致は監査の信頼性の傍証。
+- **「無条件の起床通知」は同意の問題として扱った**: SWはIndexedDBを読めないという実装
+  制約が「notify=OFFでも通知が出る」という同意違反に化けていた。Cache API(`neus-prefs-v1`、
+  activate の掃除から除外)を設定ミラーとして使い、SWが同意を確認してから通知する。
+- **修正を見送った指摘も記録した**(FEATURE-AUDIT §1-12): i18n の系統的不統一(約25箇所の
+  単一言語トースト等)、`normalizeUrl` 強化(既存ハッシュとの互換リスクがあるため要注意
+  事項つき)、fetched件数の意味不一致、SourceFailTracker の normalize エラー計上、
+  skipWaiting とリロード確認の競合(化粧的)。
+- テストは 1154 → 1230 件(+76: round-28 系9ファイル+既存アンカーテストの更新)。
+  Playwright 側 `browser-sw.spec.mjs` のキャッシュ名アサーションも v3+prefs に追随。

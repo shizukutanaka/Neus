@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-UdROhwHjUJ0jQXr4O2Kn9V3YQyvJ4HiXcbclPTHgW4c='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-zeIm0zZFrrRC88rFx9orxnNyGZrKVaaZH+byUs5KVlI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -758,6 +758,7 @@ const CONFIG = Object.freeze({
   vaultMatchMinTokens:2, vaultMatchMax:5,
   sourceMaxFails:5,
   storageQuotaThreshold:0.85,
+  storageCheckDebounceMs:2000,
   presetSources:[
     {name:'Hacker News',     url:'https://news.ycombinator.com/rss'},
     {name:'GitHub Blog',     url:'https://github.blog/feed/'},
@@ -1158,9 +1159,13 @@ const Store=(()=>{
       return new Promise((resolve,reject)=>{const req=idx.openCursor(null,'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c||results.length>=limit)return resolve(results);const ev=c.value;let m=true;if(filter.read!==undefined&&!!ev.state.read!==filter.read)m=false;if(filter.starred!==undefined&&!!ev.state.starred!==filter.starred)m=false;if(filter.archived!==undefined&&!!ev.state.archived!==filter.archived)m=false;if(filter.later!==undefined&&!!ev.state.later!==filter.later)m=false;if(m)results.push(ev);c.continue();};req.onerror=()=>reject(req.error);});
     },
     async allEvents(){return r2p(tx(['events']).objectStore('events').getAll());},
-    async recentEvents(windowMs){
+    // cap: optional row limit. The index is already newest-first, so stopping the cursor
+    // early once `cap` rows are collected avoids deserializing the entire window out of IDB
+    // just to have the caller .slice(0,cap) it afterward — the caller (dedup comparison) only
+    // ever wants the most recent dedupCompareMax rows, not the full window's contents.
+    async recentEvents(windowMs,cap=Infinity){
       const since=Date.now()-windowMs;const idx=tx(['events']).objectStore('events').index('timestamp');const results=[];
-      return new Promise((resolve,reject)=>{const req=idx.openCursor(IDBKeyRange.lowerBound(since),'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c)return resolve(results);results.push(c.value);c.continue();};req.onerror=()=>reject(req.error);});
+      return new Promise((resolve,reject)=>{const req=idx.openCursor(IDBKeyRange.lowerBound(since),'prev');req.onsuccess=(e)=>{const c=e.target.result;if(!c||results.length>=cap)return resolve(results);results.push(c.value);c.continue();};req.onerror=()=>reject(req.error);});
     },
     async countAll(){return r2p(tx(['events']).objectStore('events').count());},
     // NOTE: read/starred/archived are boolean fields. Booleans are NOT valid IndexedDB
@@ -1355,7 +1360,24 @@ const FTSIndex=(()=>{
     }
     const words=await Store.listWords();for(const w of words)addWord(w);
   }
+  // ftsGram(2)未満の短いクエリ(日本語では単漢字が正当な検索語: 「本」「国」等)は、
+  // 文書側が2-gramでしか索引されていないため通常経路では構造的に常に0件だった。
+  // インデックス済みgramのうちクエリを部分文字列として含むものを走査して該当文書を集め、
+  // 「出現する異なりgram数」(頻度の近似)で順位付けする。存在(presence)検索のため
+  // ftsScoreMin による相対スコア足切りは適用しない(含む/含まないが全てなので)。
+  function searchShort(q,limit){
+    const counts=new Map();
+    for(const[g,ids]of index){
+      if(!g.includes(q))continue;
+      for(const id of ids)counts.set(id,(counts.get(id)||0)+1);
+    }
+    let max=0;for(const c of counts.values())if(c>max)max=c;
+    if(max===0)return[];
+    return[...counts.entries()].map(([id,c])=>({id,score:c/max})).sort((a,b)=>b.score-a.score).slice(0,limit);
+  }
   function search(query,limit=100){
+    const q=(query||'').toLowerCase().replace(/\s+/g,' ').trim();
+    if(q&&q.length<CONFIG.ftsGram)return searchShort(q,limit);
     const qGrams=ngrams(query);if(qGrams.size===0)return[];
     const N=(eventGrams.size+wordGrams.size)||1;
     // BM25のIDF概念: ありふれたgram(高DF)を下げ、稀少gram(低DF)を強調する。
@@ -1498,7 +1520,23 @@ const StorageGuard=(()=>{
     // delete unexported personal data — warn the user to export/clean up manually.
     toast(currentLang==='ja'?`ストレージ逼迫(${Math.round(ratio*100)}%)— 不要な記事をVaultに書き出して整理してください`:`storage critical (${Math.round(ratio*100)}%) — export & clear old events to free space`,'err');
   }
-  Bus.subscribe('event.stored',()=>check());
+  // event.storedは1回のpollで数十回連続発火しうる(POLLで一括取り込み時)。check()は
+  // 毎回 navigator.storage.estimate() を呼び、閾値超過時はallEvents()の全件スキャン+
+  // ソートも行うため、無guardのままだと同じ処理をN回(N=取り込み件数)繰り返し、かつ
+  // 閾値超過時は複数回のcheck()が重複した候補リストからそれぞれeviction(削除)を
+  // 走らせてしまう。トレーリングエッジのdebounce+実行中フラグで1バーストにつき1回に
+  // まとめる。
+  let checkPending=false,checkRunning=false;
+  function scheduleCheck(){
+    if(checkRunning){checkPending=true;return;}
+    checkRunning=true;
+    setTimeout(async()=>{
+      try{await check();}
+      catch(err){console.warn('[StorageGuard] check failed:',err);}
+      finally{checkRunning=false;if(checkPending){checkPending=false;scheduleCheck();}}
+    },CONFIG.storageCheckDebounceMs);
+  }
+  Bus.subscribe('event.stored',()=>scheduleCheck());
   return{check,requestPersist};
 })();
 
@@ -2146,9 +2184,12 @@ Bus.subscribe('event.normalized',(ev)=>withHashGate(ev.hash,async()=>{
       Bus.publish('event.duplicate',{ev,reason:'hash',matched:existing.id});return;
     }
     // Cap the O(n) title-similarity scan to the most recent dedupCompareMax events (ADR-0019):
-    // recentEvents is already sorted newest-first, so slice keeps the temporally-closest items
-    // — where real duplicates actually cluster — without unbounded cost as the window fills up.
-    const recent=(await Store.recentEvents(CONFIG.dedupWindowMs)).slice(0,CONFIG.dedupCompareMax);
+    // recentEvents is already sorted newest-first, so the cursor stopping at dedupCompareMax
+    // rows keeps the temporally-closest items — where real duplicates actually cluster —
+    // without unbounded cost as the window fills up. Passing the cap into recentEvents (round
+    // 28) avoids deserializing the entire window's worth of events out of IDB per ingest just
+    // to .slice() away everything past the cap afterward.
+    const recent=await Store.recentEvents(CONFIG.dedupWindowMs,CONFIG.dedupCompareMax);
     const newTok=new Set(tokenize(ev.content.title));
     if(newTok.size>0){
       for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
@@ -2196,7 +2237,13 @@ const TagLearner=(()=>{
   async function rebuild(){
     try{
       const all=await Store.allEvents();const tagWords=new Map();const tagFreq=new Map();
-      for(const ev of all){const tokens=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet)]);for(const tag of(ev.meta.userTags||[])){tagFreq.set(tag,(tagFreq.get(tag)||0)+1);let wmap=tagWords.get(tag);if(!wmap)tagWords.set(tag,wmap=new Map());for(const t of tokens)wmap.set(t,(wmap.get(t)||0)+1);}}
+      // Yield to main thread every 100 events (matches FTSIndex.rebuild's pattern) — this
+      // loop previously ran unbroken over the entire corpus as a single long task (INP hit).
+      for(let i=0;i<all.length;i++){
+        const ev=all[i];
+        const tokens=new Set([...tokenize(ev.content.title),...tokenize(ev.content.snippet)]);for(const tag of(ev.meta.userTags||[])){tagFreq.set(tag,(tagFreq.get(tag)||0)+1);let wmap=tagWords.get(tag);if(!wmap)tagWords.set(tag,wmap=new Map());for(const t of tokens)wmap.set(t,(wmap.get(t)||0)+1);}
+        if(i>0&&i%100===0)await (('scheduler' in window&&window.scheduler.yield)?window.scheduler.yield():new Promise(r=>setTimeout(r,0)));
+      }
       model=new Map();for(const[tag,freq]of tagFreq){if(freq<CONFIG.tagLearnMinFreq)continue;const wmap=tagWords.get(tag);model.set(tag,new Set([...wmap.entries()].sort((a,b)=>b[1]-a[1]).slice(0,10).map(e=>e[0])));}
     }catch(err){console.warn('[TagLearner.rebuild]',err);model=new Map();}
     dirty=false;
@@ -4746,26 +4793,19 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
     const byok=await Store.getSetting('byok');
     if(passSet&&byok?.encrypted)await showLockScreen();
 
-    // 各モジュール初期化
+    // 各モジュール初期化(軽量・初回描画に必須)
     await KeywordRules.load();
     await Summarizer.load();
     await MarkdownExporter.load();
     // notify設定がSW側(Cache API経由)と食い違わないよう、起動時にも同期しておく
     // (設定を保存していなくても、通知許可がブラウザ側で変化している場合がある)。
     await AutoSync.syncPrefsToSW();
-    await InterestProfile.load();
-    await FTSIndex.rebuild();
-    Perf.mark('fts');
-    await TagLearner.rebuild();
-    const restored=await VaultMatcher.tryRestoreVault();
-    if(restored)toast(`vault restored: ${VaultMatcher.stats().files} files`,'ok');
 
-    // ストレージクォータ確認
-    await StorageGuard.check();
-    StorageGuard.requestPersist();
-
-    // 初期表示
-    await refreshCounts();await renderView();updateVaultStatus();
+    // 初期表示を最優先(round 28): FTS/TagLearner/StorageGuardは検索・タグ提案・容量
+    // 整理という初回描画に不要な機能のための全件スキャンで、先に走らせるとイベント数が
+    // 多いほど「空のビューを見つめる時間」が伸びていた。listEvents({limit})だけで足りる
+    // 初回描画をまず終わらせる。
+    await refreshCounts();await renderView();Perf.mark('render');updateVaultStatus();
 
     // オフラインUI初期適用
     if(!navigator.onLine){$('#btn-poll').disabled=true;$('#btn-poll').style.opacity='0.4';}
@@ -4774,8 +4814,22 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
     const done=await Store.getSetting('onboarding-done');
     if(!done)await Onboarding.show();
 
+    // 描画後にまとめて重い初期化(検索/タグ提案/容量整理)を実行。setTimeoutで一度
+    // イベントループに譲り、直前の描画が実際にペイントされる機会を確保してから続ける。
+    await new Promise(r=>setTimeout(r,0));
+    await InterestProfile.load();
+    await FTSIndex.rebuild();
+    Perf.mark('fts');
+    await TagLearner.rebuild();
+    const restored=await VaultMatcher.tryRestoreVault();
+    if(restored)toast(`vault restored: ${VaultMatcher.stats().files} files`,'ok');
+    await StorageGuard.check();
+    StorageGuard.requestPersist();
+
     Perf.mark('done');
-    console.info('[Neus] ready',{lang:currentLang,fts:FTSIndex.stats(),vault:VaultMatcher.stats(),encrypted:!!(passSet&&byok?.encrypted),perf:{store:Perf.measure('init','store')+'ms',fts:Perf.measure('store','fts')+'ms',render:Perf.measure('fts','render')+'ms',total:Perf.measure('init','done')+'ms'}});
+    // round 28: render now happens before the deferred FTS/TagLearner rebuild (see above), so
+    // the measured order is store→render(first paint)→fts(deferred heavy init)→done.
+    console.info('[Neus] ready',{lang:currentLang,fts:FTSIndex.stats(),vault:VaultMatcher.stats(),encrypted:!!(passSet&&byok?.encrypted),perf:{store:Perf.measure('init','store')+'ms',render:Perf.measure('store','render')+'ms',fts:Perf.measure('render','fts')+'ms',total:Perf.measure('init','done')+'ms'}});
 
     // Test hook: expose internals only when ?test=1 (no effect on production)
     if(new URLSearchParams(location.search).has('test')){

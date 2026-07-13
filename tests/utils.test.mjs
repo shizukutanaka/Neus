@@ -170,8 +170,10 @@ describe('dedup comparison window cap wiring (index.html)', () => {
   it('declares dedupCompareMax alongside the existing dedup config', () => {
     expect(html).toContain('dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000, dedupCompareMax:300');
   });
-  it('slices recentEvents to the cap before the title-similarity scan', () => {
-    expect(html).toContain('const recent=(await Store.recentEvents(CONFIG.dedupWindowMs)).slice(0,CONFIG.dedupCompareMax);');
+  it('passes the cap into recentEvents itself (round 28: the cursor now stops early instead of reading the whole window then slicing)', () => {
+    expect(html).toContain('const recent=await Store.recentEvents(CONFIG.dedupWindowMs,CONFIG.dedupCompareMax);');
+    expect(html).toContain('async recentEvents(windowMs,cap=Infinity){');
+    expect(html).toContain('if(!c||results.length>=cap)return resolve(results);');
   });
 });
 
