@@ -257,6 +257,20 @@
   信頼できる検証手段が無い状態での投入を見送り、変更は完全に取り消し済み(`sw.js`は
   無変更)。単一ファイルPWAでは実害は小さいという元の評価どおり、低優先度のまま。
 
+### 1-13. `_worker.js` の2件のSSRF欠陥【解決済み・round 31】
+
+- **リダイレクト経由のSSRF**: `/rss`・`/json` とも `fetch` に `redirect:'follow'` を使い、
+  `validateTarget` は最初のURLしか検証していなかった。悪意/侵害されたフィードが検証通過後に
+  リダイレクトで内部アドレス(例: AWS/GCPメタデータ `169.254.169.254`)へ誘導できた。
+  `redirect:'manual'` の自前ループ `fetchValidated`(上限 `MAX_REDIRECTS=5`)で各ホップを
+  再検証し、`/json` はホスト許可リストも再チェックするよう修正。
+- **`[::]`(0.0.0.0相当の未指定IPv6アドレス)のブロック漏れ**: 既存の `\[::1\]` は `[::1]`
+  のみにマッチし、`[::]` はどのパターンにも該当せず素通りしていた。`\[::1?\]` へ一般化。
+- 10進/16進/8進のIPv4表記(例: `http://2130706433/`)は既にNode実行で検証済みの
+  非対象と確認(`new URL()` が常にドット10進へ正規化するため元々安全)。
+- **アンカー**: `async function fetchValidated` / `\[::1?\]` / `tests/worker.test.mjs` の
+  「fetchValidated — SSRF prevention across redirects」ブロック
+
 ---
 
 ## 2. 過剰(却下済み — 再提案しないこと)
@@ -320,6 +334,7 @@
 3. **§1-4 wrangler 更新** — wrangler dev を検証できる環境で専用ブランチとして。
 4. **§1-5 ベクトル検索の再評価 ADR** — WebANNS の新証拠を踏まえ、人間の判断を仰ぐ。
 
-§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11・§1-12(i18n・SourceFailTracker)は解決済み。
-残る未対応は §1-3・§1-4・§1-5・§1-10(§1-12のnormalizeUrl/fetched件数/skipWaitingは
-引き続き記録のみ — skipWaitingはround 30で実装→この環境では検証不能と判明し取り消し済み)。
+§1-1・§1-2・§1-6・§1-7・§1-8・§1-9・§1-11・§1-12(i18n・SourceFailTracker)・§1-13
+(Worker SSRF)は解決済み。残る未対応は §1-3・§1-4・§1-5・§1-10(§1-12のnormalizeUrl/
+fetched件数/skipWaitingは引き続き記録のみ — skipWaitingはround 30で実装→この環境では
+検証不能と判明し取り消し済み)。
