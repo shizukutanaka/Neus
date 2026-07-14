@@ -15,7 +15,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // PRIVATE_HOST_RE (copied — stays in sync via ci check)
 // WHATWG URL normalizes IPv4-mapped IPv6 to hex before PRIVATE_HOST_RE sees the hostname,
 // so the regex must match the normalized hex form, not the dotted IPv4 notation.
-const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
+// round 31: \[::1?\] (was \[::1\]) also blocks the bare unspecified address [::]
+// (equivalent to 0.0.0.0), which previously matched no pattern here.
+const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1?\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
+const MAX_REDIRECTS = 5;
 
 const RSS_CONTENT_RE = /xml|rss|atom|application\/feed/i;
 
@@ -25,6 +28,27 @@ function validateTarget(raw) {
   if (!/^https?:$/.test(u.protocol)) return [null, 'invalid_protocol'];
   if (PRIVATE_HOST_RE.test(u.hostname)) return [null, 'private_host_forbidden'];
   return [u, null];
+}
+
+// fetchValidated (copied — stays in sync via ci check)
+// round 31: fetch() used redirect:'follow', which only validates the FIRST URL — a
+// malicious/compromised feed could pass that check, then redirect the Worker into a
+// private address. This re-validates every hop by following redirects manually, using an
+// injectable fetchFn instead of the real network so it's testable without I/O.
+async function fetchValidated(u, fetchFn, extraCheck) {
+  let current = u;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await fetchFn(current);
+    const loc = (res.status >= 300 && res.status < 400) ? res.headers.get('location') : null;
+    if (!loc) return res;
+    let next;
+    try { next = new URL(loc, current); } catch { throw new Error('invalid_redirect'); }
+    const [validated, err] = validateTarget(next.toString());
+    if (err) throw new Error('redirect_private_host');
+    if (extraCheck && !extraCheck(validated)) throw new Error('redirect_host_not_allowed');
+    current = validated;
+  }
+  throw new Error('too_many_redirects');
 }
 
 function corsHeaders() {
@@ -97,6 +121,7 @@ describe('validateTarget — SSRF prevention', () => {
     'http://[::ffff:192.168.1.1]/private',
     'http://[::ffff:172.16.0.1]/private',
     'http://[::ffff:169.254.169.254]/metadata',
+    'http://[::]/any',  // unspecified address, equivalent to 0.0.0.0 (round 31)
   ];
 
   blocked.forEach(url => {
@@ -120,6 +145,57 @@ describe('validateTarget — SSRF prevention', () => {
       expect(err).toBeNull();
       expect(u).not.toBeNull();
     });
+  });
+});
+
+describe('fetchValidated — SSRF prevention across redirects (round 31)', () => {
+  // Before: fetch used redirect:'follow', which only validates the FIRST URL. A malicious
+  // or compromised feed could pass that check, then 302 the Worker into a private address —
+  // fetchValidated re-validates every hop by following redirects manually.
+  function stubChain(chain) {
+    return async (url) => {
+      const next = chain[url.toString()];
+      if (next) return { status: 302, headers: { get: (h) => h === 'location' ? next : null } };
+      return { status: 200, headers: { get: () => null } };
+    };
+  }
+
+  it('follows a legitimate redirect chain to completion', async () => {
+    const [u] = validateTarget('https://example.com/old-feed');
+    const res = await fetchValidated(u, stubChain({ 'https://example.com/old-feed': 'https://example.com/new-feed' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('blocks a redirect to a private/internal address (SSRF via redirect)', async () => {
+    const [u] = validateTarget('https://evil.example.com/feed');
+    const fetchFn = stubChain({ 'https://evil.example.com/feed': 'http://169.254.169.254/latest/meta-data/' });
+    await expect(fetchValidated(u, fetchFn)).rejects.toThrow('redirect_private_host');
+  });
+
+  it('blocks a redirect to a private address disguised as IPv4-mapped IPv6', async () => {
+    const [u] = validateTarget('https://evil2.example.com/feed');
+    const fetchFn = stubChain({ 'https://evil2.example.com/feed': 'http://[::ffff:169.254.169.254]/' });
+    await expect(fetchValidated(u, fetchFn)).rejects.toThrow('redirect_private_host');
+  });
+
+  it('blocks a redirect off the /json host allowlist even to a public host', async () => {
+    const [u] = validateTarget('https://en.wikipedia.org/api/rest_v1/page/summary/Foo');
+    const fetchFn = stubChain({ 'https://en.wikipedia.org/api/rest_v1/page/summary/Foo': 'https://attacker.example.com/steal' });
+    const extraCheck = (uu) => /(^|\.)wikipedia\.org$/i.test(uu.hostname);
+    await expect(fetchValidated(u, fetchFn, extraCheck)).rejects.toThrow('redirect_host_not_allowed');
+  });
+
+  it('caps redirect chains at MAX_REDIRECTS instead of following indefinitely', async () => {
+    const chain = {};
+    for (let i = 0; i < 10; i++) chain[`https://example.com/hop${i}`] = `https://example.com/hop${i + 1}`;
+    const [u] = validateTarget('https://example.com/hop0');
+    await expect(fetchValidated(u, stubChain(chain))).rejects.toThrow('too_many_redirects');
+  });
+
+  it('a response with no redirect returns immediately (no unnecessary hop)', async () => {
+    const [u] = validateTarget('https://example.com/feed.xml');
+    const res = await fetchValidated(u, stubChain({}));
+    expect(res.status).toBe(200);
   });
 });
 
@@ -315,6 +391,21 @@ describe('Worker _worker.js source invariants', () => {
   it('SSRF guard matches IPv4-mapped IPv6 in WHATWG hex-normalized form', () => {
     // WHATWG URL normalizes [::ffff:127.0.0.1] → [::ffff:7f00:1], so match hex.
     expect(src).toContain('::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)');
+  });
+  it('SSRF guard also blocks the bare unspecified address [::] (round 31)', () => {
+    expect(src).toContain('\\[::1?\\]');
+  });
+  it('both handleRSS and handleJSON fetch through fetchValidated, not redirect:\'follow\' (round 31)', () => {
+    expect(src).toContain('async function fetchValidated(u, headers, signal, extraCheck)');
+    expect(src).toContain("redirect: 'manual'");
+    expect(src).not.toContain("redirect: 'follow'");
+    expect(src).toContain('upstream = await fetchValidated(u, reqHeaders, ctrl.signal);');
+    expect(src).toContain("upstream = await fetchValidated(u, jsonReqHeaders, ctrl.signal, (uu) => JSON_HOST_ALLOW.test(uu.hostname));");
+  });
+  it('redirect-blocked errors map to the same status codes as the initial validation', () => {
+    expect(src).toContain("if (e.message === 'redirect_private_host') return jsonErr(400, 'private_host_forbidden');");
+    expect(src).toContain("if (e.message === 'redirect_host_not_allowed') return jsonErr(403, 'host_not_allowed');");
+    expect(src).toContain("if (e.message === 'too_many_redirects') return jsonErr(400, 'too_many_redirects');");
   });
 });
 

@@ -32,7 +32,8 @@ const TIMEOUT_MS = 15000;
 //   192.168.x.x → ::ffff:c0a8:??   → \[::ffff:c0a8:
 //   172.16-31.x → ::ffff:ac1[0-f]: → \[::ffff:ac1[0-9a-f]:
 //   169.254.x.x → ::ffff:a9fe:??   → \[::ffff:a9fe:
-const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
+const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1?\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
+const MAX_REDIRECTS = 5;
 
 // Read a response body up to MAX_SIZE bytes. Returns the ArrayBuffer or null if
 // Content-Length already exceeds the limit, or if the buffered body exceeds it.
@@ -70,6 +71,30 @@ function validateTarget(raw) {
   return [u, null];
 }
 
+// fetch()のredirect:'follow'は最終到達先を再検証しないため、悪意/侵害された
+// アップストリームが検証済みURLから内部アドレスへリダイレクトさせるSSRFを許した
+// (初回のvalidateTarget通過後、後続のホップは無検証だった)。redirect:'manual'で
+// 自前に追従し、各ホップをvalidateTarget(+任意のextraCheck、/jsonのホスト許可
+// リスト用)へ通す。
+async function fetchValidated(u, headers, signal, extraCheck) {
+  let current = u;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await fetch(current.toString(), {
+      headers, signal, redirect: 'manual',
+      cf: { cacheTtl: 300, cacheEverything: false },
+    });
+    const loc = (res.status >= 300 && res.status < 400) ? res.headers.get('location') : null;
+    if (!loc) return res;
+    let next;
+    try { next = new URL(loc, current); } catch { throw new Error('invalid_redirect'); }
+    const [validated, err] = validateTarget(next.toString());
+    if (err) throw new Error('redirect_private_host');
+    if (extraCheck && !extraCheck(validated)) throw new Error('redirect_host_not_allowed');
+    current = validated;
+  }
+  throw new Error('too_many_redirects');
+}
+
 async function handleRSS(request) {
   const url = new URL(request.url);
   const target = url.searchParams.get('url');
@@ -93,14 +118,11 @@ async function handleRSS(request) {
 
   let upstream;
   try {
-    upstream = await fetch(u.toString(), {
-      headers: reqHeaders,
-      signal: ctrl.signal,
-      redirect: 'follow',
-      cf: { cacheTtl: 300, cacheEverything: false },
-    });
+    upstream = await fetchValidated(u, reqHeaders, ctrl.signal);
   } catch (e) {
     clearTimeout(to);
+    if (e.message === 'redirect_private_host') return jsonErr(400, 'private_host_forbidden');
+    if (e.message === 'too_many_redirects') return jsonErr(400, 'too_many_redirects');
     return jsonErr(502, 'upstream_fetch_failed');
   }
   clearTimeout(to);
@@ -154,19 +176,18 @@ async function handleJSON(request) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
 
+  const jsonReqHeaders = {
+    'user-agent': 'Neus-Proxy/1.0 (+https://github.com/shizukutanaka/neus)',
+    'accept': 'application/json',
+  };
   let upstream;
   try {
-    upstream = await fetch(u.toString(), {
-      headers: {
-        'user-agent': 'Neus-Proxy/1.0 (+https://github.com/shizukutanaka/neus)',
-        'accept': 'application/json',
-      },
-      signal: ctrl.signal,
-      redirect: 'follow',
-      cf: { cacheTtl: 300, cacheEverything: false },
-    });
+    upstream = await fetchValidated(u, jsonReqHeaders, ctrl.signal, (uu) => JSON_HOST_ALLOW.test(uu.hostname));
   } catch (e) {
     clearTimeout(to);
+    if (e.message === 'redirect_private_host') return jsonErr(400, 'private_host_forbidden');
+    if (e.message === 'redirect_host_not_allowed') return jsonErr(403, 'host_not_allowed');
+    if (e.message === 'too_many_redirects') return jsonErr(400, 'too_many_redirects');
     return jsonErr(502, 'upstream_fetch_failed');
   }
   clearTimeout(to);
