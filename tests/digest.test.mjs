@@ -1,5 +1,10 @@
 // Neus — Digest aggregation logic tests
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 // === Pure aggregation helpers mirrored from renderDigest ===
 
@@ -166,6 +171,36 @@ describe('Digest — computeWeekTrend', () => {
   it('ignores events older than 7 days', () => {
     const events = [evFixture({ timestamp: Date.now() - 8*24*60*60*1000 })];
     expect(computeWeekTrend(events).reduce((a,b) => a+b, 0)).toBe(0);
+  });
+});
+
+describe('Digest — tag/source chip click wiring (index.html)', () => {
+  // Bug: digest tag chips rendered as `#tag N` (count inline in textContent).
+  // The .tag click handler stripped the leading # but left the count: "tag N" != "tag".
+  // Fix: dedicated [data-digest-tag]/[data-digest-src] handlers read the attribute value
+  // (correct) and switch to the ALL view so the filter is visible in the timeline.
+  it('digest tag chips carry a data-digest-tag attribute with the raw tag name', () => {
+    expect(html).toContain('data-digest-tag="${escapeAttr(tg)}"');
+  });
+  it('digest source rows carry a data-digest-src attribute with the source name', () => {
+    expect(html).toContain('data-digest-src="${escapeAttr(s)}"');
+  });
+  it('handles [data-digest-tag] clicks before the generic .tag handler', () => {
+    // The new handler must appear before the .tag handler in the source
+    const dtIdx = html.indexOf("closest('[data-digest-tag]')");
+    const tagIdx = html.indexOf("closest('.tag')");
+    expect(dtIdx).toBeGreaterThan(0);
+    expect(tagIdx).toBeGreaterThan(0);
+    expect(dtIdx).toBeLessThan(tagIdx);
+  });
+  it('digest tag handler reads dataset.digestTag (not textContent)', () => {
+    expect(html).toContain("applyFilter('tag',digestTagEl.dataset.digestTag)");
+  });
+  it('digest source handler reads dataset.digestSrc', () => {
+    expect(html).toContain("applyFilter('source',digestSrcEl.dataset.digestSrc)");
+  });
+  it('digest handlers switch to the ALL view before applying the filter', () => {
+    expect(html).toContain("data-view=\"all\"]');if(allBtn){allBtn.classList.add('active')");
   });
 });
 

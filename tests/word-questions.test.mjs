@@ -53,9 +53,18 @@ describe('questions wiring (index.html)', () => {
     expect(html).toContain("act==='addq'");
     expect(html).toContain("act==='delq'");
   });
+  it('addq offers undo (symmetric with delq undo)', () => {
+    // delq offers "deleted question" undo; addq must mirror with "added question"
+    expect(html).toContain('added question');
+    // undo removes the specific question by its captured id
+    expect(html).toContain('newQ.id');
+  });
   it('renders question input and add button in the word view', () => {
     expect(html).toContain('data-wqinput');
     expect(html).toContain('data-wact="addq"');
     expect(html).toContain('data-wact="delq"');
+  });
+  it('resolve toggle has aria-pressed for screen-reader toggle semantics', () => {
+    expect(html).toContain('aria-pressed="${done}"');
   });
 });

@@ -2,6 +2,12 @@
 // Mirrors wordSlug + WordExporter.toDossier in index.html.
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 const isoDate = (ms) => new Date(ms).toISOString();
 const wordSlug = (s) => (s || 'word').trim().toLowerCase().replace(/[^a-z0-9ぁ-んァ-ヶ一-龠ー]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'word';
@@ -13,13 +19,15 @@ const newSinceReview = (events, reviewedAt) => events.filter(e => (e.timestamp |
 const feedLabelOf = (name) => ((name || '').split('·').pop() || '').trim();
 function signalGaps(word, events) {
   const present = new Set(events.map(e => feedLabelOf(e.source?.name)));
-  const active = [], silent = [];
-  if (word.sources?.wikipedia) (word.wiki?.extract ? active : silent).push('Wikipedia');
+  const errs = word.lastErrors || {};
+  const active = [], silent = [], errored = [];
+  const classify = (label, has) => { if (errs[label]) errored.push({ label, error: errs[label] }); else if (has) active.push(label); else silent.push(label); };
+  if (word.sources?.wikipedia) classify('Wikipedia', !!word.wiki?.extract);
   for (const key of Object.keys(WORD_FEEDS)) {
     if (!word.sources?.[key]) continue;
-    (present.has(WORD_FEEDS[key].label) ? active : silent).push(WORD_FEEDS[key].label);
+    classify(WORD_FEEDS[key].label, present.has(WORD_FEEDS[key].label));
   }
-  return { active, silent };
+  return { active, silent, errored };
 }
 
 // Mirrored from relatedWords in index.html
@@ -49,7 +57,7 @@ const TIER_DEFS = [
 function sourceTier(name) {
   const label = ((name || '').split('·').pop() || '').trim().toLowerCase();
   if (label.includes('arxiv')) return 'research';
-  if (label.includes('reddit') || label.includes('hacker')) return 'discussion';
+  if (label.includes('reddit') || label.includes('hacker') || label.includes('qiita') || label.includes('zenn') || label.includes('hatena')) return 'discussion';
   if (label.includes('news')) return 'press';
   return 'other';
 }
@@ -71,19 +79,29 @@ function aggregateTags(events) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20);
 }
 
+// Mirrored from safeHref/mdEsc/mdLink/mdImgLink in index.html
+function safeHref(url) { try { const p = new URL(url || '').protocol; return (p === 'https:' || p === 'http:') ? url : '#'; } catch { return '#'; } }
+const mdEsc = (s) => (s || '').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+const mdLink = (title, url) => { const safe = url ? safeHref(url) : ''; return safe && safe !== '#' ? `[${mdEsc(title)}](<${safe}>)` : `**${mdEsc(title)}**`; };
+const mdImgLink = (alt, url) => { const safe = url ? safeHref(url) : ''; return safe && safe !== '#' ? `![${mdEsc(alt)}](<${safe}>)` : ''; };
+
 // Mirrored from WordExporter.toDossier
+const ys = s => '"' + String(s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
 function toDossier(word, events, others = []) {
-  const srcList = ['wikipedia', ...Object.keys(WORD_FEEDS)].filter(k => word.sources?.[k]).join(', ') || '-';
+  const srcList = [...(word.sources?.wikipedia ? ['Wikipedia'] : []), ...Object.keys(WORD_FEEDS).filter(k => word.sources?.[k]).map(k => WORD_FEEDS[k].label)].join(', ') || '-';
   const fresh = newSinceReview(events, word.reviewedAt);
   const gaps = signalGaps(word, events);
   const showGaps = !!word.lastCollectedAt && gaps.silent.length > 0;
+  const showErrors = !!word.lastCollectedAt && gaps.errored.length > 0;
   const related = relatedWords(events, others);
-  const fm = ['---', `term: ${word.term}`, `lang: ${word.lang || 'en'}`, word.note ? `intent: ${word.note}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
+  const wikiCanonTitle = word.wiki?.title && word.wiki.title.trim().toLowerCase() !== word.term.trim().toLowerCase() ? word.wiki.title : null;
+  const fm = ['---', `term: ${ys(word.term)}`, `lang: ${word.lang || 'en'}`, wikiCanonTitle ? `wiki_title: ${ys(wikiCanonTitle)}` : null, word.note ? `intent: ${ys(word.note)}` : null, `generated_at: ${isoDate(0)}`, `items: ${events.length}`, `unreviewed: ${fresh.length}`, `sources: ${srcList}`, showGaps ? `silent: ${gaps.silent.join(', ')}` : null, showErrors ? `failed: ${gaps.errored.map(e => e.label).join(', ')}` : null, related.length ? `related: ${related.map(r => r.normalized).join(', ')}` : null, word.lastCollectedAt ? `last_collected: ${isoDate(word.lastCollectedAt)}` : null, '---'].filter(Boolean).join('\n');
   const parts = [fm, '', `# ${word.term}`, ''];
   if (word.note) parts.push(`> ${word.note}`, '');
   if (word.wiki?.extract) {
-    parts.push('## 定義', '', word.wiki.extract, '');
-    if (word.wiki.url) parts.push(`[Wikipedia](${word.wiki.url})`, '');
+    parts.push(wikiCanonTitle ? `## 定義 (${wikiCanonTitle})` : '## 定義', '', word.wiki.extract, '');
+    if (word.wiki.thumbnail) parts.push(mdImgLink('thumbnail', word.wiki.thumbnail));
+    if (word.wiki.url) parts.push(mdLink('Wikipedia', word.wiki.url), '');
   }
   const tiers = tierBreakdown(events);
   if (tiers.length) {
@@ -92,12 +110,13 @@ function toDossier(word, events, others = []) {
     parts.push('');
   }
   if (showGaps) parts.push('## 空白', '', `有効だが0件: ${gaps.silent.join(', ')}`, '');
+  if (showErrors) parts.push('## 死角', '', `取得失敗: ${gaps.errored.map(e => `${e.label} (${e.error})`).join(', ')}`, '_(沈黙ではなく取得不能。別経路で確認が必要)_', '');
   if (related.length) parts.push('## 関連', '', related.map(r => `- ${r.term} (${r.count})`).join('\n'), '');
   if (fresh.length) {
     parts.push(`## 新着 (${fresh.length})`, '');
     for (const ev of fresh) {
       const d = ev.publishedAt ? isoDate(ev.publishedAt).slice(0, 10) : '';
-      parts.push(`- [${ev.content.title}](${ev.url || ''})${d ? ` — ${d}` : ''}`);
+      parts.push(`- ${mdLink(ev.content.title, ev.url)}${d ? ` — ${d}` : ''}`);
     }
     parts.push('');
   }
@@ -108,7 +127,7 @@ function toDossier(word, events, others = []) {
     parts.push(`### ${name}`, '');
     for (const ev of list) {
       const d = ev.publishedAt ? isoDate(ev.publishedAt).slice(0, 10) : '';
-      parts.push(`- [${ev.content.title}](${ev.url || ''})${d ? ` — ${d}` : ''}`);
+      parts.push(`- ${mdLink(ev.content.title, ev.url)}${d ? ` — ${d}` : ''}`);
       if (ev.content.snippet) parts.push(`  - ${ev.content.snippet.slice(0, 200)}`);
     }
     parts.push('');
@@ -137,7 +156,7 @@ describe('WordExporter.toDossier', () => {
 
   it('emits YAML frontmatter with term/lang/item count', () => {
     const md = toDossier(word, events);
-    expect(md.startsWith('---\nterm: WebGPU\nlang: en')).toBe(true);
+    expect(md.startsWith('---\nterm: "WebGPU"\nlang: en')).toBe(true);
     expect(md).toContain('items: 2');
   });
 
@@ -145,14 +164,49 @@ describe('WordExporter.toDossier', () => {
     const md = toDossier(word, events);
     expect(md).toContain('## 定義');
     expect(md).toContain('WebGPU is a web graphics API.');
-    expect(md).toContain('[Wikipedia](https://en.wikipedia.org/wiki/WebGPU)');
+    expect(md).toContain('[Wikipedia](<https://en.wikipedia.org/wiki/WebGPU>)');
+  });
+
+  it('includes a thumbnail image line when wiki.thumbnail is set', () => {
+    const w = { ...word, wiki: { ...word.wiki, thumbnail: 'https://upload.wikimedia.org/thumb/x.png' } };
+    const md = toDossier(w, events);
+    expect(md).toContain('![thumbnail](<https://upload.wikimedia.org/thumb/x.png>)');
+  });
+
+  it('omits the thumbnail line when wiki.thumbnail is absent', () => {
+    const md = toDossier(word, events);
+    expect(md).not.toContain('![thumbnail]');
+  });
+
+  it('adds wiki_title to frontmatter when article title differs from registered term', () => {
+    const w = { ...word, term: 'GPT', normalized: 'gpt', wiki: { ...word.wiki, title: 'Generative pre-trained transformer' } };
+    const md = toDossier(w, events);
+    expect(md).toContain('wiki_title: "Generative pre-trained transformer"');
+  });
+
+  it('omits wiki_title from frontmatter when title matches term (case-insensitive)', () => {
+    const w = { ...word, wiki: { ...word.wiki, title: 'webgpu' } };
+    const md = toDossier(w, events);
+    expect(md).not.toContain('wiki_title:');
+  });
+
+  it('uses the canonical title in the definition section header when it differs', () => {
+    const w = { ...word, term: 'GPT', normalized: 'gpt', wiki: { ...word.wiki, title: 'Generative pre-trained transformer' } };
+    const md = toDossier(w, events);
+    expect(md).toContain('## 定義 (Generative pre-trained transformer)');
+    expect(md).not.toContain('## 定義\n');
+  });
+
+  it('uses plain ## 定義 when article title matches the registered term', () => {
+    const md = toDossier(word, events);
+    expect(md).toContain('## 定義\n');
   });
 
   it('groups items by source and links each item', () => {
     const md = toDossier(word, events);
     expect(md).toContain('### Google News');
     expect(md).toContain('### Hacker News');
-    expect(md).toContain('- [WebGPU ships](https://ex.com/a) — 2026-01-02');
+    expect(md).toContain('- [WebGPU ships](<https://ex.com/a>) — 2026-01-02');
     expect(md).toContain('  - A summary.');
   });
 
@@ -162,16 +216,78 @@ describe('WordExporter.toDossier', () => {
     expect(md).toContain('## 収集アイテム (0)');
   });
 
-  it('lists enabled sources in the frontmatter', () => {
+  it('lists enabled sources in the frontmatter using display labels (same namespace as silent/failed)', () => {
+    // Storage keys (wikipedia/news/arxiv) and display labels (Wikipedia/Google News/arXiv) must
+    // not be mixed in the same YAML document. sources: uses labels, matching silent: and failed:.
     const w = { ...word, sources: { wikipedia: true, news: true, arxiv: true, reddit: false } };
     const md = toDossier(w, events);
-    expect(md).toContain('sources: wikipedia, news, arxiv');
+    expect(md).toContain('sources: Wikipedia, Google News, arXiv');
+    expect(md).not.toContain('sources: wikipedia, news, arxiv');
   });
 
   it('records last_collected in the frontmatter when present', () => {
     const w = { ...word, lastCollectedAt: Date.parse('2026-01-03T00:00:00Z') };
     expect(toDossier(w, events)).toContain('last_collected: 2026-01-03T00:00:00.000Z');
     expect(toDossier(word, events)).not.toContain('last_collected:');
+  });
+
+  it('quotes term containing a colon so YAML stays valid', () => {
+    const w = { term: 'Node.js: v18', lang: 'en', normalized: 'nodejs v18' };
+    const md = toDossier(w, []);
+    expect(md).toContain('term: "Node.js: v18"');
+    expect(md).not.toMatch(/^term: Node\.js: v18$/m);
+  });
+
+  it('quotes intent (note) containing a newline', () => {
+    const w = { ...word, note: 'line one\nline two' };
+    const md = toDossier(w, []);
+    expect(md).toContain('intent: "line one\\nline two"');
+    expect(md).not.toContain('intent: line one');
+  });
+});
+
+describe('mdLink / mdImgLink (modeled)', () => {
+  it('wraps URL in angle brackets so parens in Wikipedia URLs are safe', () => {
+    expect(mdLink('Python', 'https://en.wikipedia.org/wiki/Python_(programming_language)')).toBe(
+      '[Python](<https://en.wikipedia.org/wiki/Python_(programming_language)>)'
+    );
+  });
+  it('escapes ] in title so bracket-heavy paper titles do not break the link', () => {
+    expect(mdLink('GPT-4 [Technical Report]', 'https://arxiv.org/abs/2303.08774')).toBe(
+      '[GPT-4 \\[Technical Report\\]](<https://arxiv.org/abs/2303.08774>)'
+    );
+  });
+  it('falls back to bold text when URL is absent', () => {
+    expect(mdLink('Untitled', '')).toBe('**Untitled**');
+    expect(mdLink('Untitled', undefined)).toBe('**Untitled**');
+  });
+  it('falls back to bold text for javascript: URLs (XSS defence)', () => {
+    expect(mdLink('Click me', 'javascript:alert(1)')).toBe('**Click me**');
+  });
+  it('mdImgLink produces an image with angle-bracket URL', () => {
+    expect(mdImgLink('thumbnail', 'https://upload.wikimedia.org/img.png')).toBe(
+      '![thumbnail](<https://upload.wikimedia.org/img.png>)'
+    );
+  });
+  it('mdImgLink returns empty string for unsafe URL', () => {
+    expect(mdImgLink('thumbnail', 'javascript:void(0)')).toBe('');
+  });
+});
+
+describe('mdLink wiring (index.html)', () => {
+  it('defines mdLink as a helper', () => {
+    expect(html).toContain('const mdLink=');
+    expect(html).toContain('const mdImgLink=');
+  });
+  it('uses mdLink in MarkdownExporter for the source URL', () => {
+    expect(html).toContain("mdLink('原文を開く',ev.url)");
+  });
+  it('uses mdLink in toDossier item lists (not raw bracket syntax)', () => {
+    expect(html).not.toContain('`- [${ev.content.title}](${ev.url');
+    expect(html).toContain('`- ${mdLink(ev.content.title,ev.url)}');
+  });
+  it('uses mdImgLink for wiki thumbnail in toDossier', () => {
+    expect(html).toContain("mdImgLink('thumbnail',word.wiki.thumbnail)");
   });
 });
 
@@ -222,7 +338,7 @@ describe('WordExporter.toDossier — intent + delta', () => {
 
   it('records the intent (question) in frontmatter and as a blockquote', () => {
     const md = toDossier(word, events);
-    expect(md).toContain('intent: production-ready?');
+    expect(md).toContain('intent: "production-ready?"');
     expect(md).toContain('> production-ready?');
   });
 
@@ -230,10 +346,10 @@ describe('WordExporter.toDossier — intent + delta', () => {
     const md = toDossier(word, events);
     expect(md).toContain('unreviewed: 1');
     expect(md).toContain('## 新着 (1)');
-    expect(md).toContain('- [fresh item](https://ex.com/n) — 2026-01-03');
+    expect(md).toContain('- [fresh item](<https://ex.com/n>) — 2026-01-03');
     // The reviewed (old) item is absent from 新着 but still present in 収集アイテム
     expect(md.split('## 収集アイテム')[0]).not.toContain('old item');
-    expect(md).toContain('- [old item](https://ex.com/o)');
+    expect(md).toContain('- [old item](<https://ex.com/o>)');
   });
 
   it('omits the 新着 section and reports zero when all items are reviewed', () => {
@@ -256,6 +372,11 @@ describe('sourceTier', () => {
     expect(sourceTier('WebGPU · Google News')).toBe('press');
     expect(sourceTier('WebGPU · Reddit')).toBe('discussion');
     expect(sourceTier('WebGPU · Hacker News')).toBe('discussion');
+  });
+  it('classifies Japanese community sources as discussion (not other)', () => {
+    expect(sourceTier('Rust · Qiita')).toBe('discussion');
+    expect(sourceTier('Next.js · Zenn')).toBe('discussion');
+    expect(sourceTier('AI · Hatena')).toBe('discussion');
   });
   it('ranks discussion before press so "Hacker News" is not mistaken for press', () => {
     expect(sourceTier('X · Hacker News')).not.toBe('press');
@@ -345,3 +466,39 @@ describe('WordExporter.toDossier — related words', () => {
     expect(toDossier(word, events)).not.toContain('## 関連');
   });
 });
+
+describe('toDossier — 死角 (fetch failures as blind spots)', () => {
+  const baseWord = { term: 'X', normalized: 'x', lang: 'en', sources: { news: true, reddit: true }, wiki: null, lastCollectedAt: Date.now() };
+
+  it('adds a failed: line to frontmatter when a source errored', () => {
+    const w = { ...baseWord, lastErrors: { 'Google News': 'http_503' } };
+    const md = toDossier(w, []);
+    expect(md).toContain('failed: Google News');
+  });
+
+  it('renders ## 死角 section with error codes', () => {
+    const w = { ...baseWord, lastErrors: { 'Reddit': 'network' } };
+    const md = toDossier(w, []);
+    expect(md).toContain('## 死角');
+    expect(md).toContain('Reddit (network)');
+    expect(md).toContain('沈黙ではなく取得不能');
+  });
+
+  it('omits 死角 when no errors occurred', () => {
+    expect(toDossier(baseWord, [])).not.toContain('## 死角');
+    expect(toDossier(baseWord, [])).not.toContain('failed:');
+  });
+
+  it('omits 死角 when lastCollectedAt is not set (no collection yet)', () => {
+    const w = { ...baseWord, lastCollectedAt: null, lastErrors: { 'Reddit': 'network' } };
+    expect(toDossier(w, [])).not.toContain('## 死角');
+  });
+
+  it('lists multiple failed sources', () => {
+    const w = { ...baseWord, lastErrors: { 'Google News': 'parse', 'Reddit': 'http_404' } };
+    const md = toDossier(w, []);
+    expect(md).toContain('Google News (parse)');
+    expect(md).toContain('Reddit (http_404)');
+  });
+});
+

@@ -1,8 +1,8 @@
-# Lensy CORS Proxy — Cloudflare Worker
+# Neus CORS Proxy — Cloudflare Worker
 # Stateless RSS proxy. No KV, no Durable Objects, no state.
 # Deploy: wrangler deploy
 
-name = "lensy-proxy"
+name = "neus-proxy"
 main = "_worker.js"
 compatibility_date = "2024-09-23"
 
@@ -13,7 +13,7 @@ enabled = true
 # Free plan: 100,000 requests/day, 10ms CPU time/request
 
 # Routes are set on Cloudflare dashboard:
-#   https://lensy-proxy.your-subdomain.workers.dev/*
+#   https://neus-proxy.your-subdomain.workers.dev/*
 # or via custom domain binding in Pages project settings.
 
 # Environment variables (set via Cloudflare dashboard, NOT here)

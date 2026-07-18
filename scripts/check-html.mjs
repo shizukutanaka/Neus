@@ -135,7 +135,7 @@ try {
   check('manifest has dedicated maskable icon', maskable.length === 1 && maskable[0].purpose === 'maskable');
 } catch { check('manifest.json valid JSON', false); }
 check('POLL stays outside overflow menu', /<button id="btn-poll"[\s\S]{0,40}>POLL<\/button>\s*<div class="menu-wrap">/.test(html));
-check('SW shell stale-while-revalidate', readFileSync('sw.js', 'utf8').includes('stale-while-revalidate') && /SHELL\.includes[\s\S]{0,400}cache\.put/.test(readFileSync('sw.js', 'utf8')));
+check('SW shell stale-while-revalidate', readFileSync('sw.js', 'utf8').includes('stale-while-revalidate') && /SHELL\.includes[\s\S]{0,900}cache\.put/.test(readFileSync('sw.js', 'utf8')));
 check('SW shell uses ignoreSearch (offline query URLs)', readFileSync('sw.js', 'utf8').includes('ignoreSearch'));
 
 // Size check

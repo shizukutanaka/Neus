@@ -1,13 +1,24 @@
 // Neus — _worker.js unit tests
-// Covers SSRF prevention, content-type validation, routing, error handling.
+// Covers SSRF prevention, content-type validation, routing, error handling,
+// and the /json endpoint allowlist (Wikipedia-only proxy security boundary).
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ===== Extract pure logic from _worker.js =====
 // Import the module and reconstruct testable surface.
 
 // PRIVATE_HOST_RE (copied — stays in sync via ci check)
-const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1\]|\[fc|\[fd|\[fe80)/i;
+// WHATWG URL normalizes IPv4-mapped IPv6 to hex before PRIVATE_HOST_RE sees the hostname,
+// so the regex must match the normalized hex form, not the dotted IPv4 notation.
+// round 31: \[::1?\] (was \[::1\]) also blocks the bare unspecified address [::]
+// (equivalent to 0.0.0.0), which previously matched no pattern here.
+const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1?\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
+const MAX_REDIRECTS = 5;
 
 const RSS_CONTENT_RE = /xml|rss|atom|application\/feed/i;
 
@@ -17,6 +28,27 @@ function validateTarget(raw) {
   if (!/^https?:$/.test(u.protocol)) return [null, 'invalid_protocol'];
   if (PRIVATE_HOST_RE.test(u.hostname)) return [null, 'private_host_forbidden'];
   return [u, null];
+}
+
+// fetchValidated (copied — stays in sync via ci check)
+// round 31: fetch() used redirect:'follow', which only validates the FIRST URL — a
+// malicious/compromised feed could pass that check, then redirect the Worker into a
+// private address. This re-validates every hop by following redirects manually, using an
+// injectable fetchFn instead of the real network so it's testable without I/O.
+async function fetchValidated(u, fetchFn, extraCheck) {
+  let current = u;
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    const res = await fetchFn(current);
+    const loc = (res.status >= 300 && res.status < 400) ? res.headers.get('location') : null;
+    if (!loc) return res;
+    let next;
+    try { next = new URL(loc, current); } catch { throw new Error('invalid_redirect'); }
+    const [validated, err] = validateTarget(next.toString());
+    if (err) throw new Error('redirect_private_host');
+    if (extraCheck && !extraCheck(validated)) throw new Error('redirect_host_not_allowed');
+    current = validated;
+  }
+  throw new Error('too_many_redirects');
 }
 
 function corsHeaders() {
@@ -83,6 +115,13 @@ describe('validateTarget — SSRF prevention', () => {
     'http://172.31.255.255/last',
     'http://169.254.169.254/metadata',  // AWS metadata
     'http://0.0.0.0/any',
+    // IPv4-mapped IPv6 — resolve identically to their IPv4 counterparts at socket level
+    'http://[::ffff:127.0.0.1]/loopback',
+    'http://[::ffff:10.0.0.1]/private',
+    'http://[::ffff:192.168.1.1]/private',
+    'http://[::ffff:172.16.0.1]/private',
+    'http://[::ffff:169.254.169.254]/metadata',
+    'http://[::]/any',  // unspecified address, equivalent to 0.0.0.0 (round 31)
   ];
 
   blocked.forEach(url => {
@@ -106,6 +145,57 @@ describe('validateTarget — SSRF prevention', () => {
       expect(err).toBeNull();
       expect(u).not.toBeNull();
     });
+  });
+});
+
+describe('fetchValidated — SSRF prevention across redirects (round 31)', () => {
+  // Before: fetch used redirect:'follow', which only validates the FIRST URL. A malicious
+  // or compromised feed could pass that check, then 302 the Worker into a private address —
+  // fetchValidated re-validates every hop by following redirects manually.
+  function stubChain(chain) {
+    return async (url) => {
+      const next = chain[url.toString()];
+      if (next) return { status: 302, headers: { get: (h) => h === 'location' ? next : null } };
+      return { status: 200, headers: { get: () => null } };
+    };
+  }
+
+  it('follows a legitimate redirect chain to completion', async () => {
+    const [u] = validateTarget('https://example.com/old-feed');
+    const res = await fetchValidated(u, stubChain({ 'https://example.com/old-feed': 'https://example.com/new-feed' }));
+    expect(res.status).toBe(200);
+  });
+
+  it('blocks a redirect to a private/internal address (SSRF via redirect)', async () => {
+    const [u] = validateTarget('https://evil.example.com/feed');
+    const fetchFn = stubChain({ 'https://evil.example.com/feed': 'http://169.254.169.254/latest/meta-data/' });
+    await expect(fetchValidated(u, fetchFn)).rejects.toThrow('redirect_private_host');
+  });
+
+  it('blocks a redirect to a private address disguised as IPv4-mapped IPv6', async () => {
+    const [u] = validateTarget('https://evil2.example.com/feed');
+    const fetchFn = stubChain({ 'https://evil2.example.com/feed': 'http://[::ffff:169.254.169.254]/' });
+    await expect(fetchValidated(u, fetchFn)).rejects.toThrow('redirect_private_host');
+  });
+
+  it('blocks a redirect off the /json host allowlist even to a public host', async () => {
+    const [u] = validateTarget('https://en.wikipedia.org/api/rest_v1/page/summary/Foo');
+    const fetchFn = stubChain({ 'https://en.wikipedia.org/api/rest_v1/page/summary/Foo': 'https://attacker.example.com/steal' });
+    const extraCheck = (uu) => /(^|\.)wikipedia\.org$/i.test(uu.hostname);
+    await expect(fetchValidated(u, fetchFn, extraCheck)).rejects.toThrow('redirect_host_not_allowed');
+  });
+
+  it('caps redirect chains at MAX_REDIRECTS instead of following indefinitely', async () => {
+    const chain = {};
+    for (let i = 0; i < 10; i++) chain[`https://example.com/hop${i}`] = `https://example.com/hop${i + 1}`;
+    const [u] = validateTarget('https://example.com/hop0');
+    await expect(fetchValidated(u, stubChain(chain))).rejects.toThrow('too_many_redirects');
+  });
+
+  it('a response with no redirect returns immediately (no unnecessary hop)', async () => {
+    const [u] = validateTarget('https://example.com/feed.xml');
+    const res = await fetchValidated(u, stubChain({}));
+    expect(res.status).toBe(200);
   });
 });
 
@@ -177,6 +267,145 @@ describe('Worker security invariants', () => {
     // Each call returns a new object, no shared reference
     h1['test'] = 'mutated';
     expect(h2['test']).toBeUndefined();
+  });
+});
+
+describe('JSON_HOST_ALLOW — /json endpoint host allowlist', () => {
+  // Mirror of _worker.js JSON_HOST_ALLOW regex (wikipedia/wikimedia + qiita.com per ADR-0017)
+  const JSON_HOST_ALLOW = /(^|\.)(wikipedia\.org|wikimedia\.org|qiita\.com)$/i;
+
+  const allowed = [
+    'en.wikipedia.org',
+    'ja.wikipedia.org',
+    'wikipedia.org',
+    'commons.wikimedia.org',
+    'wikimedia.org',
+    'upload.wikimedia.org',
+    'qiita.com',          // ADR-0017: Qiita REST API v2 full-text search
+  ];
+
+  allowed.forEach(host => {
+    it(`allows ${host}`, () => {
+      expect(JSON_HOST_ALLOW.test(host)).toBe(true);
+    });
+  });
+
+  const blocked = [
+    'evil.com',
+    'notwikipedia.org',
+    'en.wikipedia.org.evil.com',
+    'fakewikipedia.org',
+    'wikipedia.org.attacker.com',
+    'api.openai.com',
+    'api.anthropic.com',
+    'notqiita.com',           // suffix-anchor must not match a lookalike
+    'qiita.com.attacker.com', // trailing-domain attack
+    'zenn.dev',               // Zenn is NOT on the JSON allowlist (tag-feed via /rss only)
+    'localhost',
+    '127.0.0.1',
+    '',
+  ];
+
+  blocked.forEach(host => {
+    it(`blocks "${host}"`, () => {
+      expect(JSON_HOST_ALLOW.test(host)).toBe(false);
+    });
+  });
+
+  it('allows a qiita.com subdomain via the (^|.) anchor', () => {
+    expect(JSON_HOST_ALLOW.test('api.qiita.com')).toBe(true);
+  });
+
+  it('is case-insensitive (Wikipedia.ORG / Qiita.COM)', () => {
+    expect(JSON_HOST_ALLOW.test('en.Wikipedia.ORG')).toBe(true);
+    expect(JSON_HOST_ALLOW.test('Qiita.COM')).toBe(true);
+  });
+});
+
+describe('JSON_CONTENT_RE — /json content-type validation', () => {
+  // Mirror of worker check: !/json/i.test(ct)
+  const jsonRe = /json/i;
+
+  it('accepts application/json', () => expect(jsonRe.test('application/json')).toBe(true));
+  it('accepts application/json; charset=utf-8', () => expect(jsonRe.test('application/json; charset=utf-8')).toBe(true));
+  it('rejects text/html', () => expect(jsonRe.test('text/html')).toBe(false));
+  it('rejects text/xml', () => expect(jsonRe.test('text/xml')).toBe(false));
+  it('rejects empty string', () => expect(jsonRe.test('')).toBe(false));
+});
+
+describe('readCapped — streaming size enforcement', () => {
+  const MAX_SIZE = 5 * 1024 * 1024;
+
+  // Mirror of readCapped from _worker.js
+  async function readCapped(res) {
+    const cl = res.headers.get('content-length');
+    if (cl && Number(cl) > MAX_SIZE) return null;
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_SIZE) return null;
+    return buf;
+  }
+
+  function makeRes(body, contentLength = null) {
+    const headers = new Headers();
+    if (contentLength !== null) headers.set('content-length', String(contentLength));
+    return new Response(body, { headers });
+  }
+
+  it('returns buffer for a small body without Content-Length', async () => {
+    const res = makeRes('hello');
+    const buf = await readCapped(res);
+    expect(buf).not.toBeNull();
+    expect(buf.byteLength).toBe(5);
+  });
+
+  it('returns null when Content-Length exceeds MAX_SIZE (fast reject)', async () => {
+    const res = makeRes('x', MAX_SIZE + 1);
+    expect(await readCapped(res)).toBeNull();
+  });
+
+  it('returns null when streamed body exceeds MAX_SIZE even without Content-Length', async () => {
+    // Simulate a server that omits Content-Length but sends a large body
+    const oversized = new Uint8Array(MAX_SIZE + 1);
+    const res = makeRes(oversized.buffer);
+    expect(await readCapped(res)).toBeNull();
+  });
+
+  it('accepts exactly MAX_SIZE bytes', async () => {
+    const exact = new Uint8Array(MAX_SIZE);
+    const res = makeRes(exact.buffer);
+    expect(await readCapped(res)).not.toBeNull();
+  });
+});
+
+describe('Worker _worker.js source invariants', () => {
+  let src;
+  beforeAll(() => {
+    src = readFileSync(join(__dirname, '..', '_worker.js'), 'utf8');
+  });
+
+  it('readCapped helper enforces streaming size even without Content-Length', () => {
+    expect(src).toContain('async function readCapped(res)');
+    expect(src).toContain('const buf = await res.arrayBuffer()');
+    expect(src).toContain('if (buf.byteLength > MAX_SIZE) return null');
+  });
+  it('SSRF guard matches IPv4-mapped IPv6 in WHATWG hex-normalized form', () => {
+    // WHATWG URL normalizes [::ffff:127.0.0.1] → [::ffff:7f00:1], so match hex.
+    expect(src).toContain('::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)');
+  });
+  it('SSRF guard also blocks the bare unspecified address [::] (round 31)', () => {
+    expect(src).toContain('\\[::1?\\]');
+  });
+  it('both handleRSS and handleJSON fetch through fetchValidated, not redirect:\'follow\' (round 31)', () => {
+    expect(src).toContain('async function fetchValidated(u, headers, signal, extraCheck)');
+    expect(src).toContain("redirect: 'manual'");
+    expect(src).not.toContain("redirect: 'follow'");
+    expect(src).toContain('upstream = await fetchValidated(u, reqHeaders, ctrl.signal);');
+    expect(src).toContain("upstream = await fetchValidated(u, jsonReqHeaders, ctrl.signal, (uu) => JSON_HOST_ALLOW.test(uu.hostname));");
+  });
+  it('redirect-blocked errors map to the same status codes as the initial validation', () => {
+    expect(src).toContain("if (e.message === 'redirect_private_host') return jsonErr(400, 'private_host_forbidden');");
+    expect(src).toContain("if (e.message === 'redirect_host_not_allowed') return jsonErr(403, 'host_not_allowed');");
+    expect(src).toContain("if (e.message === 'too_many_redirects') return jsonErr(400, 'too_many_redirects');");
   });
 });
 

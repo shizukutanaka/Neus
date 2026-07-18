@@ -2,6 +2,12 @@
 // Coverage target: ≥ 80% (goal.md §2.3)
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 // ===== Extract testable pure functions from index.html =====
 // Pure functions are copied here to avoid DOM dependency.
@@ -99,6 +105,20 @@ describe('normalizeUrl', () => {
   });
 });
 
+describe('dedup key uses the normalized URL (pipeline entry)', () => {
+  // inbound.fetched hashes sha256(normalizeUrl(raw.link)+'|'+title), so the same article
+  // fetched via different feeds (tracking params, fragment) collapses to one dedup key.
+  it('collapses tracking-param and fragment variants to one key', () => {
+    const a = normalizeUrl('https://ex.com/a?utm_source=x&id=1');
+    const b = normalizeUrl('https://ex.com/a?id=1#top');
+    expect(a).toBe(b);                 // identical normalized key -> identical hash -> dedup
+    expect(a).toBe('https://ex.com/a?id=1');
+  });
+  it('keeps genuinely different URLs distinct', () => {
+    expect(normalizeUrl('https://ex.com/a')).not.toBe(normalizeUrl('https://ex.com/b'));
+  });
+});
+
 describe('jaccard', () => {
   it('returns 1.0 for identical sets', () => {
     const A = new Set(['a', 'b', 'c']);
@@ -118,6 +138,42 @@ describe('jaccard', () => {
     const a = new Set(tokenize('Breaking: New AI Model Released Today'));
     const b = new Set(tokenize('Breaking New AI Model Released Today'));
     expect(jaccard(a, b)).toBeGreaterThanOrEqual(0.8);
+  });
+});
+
+describe('dedup comparison window cap (ADR-0019)', () => {
+  // recentEvents() walks the timestamp index with a 'prev' (descending) cursor, so the
+  // array it resolves is already newest-first. Capping via slice(0, N) therefore keeps the
+  // temporally-closest candidates — where real duplicates cluster — not an arbitrary cutoff.
+  const dedupCompareMax = 300;
+  const fakeRecent = (n) => Array.from({ length: n }, (_, i) => ({ id: `e${i}`, timestamp: 1000 - i }));
+
+  it('leaves the candidate list untouched when under the cap', () => {
+    const recent = fakeRecent(50);
+    expect(recent.slice(0, dedupCompareMax)).toHaveLength(50);
+  });
+  it('caps the candidate list at dedupCompareMax when the window is fuller', () => {
+    const recent = fakeRecent(1000);
+    const capped = recent.slice(0, dedupCompareMax);
+    expect(capped).toHaveLength(dedupCompareMax);
+  });
+  it('keeps the newest-first ordering after capping (most recent, not arbitrary, candidates survive)', () => {
+    const recent = fakeRecent(1000);
+    const capped = recent.slice(0, dedupCompareMax);
+    expect(capped[0].id).toBe('e0');                       // newest
+    expect(capped[capped.length - 1].id).toBe('e299');     // 300th-newest
+    expect(capped.some(e => e.id === 'e999')).toBe(false); // oldest, correctly dropped
+  });
+});
+
+describe('dedup comparison window cap wiring (index.html)', () => {
+  it('declares dedupCompareMax alongside the existing dedup config', () => {
+    expect(html).toContain('dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000, dedupCompareMax:300');
+  });
+  it('passes the cap into recentEvents itself (round 28: the cursor now stops early instead of reading the whole window then slicing)', () => {
+    expect(html).toContain('const recent=await Store.recentEvents(CONFIG.dedupWindowMs,CONFIG.dedupCompareMax);');
+    expect(html).toContain('async recentEvents(windowMs,cap=Infinity){');
+    expect(html).toContain('if(!c||results.length>=cap)return resolve(results);');
   });
 });
 

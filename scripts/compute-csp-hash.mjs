@@ -42,7 +42,7 @@ const scriptSrc = `script-src 'self' ${[...scriptHashes].join(' ')}`;
 // To fully harden style-src, we'd need to eliminate all `element.style.X = ...` mutations.
 const styleSrc = `style-src 'self' 'unsafe-inline'`; // pragmatic: keep style for now (dynamic styles ubiquitous)
 
-const newCSP = `Content-Security-Policy: default-src 'self'; ${scriptSrc}; ${styleSrc} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob:; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests`;
+const newCSP = `Content-Security-Policy: default-src 'self'; ${scriptSrc}; ${styleSrc} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests`;
 
 // Patch _headers
 const headers = readFileSync('_headers', 'utf8');
@@ -54,3 +54,17 @@ if (!headerRe.test(headers)) {
 const patched = headers.replace(headerRe, `  ${newCSP}`);
 writeFileSync('_headers', patched);
 console.log('\n_headers updated with hash-based CSP (unsafe-inline removed from script-src)');
+
+// Also sync the <meta http-equiv="Content-Security-Policy"> in index.html.
+// frame-ancestors is not supported in <meta>; omit it to avoid silent non-enforcement.
+const metaCSP = newCSP
+  .replace('Content-Security-Policy: ', '')
+  .replace(/;\s*frame-ancestors\s+[^;]+/, '');
+const metaRe = /(<meta\s+http-equiv="Content-Security-Policy"\s+content=")[^"]*(")/;
+if (!metaRe.test(html)) {
+  console.error('ERROR: <meta http-equiv="Content-Security-Policy"> not found in index.html');
+  process.exit(1);
+}
+const patchedHtml = html.replace(metaRe, `$1${metaCSP}$2`);
+writeFileSync('index.html', patchedHtml);
+console.log('index.html meta CSP updated to match _headers (frame-ancestors omitted)');

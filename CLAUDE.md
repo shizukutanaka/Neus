@@ -1,4 +1,4 @@
-# CLAUDE.md — Lensy
+# CLAUDE.md — Neus
 
 ## Why
 
@@ -13,7 +13,8 @@ Personal Information Hub. サーバーレス・端末内完結・個人データ
 - `manifest.json` — PWA設定 + Share Target
 - `Plan.md` — 実装計画(現在 v0.3.0)
 - `goal.md` — KPI / マイルストーン(現在 v0.2.0)
-- `docs/adr/` — 設計判断記録(未作成、P0着手予定)
+- `docs/adr/` — 設計判断記録(ADR 0001-0019)
+- `docs/FEATURE-AUDIT.md` — 機能過不足の監査リスト(不足/却下済み/設計通り確認済み)
 
 ## Rules
 

@@ -1,6 +1,6 @@
 {
   "name": "neus",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.",
   "type": "module",
   "license": "MIT",
@@ -24,7 +24,7 @@
     "build:csp": "node scripts/compute-csp-hash.mjs",
     "prerelease": "npm run build:csp && npm run lint && npm run lint:html && npm test",
     "release:check": "node scripts/release.mjs",
-    "release": "node scripts/release.mjs --tag=v0.2.0",
+    "release": "node scripts/release.mjs --tag=v0.13.0",
     "lighthouse:local": "node scripts/lighthouse-local.mjs",
     "sbom": "node scripts/sbom.mjs",
     "contrast": "node scripts/contrast-check.mjs",

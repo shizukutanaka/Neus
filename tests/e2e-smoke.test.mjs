@@ -134,6 +134,13 @@ describe('E2E smoke — HTML loads in JSDOM', () => {
     expect(sw).toContain('activate');
     expect(sw).toContain('fetch');
   });
+  it('SW cache.put respects Cache-Control: no-store (does not cache Worker proxy responses)', () => {
+    // The Worker sets cache-control: no-store on all proxy responses. Without this guard,
+    // if the Worker is ever co-hosted same-origin, feed responses would be cached silently,
+    // serving stale content despite the explicit no-store directive.
+    const sw = readFileSync(join(__dirname, '..', 'sw.js'), 'utf8');
+    expect(sw).toContain("!res.headers.get('cache-control')?.includes('no-store')");
+  });
 });
 
 describe('E2E smoke — Module discovery', () => {

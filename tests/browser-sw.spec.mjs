@@ -146,12 +146,14 @@ test.describe('Real Service Worker — registration & offline', () => {
     expect(crossOriginCached).toBe(false);
   });
 
-  test('old caches are purged on activate (neus-shell-v2 only)', async ({ page }) => {
+  test('old caches are purged on activate (only the current shell + prefs cache remain)', async ({ page }) => {
     await page.goto(baseURL + '/');
     await page.evaluate(() => navigator.serviceWorker.ready);
     await page.waitForTimeout(300);
     const names = await page.evaluate(() => caches.keys());
-    // Only the current cache version should exist
-    expect(names.every(n => n === 'neus-shell-v2')).toBe(true);
+    // Only the current shell cache and the small prefs mirror (round 28: AutoSync.syncPrefsToSW
+    // writes the notify preference here so periodicsync can read it without IndexedDB access)
+    // should exist — activate() explicitly spares both from its "delete anything else" sweep.
+    expect(names.every(n => n === 'neus-shell-v3' || n === 'neus-prefs-v1')).toBe(true);
   });
 });

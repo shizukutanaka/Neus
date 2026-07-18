@@ -6,6 +6,182 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [v0.13.0] - 2026-07-17
+
+### Added
+- **Vault エクスポートのノート本文テンプレート**: 2026-07 の外部調査(PKM エコシステム比較)由来の採用候補。設定画面の VAULT EXPORT 欄にテンプレート文字列を保存すると、イベントノートの本文が `{{title}}` `{{url}}` `{{link}}` `{{source}}` `{{date}}` `{{tags}}` `{{summary}}` `{{snippet}}` `{{note}}` `{{quote}}` のプレースホルダ置換で組み立てられる(Obsidian 側の Vault 規約・Dataview 等に合わせられる)。制御構文は意図的に持たない(ゼロ依存・簡潔原則): 空行区切りのブロック内の既知プレースホルダが全て空ならブロックごと脱落する規則で条件分岐を代替。未知のプレースホルダは打ち間違いが見えるよう原文のまま残す。YAML frontmatter はテンプレート対象外(常に固定+`yamlScalar` エスケープ)で、機械可読キー(neus_id/hash)の欠落や YAML 破壊が起きない。空欄保存で既定形式に戻る / User-customizable note body template for Vault export ({{placeholder}} substitution, empty-block dropping, fixed frontmatter); clear the field to restore the built-in format
+- **反証候補 (Falsifier Watch)**: ソクラテス式問答から導いた新機能。システムは探究者に反証条件(「何があれば結論を覆すか」=最も鋭い論駁)を述べさせるのに、述べられた反証条件は受動的なテキストにすぎず、収集し続ける証拠と接続されていなかった — 人に手動確認を促すだけだった。反証条件の文字bigram集合と各収集物の被覆率(言語非依存、CJKも可)で、宣言した反証条件に該当しうるアイテムを能動検出。WORDSビューに `word-fwatch` ブロック(該当アイテム + 一致率)、最優先の `falsifier-seen` 問答プロンプト(具体的該当があれば漠然とした stale 系を抑制)、ドシエの `## 反証候補` セクションを追加。反証条件が「証拠を監視する能動センサー」になる / Falsifier Watch: actively scan collected evidence against the user's stated falsifier and surface possible matches (language-agnostic bigram coverage)
+
+### Fixed
+- **Worker: リダイレクト経由のSSRF、および `[::]` のブロック漏れ(round 31)**: `_worker.js` は `/rss`・`/json` の取得先URLを `PRIVATE_HOST_RE` で検証していたが(IPv4射影IPv6の16進正規化対応は既存)、`fetch` が `redirect:'follow'` だったため検証されるのは最初のURLのみで、悪意/侵害されたフィードが検証通過後にリダイレクトで内部アドレスへ誘導できた。`redirect:'manual'` による自前ループ(`fetchValidated`、上限5ホップ)で各ホップを再検証(`/json`はホスト許可リストも再チェック)するよう修正。また `0.0.0.0` 相当の未指定アドレス `[::]` がどのパターンにもマッチしていなかった漏れも `\[::1\]`→`\[::1?\]` で解消。Node実装のURLパーサでの実証テストを経てから実装 / Fixed SSRF-via-redirect (both endpoints now re-validate every redirect hop) and closed an unblocked bare [::] literal
+- **SourceFailTracker が自ソフト側の内部エラーまで自動無効化のカウント対象にしていた(round 30、docs/FEATURE-AUDIT.md §1-12)**: `inbound.error` は `network`/`http_*`/`parse`(ソース自体の障害)と `normalize`/`pipeline`(URL正規化・重複排除・キーワード適用などNeus自身の内部処理で起きるエラー、ソースの健全性とは無関係)の両方を運んでいたが、旧実装は種別を区別せず全てカウントしていたため、Neus側の一時的なバグで健全なソースが誤って自動無効化されうる状態だった。`isSourceFault(error)` でソース起因のエラーのみに絞り込んだ / SourceFailTracker no longer counts Neus's own internal pipeline errors toward a source's auto-disable threshold
+- **i18nの系統的不統一を解消(round 29、docs/FEATURE-AUDIT.md §1-12)**: `toast()` 約25箇所の単一言語(英語のみ/日本語のみ、成功/失敗で言語が食い違う組も含む)を `currentLang==='ja'?...:...` パターンへ統一。`#kw-sheet`(長押し/右クリックのアクションシート)は日本語ハードコードのみで `applyI18N` 対象外だったため `kwsheet.*` DICTキーを新設して反映(WATCH/BLOCKボタン先頭のドット表示spanは温存)。詳細モーダルは英語見出し+日本語placeholderの混在を `detail.*` DICTキー+`t()` に統一。生の技術エラーメッセージ・既にバイリンガルな変数・"vault:" のようなステータスラベル慣用句は意図的に対象外(既存の`updateVaultStatus`の非翻訳慣行と一致) / Unified ~25 single-language toasts, kw-sheet's hardcoded Japanese labels, and the detail modal's mixed-language chrome into the existing bilingual i18n pattern
+- **第15次監査(round 28、未踏3領域の並列監査)で15件を修正**: 過去14ラウンドが薄かった SW/PWA・UI/a11y・データ層/性能を3並列で監査し、確認済みの15件を修正。
+  - 詳細モーダル: 永続要素 `#detail-card` へ開くたびにclickリスナーが追加され、古い closure の `tags` 配列を掴んだままN重発火(2エージェントが独立に発見)。モジュールスコープの `detailTags`+一度だけの委譲ハンドラに変更 / detail modal listener accumulation fixed with module-level state
+  - `renderView`: 複数のawaitの後の `view.innerHTML` 書き込みに世代ガードがなく、遅いレンダーが新しいビューを上書きし得た。`renderSeq` カウンタ+`commit()` ゲートで解消 / stale-render race guarded by generation counter
+  - バックグラウンドpoll後の通知: `new Notification()` はAndroid Chromeで例外となり、同一try内の後続UI更新まで巻き込んでいた。UI更新を先行させ、通知は `reg.showNotification()` を独立tryで実行 / UI refresh before notification, SW-registration API instead of constructor
+  - 共有ターゲット: URLが `text` 欄のみで届く共有(Android頻出)を無言破棄していた。`share_text` から最初のURLを抽出、見つからない場合はトーストで通知 / extract URL from share_text, no more silent drops
+  - `Store.listEvents`: read/starred/archived の厳密比較 `!==` により、booleanフラグ欠落の復元データが全ビューから不可視化。`later` と同じ `!!` 強制に統一 / boolean coercion for restored backups
+  - SWシェルキャッシュ: 読みは `ignoreSearch` なのに書きは完全URLキーで、共有のたびに約325KBのシェル複製が永久蓄積。書きをpathnameキーに正規化し `neus-shell-v3` へバンプ(肥大した旧キャッシュはactivateで purge)/ SW cache write key normalized to pathname, bumped to v3
+  - periodicsync起床通知: クライアント不在時に notify=OFF でも無条件に通知(SWはIDBの設定を読めない)。`AutoSync.syncPrefsToSW()` がCache API(`neus-prefs-v1`)へ設定をミラーし、SWが同意を確認してから通知。文言も「開いても自動取得はされない」実態に合わせ修正 / wake notification now consent-gated via Cache API pref mirror
+  - フォーカストラップ: モーダル表示のたびにkeydownリスナーを再束縛し、first/lastが古い集合に固定されていた。モーダルごとに一度だけ束縛+ハンドラ内でfocusablesを毎回再取得 / trapFocus bound once with live focusables
+  - `#kw-sheet`(sheet-backdrop): `aria-modal="true"` 宣言なのにトラップ/フォーカス復元の対象外だった。モーダル類の共通クラスリストに追加 / kw-sheet included in focus management
+  - フォーカス復元: 単一変数のため、モーダル上にモーダルが開くと元のオープナーを失っていた。push/popスタックに変更 / focus restore stack for stacked modals
+  - キーボードカーソル: s/e/r/l/v操作で現在カードがビューから消えても `kbCursor` が据え置かれ、アウトラインも消失し「見えているのと違うカード」に作用していた。操作後の `reclampCursor()` でクランプ+再ハイライト / keyboard cursor reclamped after card actions
+  - StorageGuard: `event.stored` ごとに `storage.estimate()`+閾値超過時は全件スキャンをN回並行実行(evictionも重複)。トレーリングエッジのdebounce(2秒)+実行中フラグで1バースト1回に / storage check debounced and serialized
+  - `Store.recentEvents`: dedup比較の上限300件に対しカーソルが24時間窓の全件を読み出してから `.slice` していた。カーソルを上限で早期停止するよう `cap` 引数を追加 / dedup window read capped at the cursor
+  - 起動順序: 初回描画の前にFTS再構築+TagLearner(yieldなしの長タスク)+全件カウントが走り、イベント数に比例して空画面時間が伸びていた。初回描画を先行させ、重い初期化は描画後に実行。TagLearnerにもyield-every-100を追加。`Perf.mark('render')` がオンボーディング経路でしか記録されず常に0.00msだった計測バグも修正 / first paint before heavy init, TagLearner yields, render perf mark fixed
+  - CJK 1文字検索: 文書側が2-gramでしか索引されないため単漢字クエリ(「本」等)が構造的に常に0件だった。クエリを含むgramの走査による `searchShort` フォールバックを追加 / single-character CJK queries now work via substring-gram fallback
+- **`socraticPrompts` がCLAUDE.mdの関数≤40行規約を約95行で超過**: tierごとの判定を
+  `validityPrompts`/`falsifiabilityPrompts`/`evidencePrompts`/`contradictionPrompts`/
+  `neglectPrompts` の5ヘルパー関数(各12〜24行)へ切り出し、`socraticPrompts` 自体は
+  それらを連結して `sort`+`slice(0,3)` するだけの13行の集約関数に変更。tier定数・各条件の
+  発火ロジック・文言・優先順位は完全に不変(全既存テストが無変更でパス)/ Split
+  socraticPrompts' ~20 conditions into 5 tier-scoped helper functions to satisfy CLAUDE.md's
+  function <=40-line rule; socraticPrompts itself is now a 13-line aggregator (behavior unchanged)
+- **Worker名/ブックマークレットに旧プロジェクト名 "Lensy" のドメイン残骸**: `wrangler.toml` の Worker 名が `lensy-proxy` のままで、実際にデプロイ・参照される `neus-proxy`(`_worker.js`/`DEPLOY.md`/`README.md`/`index.html` の既定値)と食い違っていた。存在しない・案内していないドメイン `lensy-proxy.*.workers.dev` をコメントごと `neus-proxy` に修正。`bookmarklet.js` のプレースホルダ `YOUR_LENSY_URL` も `YOUR_NEUS_URL` に統一(CLAUDE.md「競合ソフト名混入」防止規約)/ Fix stale "Lensy" (old project name) domain references in wrangler.toml's Worker name and bookmarklet.js's placeholder URL — both now consistently say neus-proxy/YOUR_NEUS_URL, matching every other file
+- **健全なソースが自動無効化され得た(SourceFailTracker)**: 失敗カウンタは `inbound.fetched`(アイテム取得)でしかリセットされず、更新の少ないフィード(常に 304 Not Modified や 0 件)はカウンタが下がらなかった。散発的な一時失敗が累積し、連続失敗の意図に反して健全なソースが `sourceMaxFails` 回で自動無効化され得た。健全なフェッチ(304 / 2xx の0件 / アイテム有り)で `source.ok` を発行し、それでカウンタをリセットするよう変更。連続失敗のみが無効化につながる本来の意味論を回復 / Stop auto-disabling healthy but rarely-updating feeds: reset the fail counter on any successful fetch (304/empty/items), not just when items arrive
+- **Markdown 書き出しの YAML frontmatter インジェクション**: イベント書き出しの frontmatter は `source`/`source_url`/`tags` を生のまま埋め込んでいたため、フィードのタイトルやソース名によくある `:`・改行・カンマが YAML を壊したり任意キーを注入し得た(単語ドシエ側は `ys()` で対策済みだった)。共有の `yamlScalar()` エスケーパを新設し両エクスポータで使用。値は二重引用符で包み `\` `"` 改行をエスケープ / Escape YAML frontmatter scalars in the event exporter (shared yamlScalar); a colon/newline in a feed title no longer corrupts or injects into exported notes
+- **Vault 書き込み失敗時の後始末とエラー伝播**: `createWritable→write→close` が未保護で、`write` 失敗時に writable を片付けず、`exportEvent` の失敗が「書出失敗」トーストに反映されなかった(createWritable は close まで原本を差し替えないため原本破損はしない)。共通 `writeFile` で失敗時に `abort` し、`exportEvent` は false を返すよう変更 / Abort the writable on write failure and surface vault export errors as a failed result
+- **単語の二重登録レース**: `addWord` が `findWordByTerm` チェックと `putWord` の間に同期ガードを持たず、二重クリック/Enter連打で同じ normalized キーの単語が2件作られ得た。同期フラグ `addingWord` で再入を防止(空入力チェックの後・最初の await の前にロック)/ Guard addWord against double-submit creating duplicate watchwords
+- **重複排除の URL 正規化をパイプライン入口で一元化**: dedup ハッシュ `sha256(raw.link+'|'+title)` の `raw.link` が、RSS は `parseFeed` で正規化済みだが JSON ソース(Qiita)は未正規化だった。同一記事が trivial な URL 差(トラッキングパラメータ・フラグメント)で重複し得たため、`inbound.fetched` 入口で `normalizeUrl` を一元適用し、`url` と `hash` を揃えた(RSS は冪等のため不変、Qiita の正規 URL もハッシュ不変=既存データ移行影響なし)/ Normalize the URL once at the pipeline entry so cross-source dedup isn't defeated by tracking params/fragments (Qiita path was unnormalized)
+- **ALL ビューのバッジが件数不一致**: `cnt-all` は `countAll()`(アーカイブ込み総数)を表示する一方、ALL ビューは `{archived:false}` で描画していたため、アーカイブがあるとバッジが実表示より多く出ていた。バッジを `countAll()-countArchived()` に修正(`countAll` の他5箇所の「総数」用途は不変)/ Fix ALL badge to count non-archived items (matching the view), not the archived-inclusive total
+- **キーワードルール: block が watch より優先**: 同一 Event が block:archive と watch:star の両方に一致すると、アーカイブ(非表示)かつスター(強調)という矛盾状態になっていた。block ルールがアーカイブした Event には watch アクション(star/highlight/tag)を適用しないよう変更(delete が watch を飛ばす既存挙動と一貫)。block 不一致時は watch は従来どおり適用 / KeywordRules: a block-archived event is no longer also starred/highlighted (block precedence)
+- **LATER ビューが機能していなかった**: `Store.listEvents` が `read`/`starred`/`archived` フィルタしか見ておらず `later` を無視していたため、LATER ビューは「後で読む」キューではなく非アーカイブの全件を表示し、LATER カウントも誤っていた。`later` フィルタを追加(`!!ev.state.later` で旧データの未設定も安全に not-later 扱い)。アーカイブ済みは LATER から外れ ARCHIVED に出る挙動は不変 / Fix the LATER view: listEvents ignored the later filter, so LATER showed all non-archived items
+- **タグ/ソース絞り込み時にキーボードカーソルをリセット**: `applyFilter` がフィルタ適用で再描画する際 `kbCursor` を据え置いていたため、j/k カーソルの位置表示が新しいリストとずれていた(範囲チェックがありクラッシュはしない)。ナビ切替と同様に `kbCursor=-1` にリセット / Reset the keyboard cursor when a tag/source filter is applied
+
+### Changed
+- **単語収集を並列フェッチ化**: `_collectOne` は Wikipedia と各検索フィードを直列に取得していたため、ソースが多い単語ほど round-trip が積み上がり遅かった。1ソース分を `fetchFeed` ヘルパーに切り出し、Wikipedia と全フィードを単一の `Promise.all` で並列取得するよう変更(独立I/O)。エラー分類(network/http_/parse)・`inbound.error` 発行・生件数 total・lastErrors の意味は不変。語間は従来どおり直列で、同時接続はソース数(≤8)に収まる / Parallelize per-word collection (Wikipedia + all feeds via one Promise.all) instead of serial fetches
+- **新規 watchword の既定ソースを言語別に**: 日本語ソース(Qiita/Zenn/Hatena)が言語に関わらず常に既定 OFF で、日本語ユーザーは単語ごとに毎回 3 つ手動で有効化する必要があった。`defaultSources()` を追加し、`currentLang==='ja'` では Qiita/Zenn/Hatena を既定 ON・英語中心の Reddit/HN を OFF に、英語では従来どおりに切替。WORDS モーダルを開いた時もソースチェックボックスを言語既定に同期。Wikipedia/Google News は両言語で常時 ON。ユーザーは個別トグルで上書き可能 / Language-aware default sources for new watchwords (JA users get Qiita/Zenn/Hatena on by default)
+
+### Added
+- **はてなブックマーク数をスコアに反映 + エンゲージメント計算の共通化**: はてブの検索RSSは項目ごとに `hatena:bookmarkcount` を持つが未使用だった。Qiita いいねと同じ曲線で控えめなスコアブースト(+0..25)に変換するよう `parseFeed` を拡張。基準50・対数・上限の計算を `engagementScore()` 共有ヘルパーに集約し、Qiita(JSON)と RSS 経路の重複を解消。他フィードは要素が無いため no-op、はてブ以外のRSSでも `hatena:bookmarkcount` 相当があれば自動適用 / Use Hatena bookmark count for score (same curve as Qiita), via a shared engagementScore() helper
+- **Qiita エンゲージメントをスコアに反映**: Qiita API が返す `likes_count` を取得しながら捨てていた。これを対数スケールの控えめなブースト(+0..25 上限)としてイベントの `meta.score` に反映し、人気記事がダイジェスト Top3 やスコアバッジで上位に出るようにした(`raw.score` 汎用フックのため将来の JSON ソースにも適用可。いいね0は 50 で他ソースと同等)/ Use Qiita likes_count as a gentle log-scaled score boost so popular articles rank higher
+- **収集アイテムのコンテンツタグ取り込み**: Qiita 記事は固有のタグ(最大5件、例 "Rust"/"WebAssembly")を持つが破棄していた。`parse` が `raw.tags` として渡し、`inbound.fetched` 正規化が `word:{term}` に続けて小文字化・重複排除・上限8件で `autoTags` に取り込むよう変更。収集記事が実タグで検索・フィルタ・関連付けの対象になる(汎用実装のため将来の JSON ソースにも適用) / Import source-provided content tags (e.g. Qiita article tags) into autoTags for searchability
+- **はてなブックマークを収集ソースに追加**: Qiita/Zenn は単一プラットフォームの記事に閉じるが、はてブは日本語Web全体の被ブックマーク記事を横断する全文検索 RSS(`b.hatena.ne.jp/search/text?q=...&mode=rss`)を提供する。検索語を verbatim で渡す検索フィードのため既存 `/rss` プロキシをそのまま再利用(ワーカー変更不要)。デフォルト OFF(arXiv と同じ opt-in)。なお note.com はタグ全文検索 RSS が貧弱、connpass はイベント主体かつ JSON 許可リスト拡張が必要なため今回は見送り / Add Hatena Bookmark full-text search RSS as a cross-platform Japanese aggregator source (reuses /rss, no Worker change)
+- **Qiita / Zenn を収集ソースに追加**: 日本語技術用語の watchword で取得源が貧弱だった(英語ニュース・Reddit・HN が中心)。両プラットフォームはキーワード検索 RSS を提供しないため、タグ/トピックの Atom フィードを採用し `qiita.com/tags/{slug}/feed` / `zenn.dev/topics/{slug}/feed` を取得。一致タグが無ければ 404 が `lastErrors` に記録され「取得失敗」として誠実に表示される。Worker の `/rss` プロキシは既存ガードで両ホストを通すため変更不要。デフォルトは OFF(arXiv と同じ opt-in 扱い、英語ユーザーに日本語コンテンツを押し付けない) / Add Qiita and Zenn as opt-in tag/topic feed sources for watchwords; honest 404 surfacing for non-existent tags
+
+### Changed
+- **Qiita 概要の品質改善**: 概要を Markdown の `body` から剥がしていたため、HTMLタグ除去後も `#` `*` `` ` `` `[text](url)` 等の記法が残りノイズになっていた。公式APIが返す `rendered_body`(HTML)を優先し、タグ除去→エンティティ復号(`RSSPoller.decodeEntities` を共有ヘルパー化)の順で整形して清書テキストにした。順序を逆にすると `&lt;x&gt;` が偽タグ扱いで欠落するため、剥がし→復号の順を回帰テストで固定 / Improve Qiita snippet quality: use rendered_body (HTML) instead of Markdown body, strip-then-decode order
+- **Qiita を全文検索API(公式 REST v2)へ昇格**: タグフィードは「タグ一致記事」しか拾えず網羅性に欠けた。Qiita には公式の `GET /api/v2/items?query=` 全文検索(JSON)があるため、これをワーカー `/json` 経由で取得する方式へ変更(`qiita.com` を `/json` 許可リストに追加、ADR-0017)。`WORD_FEEDS` に `kind:'json'` + 専用 `parse` を導入し、収集ループが JSON は `/json`+`parse`、RSS は `/rss`+`parseFeed` に分岐。Zenn は公式検索 API が無いためトピック Atom フィードのまま(非公式 JSON は破損リスクのため不採用) / Promote Qiita to full-text search via its official REST API v2 through the Worker /json proxy; Zenn stays a tag feed (no official search API)
+- **Qiita / Zenn のタグスラグ正規化をプラットフォーム別に修正**: 当初は両者を共通の `空白->ハイフン` で正規化していたが、どちらもタグ/トピックにハイフンを使わない(この修正は Qiita が検索APIへ移行したため現状 Zenn にのみ適用)。Zenn トピックは小英数字+日本語のみ連結("Next.js"->"nextjs")へ修正 / Fix tag-slug normalization to match each platform's actual convention (no hyphens)
+
+### Added (continued)
+- **仕様書 (SPEC.md)**: 現行 v0.12.0 を一次情報として定義する仕様書を新設。不変条件(I1-I8)・データモデル(InformationEvent / Watchword)・探究モデル・Worker API・セキュリティを集約し、長所/短所/改善点の監査結果を §10 に記録 / Add SPEC.md as the authoritative specification; documents invariants, data model, inquiry model, Worker API, and an audited strengths/weaknesses/improvements section
+
+### Changed
+- **ドキュメントの版ずれ解消**: `ARCHITECTURE.md` を v0.2.0 → v0.12.0 に更新(words store・探究モデル・`source.type:'word'`・`/json` endpoint・ADR 0009-0016・モジュール一覧)。`README.md` のファイル構成と検証コマンドの古い数値を現行へ修正 / Bring ARCHITECTURE.md and README.md up to date with the watchword/inquiry subsystems
+
+### Fixed
+- **要約予算のリロード回避を封鎖**: `Summarizer` の日次カウンタがメモリ上のみで、ページリロードで 0 に戻り日次予算(BYOK 課金上限)が再読込だけで回避できた。カウンタを IndexedDB (`summary-budget`) に永続化し、起動時に復元・加算ごとに保存・日付変化で自動リセット / Persist the daily summary budget counter so a page reload no longer resets BYOK spend
+- **インポートの破壊的先行削除を防止**: JSON 復元が既存データを全削除した後にレコードを書き込むのに、検証が浅く(`app==='neus'` と events 配列のみ)、不正なバックアップだと旧データを失った上で壊れたレコードが入った。退避前に全 event/word の構造を検証し、不正なら削除せず中止 / Validate every record's shape before the destructive wipe on import (no rollback exists)
+- **Vault ドシエのファイル名衝突を解消**: `exportWordDossier` が `{slug}.md` を使うため、別語が同じ slug に正規化されると(例 "C++" と "C")後勝ちで上書きし前者のドシエを失った。`{slug}-{id8}.md` とし語 id で一意化 / Make vault dossier filenames unique per word id to stop silent slug-collision overwrites
+- **単語カード件数バッジの曖昧さ**: 検索結果の `wordResultHtml` がラベルなしの `lastFetched` 数値だけを表示し、裁決ピルや match% と区別できず a11y ラベルも無かった。`title` / `aria-label` で「収集時の取得件数」であることを明示(実在件数は WORDS モーダルが `countFor` で別途表示)。`publishedAt||timestamp` の日付フォールバック規約を回帰テストで固定し、parse 時に日付を捏造しないことを保証 / Label the ambiguous fetched-count badge; pin the publishedAt date-fallback convention with regression tests
+
+### Added (continued from prior rounds)
+- **収集進捗インジケータ**: `WordCollector.getProgress()` が収集中の `{done,total}` を公開。COLLECT ALL ボタンが `N/M` を表示し、複数語収集中も無反応に見えない / Collection progress: COLLECT ALL button shows `N/M` while multiple words are fetched
+- **WORDS ビューの並び替え**: 日付 / 新着 / 裁決 の3モードをトグルボタンで切替(`wordSortKey`)。新着は未確認件数降順、裁決は answered を先頭に / WORDS view sort modes (date / new / verdict)
+- **STATS への単語サマリ統合**: 統計モーダルに総語数・解決数・未確認・要再検討を表示(`wordsOverview`)。ビュー切替なしで探究の健全性を把握 / Word summary in the STATS modal
+- **裁決の理由 (Verdict rationale)**: 裁決ピルは status を巡回できたが、**なぜその結論か** を記す手段が無かった(理由は import/復元でしか入らなかった)。非 open の裁決にインライン理由エディタ(`editverd`/`savevn`、`verdictNotePatch` 純粋関数、280字上限、Enter送信)を追加。理由は既存の MD ドシエ `verdict_note` / JSON 出力へそのまま流れる / Author *why* a verdict was reached; flows into the existing dossier export
+- **単語の改名 (Rename watchword)**: 用語のスペルミス(例 "WebPGU"→"WebGPU")を修正する手段が無く、削除+再作成で探究履歴(問い・裁決・wiki・収集アイテム)を失っていた。WORDSモーダルに「改名」ボタンを追加。`renameWordPlan` 純粋関数が変更を判定し、normalized が変わる場合は収集済みイベントの `word:` タグを自動で付け替えてアイテムの関連を維持。大文字小文字のみの変更は再タグ付け不要。衝突検出・二重送信防止・Enter/Escape 対応 / Rename a watchword in place, preserving all inquiry history and re-tagging collected items when the normalized form changes
+- **裁決の変遷 (Verdict history / dialectic)**: 裁決ピルは status を巡回できたが、**変更のたびに過去の結論を上書き**していた。ソクラテス式問答法の核心は「論駁を経て結論がどう覆ったか」の記録そのもの — その軌跡が捨てられていた。`questionHistory` と対称な `verdictTransition` 純粋関数を追加し、status が変わるたび去りゆく裁決を `{status,note,at}` として `verdictHistory`(直近8件)に刻む。WORDSカードに変遷チェーン(`.word-vtrail`)、MDドシエに `## 裁決の変遷` セクションと `verdict_revisions` frontmatter、JSON出力にも含めて往復可能に。`setverd`/`reexamine` が利用し、再検討の取消は裁決状態(status・note・履歴)を無損失に復元 / Record how a verdict changed over time — the dialectic the Socratic method exists to preserve
+- **反証条件 (Falsification condition)**: 最も鋭いソクラテス的問い —「何があれば結論を覆すか」。反証条件を述べられない結論は知ではなく独断(ポパーの反証可能性、エレンコスの自己適用)。非 open の裁決に反証条件エディタ(`editfals`/`savefals`、`falsifierPatch` 純粋関数、280字、Enter/Escape)を追加。`socraticPrompts` を強化: 反証条件があれば停滞プロンプトを「あなたは『X』なら覆ると述べた — それは現れたか?」に鋭利化(`stale-falsifier`)し、反証条件なしで決着した裁決には「それは知か、独断か?」(`no-falsifier`)を突きつける。FTS索引・MDドシエ `## 反証条件` セクション・frontmatter・JSON・インポート往復に対応 / State what would change your mind — a verdict without defeaters is dogma; sharpens the elenchus prompts
+- **問いの解決 (Question resolution)**: ソクラテスの弧 アポリア→論駁→解決 が未完だった — 問いは削除しかできず、「答えたのに未解決の問いが残る」プロンプトを黙らせる唯一の手段が削除(=かつて知らなかった証拠の抹消)だった。各問いに解決トグル(`resolveq`、`resolvedAt`)を追加。解決済みは取り消し線で記録に残し、未解決を先頭に並べる。`questions-remain` プロンプトは未解決の問い(`openQuestions`)のみを数えるよう変更 — 削除ではなく解決で矛盾を正直に解消できる。MDドシエは未解決と解決済みを分けて出力、`resolvedAt` は questions 配列に乗って往復 / Resolve a question (keeping the record) instead of only deleting it; the contradiction prompt now counts only open questions
+
+### Changed
+- **取得失敗と沈黙の区別**: `signalGaps` は失敗したソースを「沈黙(0件)」に混ぜていたため、「空白: news」がニュースに記事が無いのか取得失敗なのか判別できなかった。死角を空白と混同するのは探究像を歪める — 沈黙は発見、取得失敗は発見の不在。`_collectOne` が失敗を `word.lastErrors`(label→code)に記録し、`signalGaps` が `{ active, silent, errored }` を返すよう変更。失敗ソースは silent から外れ、ドシエ `## 空白` と沈黙プロンプトが到達不能ソースを誤って空と報告しなくなった。WORDS ビューに赤い「取得失敗」行(`.word-err`)を追加 / Distinguish a failed fetch from genuine silence
+
+### Added (continued)
+- **Wikipedia 標準タイトル表示**: 記事タイトルが登録語と異なる場合(例 "GPT" → "Generative pre-trained transformer")、WORDSビューに `word-wiki-canon` バッジ、ドシエに `wiki_title:` frontmatter フィールドと `## 定義 (canonical)` セクションヘッダを表示 / Show canonical Wikipedia article title when it differs from the registered term
+- **検索から watchword 登録**: 検索結果ページに「+ 登録」バナー(`sr-word-banner`)を追加。未登録語を検索したとき1クリックで watchword として登録し、WORDSビューに即遷移。すでに登録済みなら WORDSビューのフィルタに飛ぶ / Register-as-watchword banner in search results
+- **ドシエのクリップボードコピー**: 単語カードに COPY MD ボタンを追加。`WordExporter.copyMd()` がドシエをクリップボードへ書き込む / Copy dossier to clipboard without downloading
+- **FTSIndex の単語インデックス**: 単語のノート・問答・裁決理由も FTS で検索可能に。検索結果ページに `word:` プレフィックス付きの単語ヒットカードを表示し、クリックで WORDSビュー + 名前フィルタへ遷移 / Words are indexed in FTS and appear in search results
+
+### Fixed
+- **名前フィルタ 0件時に空状態を表示**: テキスト入力で全セクションが非表示になっても「一致なし」メッセージが出なかった問題を修正。DOM操作で `#word-filter-empty` を挿入し、Escape 時にも非表示にする / Show no-match message when name filter returns zero results
+- **単語削除の Undo 対応**: 削除後 8秒間、UndoStack で元に戻せるように。収集済みイベントはDBに残るためロスレスなリストア / Undo word deletion via UndoStack within 8s
+- **モーダルの収集状態表示**: WORDSモーダルの単語リストに `· 最終収集 Xh前` または `· 未収集`(アクセント色)を表示 / Show last-collected time or "not collected" indicator in the modal word list
+- **エクスポート後 reviewedAt を更新**: `copyMd` / `downloadMd` / `downloadJson` / `toVault` の各エクスポートが成功後に `word.reviewedAt=Date.now()` を記録。エクスポートをもってレビュー完了とみなし「新着」バッジが即時リセットされる / Mark word as reviewed after any dossier export
+- **downloadAllMd も reviewedAt を一括更新**: 全単語一括出力(`EXPORT ALL`)後に全 watchword の `reviewedAt` を更新 / downloadAllMd marks all words reviewed
+- **addq で入力値を明示クリア**: `renderView()` 前に `input.value=''` を明示呼び出し / Explicitly clear question input before re-render
+- **WORDS view ソートの安定化**: 同一ソート値を持つ単語を `createdAt` 降順で二次ソートし、並び順を決定的に / Stable sort tiebreaker by creation date
+- **単語アクションボタンに aria-label 追加**: 収集・確認済み・フィルタ・各エクスポートボタンに語名を含む `aria-label` を付与。スクリーンリーダの「ボタン一覧」モードで各ボタンがどの単語に作用するか判別可能に / Word action buttons now carry aria-labels including the word term
+- **問い削除に Undo 対応**: `delq` が `UndoStack.offer` で 8秒間取り消し可能に。単語削除と同じ安全性を個々の問いにも適用 / Question deletion now offers undo via UndoStack within 8s
+- **収集ボタンがエラー時に再活性化**: `collect` / `collectall` の `finally` ブロックで `btn.disabled=false` を明示。収集が失敗してもボタンが無効のままにならない / Collect buttons always re-enabled in finally block
+- **`suggest` ハンドラに防御的 try-catch**: `collectOne` が例外を投げても `refreshCounts`/`renderView` が必ず実行されるよう保証 / Defensive try-catch around collectOne in suggest handler
+- **ドシエ YAML frontmatter のエスケープ**: `term`/`intent`/`wiki_title`/`verdict_note` を `ys()` ヘルパーでダブルクォート囲いにし、コロン・改行を含む用語でも YAML 破壊が起きないように / YAML-safe quoting of user-controlled frontmatter values in toDossier
+- **`wordFromImport` が `lastErrors` を保持**: JSON ドシエの往復で `lastErrors`(取得失敗記録)が失われていたのを修正。`signalGaps` がインポート後も正確に失敗ソースを表示 / Preserve lastErrors through import round-trip
+- **彫琢・裁決理由行に「取消」ボタンと Escape 対応を追加**: インライン編集行に Cancel ボタンを追加(`cancelq`/`cancelvn` アクション)。`data-rqinput` / `data-vninput` での Escape キーがキャンセルとして機能 / Cancel button + Escape key dismissal for refine and verdict-note inline rows
+- **モーダルの無効化単語を半透明表示**: `enabled:false` の単語の term を `opacity:.5` でグレーアウト。ON ボタン表記だけでなく視覚的にも判別可能に / Dim the term label in the word modal when the word is disabled
+- **問いを最新順に表示**: 追加したばかりの問い(作業中)が先頭に来るよう、`w.questions` を逆順表示 / Questions displayed newest-first in the word card
+- **COLLECT ALL ボタンが収集中をリアルタイム表示**: WORDS ビューへ遷移した際に `WordCollector.isBusy()` を参照し、収集中なら `..` と disabled を表示 / COLLECT ALL button reflects busy state when navigating to WORDS view during background collection
+- **`renderView` の `aria-busy` リセット漏れを修正**: digest ビューと search ビューの全 `return` パスで `aria-busy='false'` を設定。スクリーンリーダがローディング中のまま固まらないように / Fix aria-busy never reset in digest and search view paths
+- **検索結果の単語カードに裁決バッジと件数を追加**: `wordResultHtml` が裁決ステータス(open/converging/answered/suspended)と収集件数を表示。検索画面だけで探究状況を把握可能に / Word search result cards now show verdict badge and item count
+- **重複問い追加を防止**: `addq` が同一テキストの問いを既に持つ場合にエラートーストを表示し、重複登録を拒否 / Reject duplicate question text in addq with a user-visible error toast
+
+### Tests
+- `tests/word-sort.test.mjs`(date/new/verdict ソート + 進捗 + STATS サマリのワイヤリング)
+- `tests/word-verdict-note.test.mjs`(`verdictNotePatch` + インライン理由エディタのワイヤリング)
+- `tests/word-signal-gaps.test.mjs` に errored 分類(失敗 vs 沈黙)を追加
+- `tests/word-fts.test.mjs` — FTSIndex 単語インデックス + 検索から watchword 登録バナーのワイヤリング + downloadAllMd reviewedAt + addq input clear のワイヤリング
+- `tests/word-socratic.test.mjs` — `verdictStale` / `cognitiveShift` / `socraticPrompts` の直接ユニットテスト(39件) + wiki canonical title ワイヤリング
+- `tests/worker.test.mjs` に `/json` 許可リスト(22件: Wikipedia/Wikimedia サブドメイン・混同攻撃)を追加
+- `tests/word-sort.test.mjs` に tiebreaker テスト(2件)を追加
+- `tests/word-a11y.test.mjs` に単語アクションボタン aria-label ワイヤリングテスト(4件)を追加
+- `tests/word-fts.test.mjs` に collect/collectall ボタン再活性化・suggest try-catch・delq Undo ワイヤリングテスト(4件)を追加
+- `tests/word-dossier.test.mjs` に YAML エスケープユニットテスト(2件)を追加、既存 frontmatter アサーション 4件を新形式に更新
+- `tests/word-import.test.mjs` に `lastErrors` 保持ユニットテスト(2件)＋ワイヤリング(1件)を追加
+- `tests/word-a11y.test.mjs` に Cancel ボタン / Escape ハンドラ / modal 無効化表示のワイヤリングテスト(6件)を追加
+- `tests/word-fts.test.mjs` に問い逆順 / isBusy / aria-busy / 裁決バッジ / 重複防止 ワイヤリングテスト(6件)を追加
+- `tests/word-rename.test.mjs` を新規追加: `renameWordPlan` ユニットテスト(7件)＋改名ワイヤリング(6件)
+- `tests/word-verdict-history.test.mjs` を新規追加: `verdictTransition` ユニットテスト(6件)＋裁決変遷ワイヤリング(9件)。`word-import.test.mjs` に verdictHistory 往復テスト(3件)を追加
+- `tests/word-falsifier.test.mjs` を新規追加: `falsifierPatch` ユニット(5件)＋反証条件ワイヤリング/プロンプト/エクスポート(13件)。`word-import.test.mjs` に falsifier 往復テスト(2件)を追加
+- `tests/word-question-resolve.test.mjs` を新規追加: `openQuestions` ユニット(3件)＋questions-remain カウント(2件)＋解決ワイヤリング(8件)、合計 724件
+- 計 634 tests
+
+### Added
+- **GitHub Topics を収集ソースに追加**: `github.com/topics/{slug}.atom` のトピック Atom フィードを opt-in ソースとして追加(スラグはハイフン連結、例 "Next.js"→"next-js")。公式検索 API が無いトピックフィード設計は Zenn と同型のため、`signalGaps` の 404-as-silence 特例を `zennLabel` 単体判定から `topicFeeds` Set(Zenn ∪ GitHub)へ一般化 / Add GitHub Topics Atom feed as an opt-in watchword source; generalize the Zenn 404-as-silence exception to a `topicFeeds` Set covering both topic-feed sources
+
+### Fixed
+- **Google News のタイトルに publisher サフィックスが残っていた**: Google News は全見出しに `<source>` 要素の発行元名を使って ` - {publisher}` を付与するが、`parseFeed` はこれを剥がしていなかった。表示ノイズに加え、同一記事を Qiita/Zenn/HN から直接取得した場合とのタイトル Jaccard 類似度を下げ、クロスソース重複排除の閾値(0.8)をすり抜けさせていた。`<source>` の値と厳密一致するサフィックスのみを除去する条件付きストリップを追加(他 RSS ソースは無変更) / Strip Google News' " - {publisher}" title suffix (via the item's `<source>` element) for cleaner display and reliable cross-source dedup
+- **単語インポートで新規ソースキーが欠落し得た**: `wordFromImport` は古いドシエ JSON の `sources` オブジェクトをそのまま使っていたため、エクスポート後に `WORD_FEEDS` へ新ソース(qiita/zenn/hatena/github)が追加されると、インポートした語にそのキーが存在しなくなっていた。`defaultSources()` とのマージに変更し、既存キーはユーザー設定を維持したまま新規キーを既定値で補完 / Merge imported word sources with defaultSources() so newly-added source keys are backfilled instead of silently missing after import
+- **単語1件収集(COLLECT)に完了フィードバックが無かった**: `collectAll` は完了トーストを出す一方、単一語の `collectOne` はボタンのテキストが戻るだけで取得件数が分からなかった。「N件取得」(件数>0時は緑)/「収集完了(新着なし)」のトーストを追加し、COLLECT ALL と挙動を揃えた / Add a completion toast to single-word collectOne (parity with collectAll's feedback)
+- **ストレージ自動整理のトーストが赤(エラー色)だった**: `StorageGuard` の自動退避(エクスポート済み・アーカイブ済みイベントの間引き)は正常な保守動作なのに `'err'` トーストで表示され、何か壊れたかのように見えた。`'ok'` に変更 / Auto-clean toast now shows as success (ok), not error — housekeeping is not a failure
+- **新着通知アイコンが存在しないファイルを参照**: 定期同期の新着通知が `icon:'/icon-192.png'` を指定していたが、このリポジトリに PNG アセットは存在しない(`manifest.json` は inline SVG data URI のみ)。マニフェストと同じ 192x192 SVG data URI を直接指定するよう修正 / Fix the new-items notification to use the manifest's inline SVG icon instead of a nonexistent /icon-192.png file
+- **イベントカードの一部ボタンに aria-label が無かった**: read/star/archive/later ボタンには aria-label があったが、vault/detail/copy の3ボタンには無かった(可視テキストはあるが兄弟ボタンと非一貫)。3ボタンに aria-label を追加 / Add aria-label to the vault/detail/copy event-card buttons for consistency with their siblings
+- **フルバックアップ/復元が学習した興味プロファイルと同期設定を落としていた**: JSON バックアップの設定ホワイトリストが `byok`/`lang`/`keyword-rules`/`onboarding-done` の4件のみで、`interest-profile`(スター/アーカイブ操作から学習した興味語彙)と `auto-sync`(取得間隔・通知設定)が対象外だった。`interest-profile` は復元イベントから自動再構築できない(学習はライブ操作でのみ蓄積)ため、復元のたびにユーザーのパーソナライズが無警告で失われていた。両キーをエクスポート/リストア双方のホワイトリストに追加し、復元後に `InterestProfile.load()` を呼んで即時反映(`summary-budget` は日付スコープのカウンタのため意図的に対象外のまま) / Include interest-profile and auto-sync in full JSON backup/restore — interest-profile can't be rebuilt from restored events alone, so it was silently lost on every restore
+
+### Changed
+- **重複排除の類似度比較件数に上限を設けた(ADR-0019)**: `event.normalized` の dedup は 24h ウィンドウ内の全イベントと総当たりで Jaccard 比較し、比較のたびにタイトルを再 tokenize していたため、ソース数・watchword 数が多い活発なユーザーほど POLL/COLLECT ALL のコストが件数に比例して悪化していた(SPEC.md round 15 で性能課題として指摘済み)。`recentEvents`(timestamp 降順)の結果を直近 `dedupCompareMax=300` 件に `.slice` で上限化。重複記事は時間的近接性から通常ウィンドウの先頭側に集中するため、実運用での再現率低下は事実上発生しない / Cap the dedup title-similarity scan to the 300 most recent events instead of the full 24h window, bounding cost as active users' event volume grows
+
+### Added
+- **問いの手がかり (Question Watch)**: ソクラテス式問答法でプロダクト自身の機能セットを検討した結果発見した非対称性を解消。反証条件(`falsifier`)は該当収集物を能動検出する `falsifierHits` を持つのに、構造的に同一の照合が必要な未解決の問い(`questions`)には同等の機構が無かった。被覆率照合ロジックを共有ヘルパー `bigramCoverageHits(text,events)` へ抽出し、各未解決の問いに `questionHits(question,events)` として適用。WORDSビューは問い文の直後にクリック可能なヒント(上位一致へのリンク+件数)を表示、ドシエは問いの下にインデントした箇条書きで一致アイテムを記録。解決済みの問いは対象外 / Question Watch: extract the shared bigram-coverage matcher and apply it to open questions too (symmetric to the existing Falsifier Watch), surfacing collected items that may address an unresolved question
+- **裁決の動揺(verdict-churn)プロンプト**: ソクラテス式問答法の第2ラウンドで発見した非対称性。`verdictHistory` は変遷のたびに記録されるが、`socraticPrompts` は一度もこれを読まなかった。`cognitiveShift` は登録時の先入観と現在の裁決という単一比較に留まり、裁決が何度も揺れ動いた事実そのものは問い直されなかった。`verdictHistory.length>=3`(最低2往復の反転)で「基準は一貫しているか、証拠が本当に不安定なのか」を問うプロンプトを追加 / Add a verdict-churn prompt: 3+ recorded verdict transitions now surface a reflection on whether the oscillation reflects consistent criteria or genuinely unstable evidence
+- **resolved-from-agnostic プロンプト**: ソクラテス式問答法の第3ラウンドで発見した非対称性。`PRIOR_DIRECTION` は `curious`(既定値)と `agnostic`(意図的な選択)を共に `open` へ写像するため、`cognitiveShift.shifted` は両者を起点にした語では構造上決して発火しない。しかし「知り得ないと明示的に述べた(agnostic)のに確信的な結論に至った」ことは、既存の certain/skeptical 逆転プロンプトと同等以上に鋭い自己矛盾。`curious` は既定値でほぼ全語に該当するため対象外(信号が薄まる)とし、`agnostic` のみ特例化 / Add a resolved-from-agnostic prompt: an explicitly agnostic prior reaching a confident verdict now surfaces a reflection, closing a blind spot that cognitiveShift's shifted flag structurally cannot reach (curious/agnostic both map to the 'open' direction)
+- **only-research プロンプト**: ソクラテス式問答法の第4ラウンドで発見した非対称性。`no-research`(証拠が全て discussion/other=一次研究皆無)には「事実か意見か」と問うプロンプトがあるのに、その裏返し(証拠が全て research 層のみで報道・議論皆無)には何の反応も無かった。純粋に学術論文のみに基づく結論は実世界での検証を経ていない可能性がある。`tiers.every(t=>t.tier==='research')` で追加(no-research とは構造上排他的) / Add an only-research prompt, symmetric to no-research: evidence composed entirely of academic papers with zero press/discussion coverage now surfaces a reflection on whether it's been validated in practice
+- **disabled-still-open プロンプト**: ソクラテス式問答法の第5ラウンドで発見した非対称性。探究モデルは至る所で誠実さを強制するが、`word.enabled=false`(収集無効化)は裁決に何の作用も持たず `socraticPrompts` から一度も参照されていなかった。ユーザーは収集を止めるだけで `open` のまま探究を静かに放棄でき、`suspended`(保留)という誠実な明示的選択を回避したまま他の全プロンプトの自己吟味圧力からも逃れられていた。無効化かつ未裁決かつ証拠有りで「再開するか、保留として記録すべきか」を問うプロンプトを追加 / Add a disabled-still-open prompt: disabling collection no longer offers a silent escape from the verdict-honesty pressure the rest of the inquiry model applies
+
+### Fixed
+- **BYOK 日次予算 `0` が「無制限」に反転していた**: `budget:0` は falsy 判定 `if(s.budget&&dailyCount>=s.budget)` によりスキップされ、「日次0件に制限」の意図が正反対の「無制限」になっていた。判定を `typeof s.budget==='number'&&dailyCount>=s.budget` へ変更し、`0` を明示的な「常にブロック」として扱うよう修正 / Fix BYOK daily budget: setting it to 0 no longer inverts to "unlimited" — a typeof check replaces the falsy check so 0 is honored as "always block"
+- **要約予算超過トーストの連発**: 日次予算超過後、`event.tagged` のたびに同一のエラートーストが再表示されていた(`role="status"` のため読み上げも連続)。POLL/COLLECT ALL の一括取り込みで顕著。`Summarizer` に日付キー単位の通知済みフラグを追加し、1日1回のみ通知するよう修正 / Fix summarizer budget-exceeded toast spam: notify at most once per day instead of once per tagged event
+- **socraticPrompts の push 順による構造的飢餓**: 約20の発火条件が push 順の先頭3件で切られていたため、無効化+問い未設定+ソース沈黙+未確認多数といった「よくある放置状態」で同時成立する条件のうち、関数後段のプロンプト(verdict-churn・resolved-from-agnostic・disabled-still-open 等)が構造的に一度も表示されなかった。関数冒頭の既存コメント「結論の妥当性 > 反証条件 > 証拠の質 > 自己矛盾 > 探究の怠り」を tier 番号として数値化し、push 順ソートではなく tier 昇順の安定ソートで並べ替えてから上位3件を返すよう変更(同一 tier 内は既存の push 順=優先意図を維持) / Fix socraticPrompts starvation: prompts are now stable-sorted by a priority tier (matching the function's own documented priority order) before being capped to 3, instead of a raw push-order cutoff that structurally starved out later-declared prompts
+
+### Added
+- **キーワード検知 OS アラート**: `Plan.md` §4.9 (v1.1) 記載の未実装項目。`KeywordRules` の WATCH ルールに独立した `notify` 真偽値を追加(既存の star/highlight/tag アクションと併用可能)。簡易UIのチェックボックスを ON にすると保存時に既存の `AutoSync.requestNotificationPerm()` を呼ぶ opt-in 設計。block によるアーカイブ後は抑制(既存の block優先規約と一貫)し、共有 tag `'neus-watch'` により連続一致で通知が積み上がらず最新の一致に置き換わる / Add opt-in OS notifications for KeywordRules WATCH matches, reusing the existing notification-permission flow; suppressed when a block rule archives the event, and coalesced via a shared notification tag so matches don't pile up
+
+### Fixed
+- **`event.normalized` の hash 重複レコード競合**: `Store.findByHash`→`Store.putEvent` が非アトミックな check-then-act で、`Bus.publish` は fire-and-forget(購読ハンドラを await しない)。`_collectOne` が1単語の全有効フィードを `Promise.all` で並行取得するため、同一記事が2つの異なるソースから取得されると、2つの `event.normalized` 呼び出しが両方とも「未存在」を読んでから書き込み、重複レコードを作り得た。同一 hash の処理をインメモリの `Map` ベースゲートで直列化し、後続の呼び出しは先行の完了を待ってから正しく「既存」ヒットの autoTag マージ経路に入るよう修正(タグ結合を失わない)/ Fix a hash-collision race in event.normalized: concurrent processing of the same article from two sources could create duplicate records; in-memory serialization per hash now ensures the second call correctly merges into the first instead
+
+### Fixed (独立した敵対的レビューで発見・修正、round 26)
+- **Google News タイトル剥がしが全 RSS ソースに無条件適用されていた**: 共有 `parseFeed` 内にあり `source` を見ていなかったため、ユーザー追加のカスタム RSS(`<source>` 要素を持つアグリゲータ系)のタイトルも誤って切り詰められ得た。`source?.url?.includes('news.google.com')` でスコープを限定 / Scope the Google News title-suffix strip to Google News feeds specifically (via source.url), instead of applying it inside the shared parseFeed() to every RSS/Atom source
+- **hash 重複ゲート自身が3者以上の同時到達で直列化に失敗していた**: 「先行を読んで await してから自分のゲートを map に書く」方式では、2番目・3番目の呼び出しが同じ「先行」を見た後に互いを追い越し得た。map への書き込みを await 前に同期的に行う keyed-promise-chain へ変更し、N者間の直列化を保証 / Fix the hash-collision gate itself: the original pattern only correctly serialized 2-way contention; a keyed-promise-chain now generalizes to N-way
+- **hash ゲートが event.normalized にしか適用されず、同じ非アトミック性を持つ `ShareTarget.ingest` とドシエ import ループが無防備だった**: 共有ヘルパー `withHashGate` を切り出し、findByHash→putEvent を伴う3経路全てが経由するよう統一 / Extend the hash-collision protection to ShareTarget.ingest and the dossier-import loop, not just event.normalized
+- **socraticPrompts の tier 優先順位機構(round 23)が tier 内タイブレークで飢餓を再現していた**: 同一 tier 内の条件は相互排他とは限らないため、tier が並ぶと Array.sort の安定性=push 順に戻り元のバグが tier 内で再発。相互排他が保証されない条件に小数のサブ優先度を付与し解消 / Fix within-tier starvation in socraticPrompts' priority sort: non-mutually-exclusive same-tier conditions now get unique decimal sub-priorities
+- **新規 WATCH 通知コードが CLAUDE.md のネスト上限(≤3)を超過**: `notifyWatchMatch(ev,matched)` として単体関数に切り出し / Extract the WATCH notification logic to a standalone function to stay within the nesting limit
+
+### Changed
+- **GitHub/Zenn の topic slug 正規化前処理を共有ヘルパーへ集約**、**topicFeeds を WORD_FEEDS の `topicStyle:true` から構造的に導出**(3つ目のトピックソース追加が WORD_FEEDS への1行で完結するように)/ Extract shared slug-normalization prefix; derive signalGaps' topicFeeds Set structurally from WORD_FEEDS instead of a separate hardcoded literal
+
 ## [v0.12.0] - 2026-06-14
 
 ### Watchword Collector — 単語登録→自動収集→出力 (ADR-0016)
@@ -84,16 +260,92 @@ watchword はユーザーがタイプして生まれるだけ、という前提�
 - **Round 6 — 裁決 (Verdict)**: 各watchwordに verdict ライフサイクルフィールドを追加(open/converging/answered/suspended)。WORDSビューにステータスピルボタンを表示しワンタップでサイクル。ドシエに `verdict_status` / `verdict_note` frontmatterと `## 裁決` セクションを追加(open+メモなしは非表示)
 - **Round 7 — 問い群 (Questions)**: 各watchwordに未解決の問い配列を追加。WORDSビューで追加/削除UI。ドシエに `## 問い群` セクションを追加(ソクラテス的「無知の知」の記録)
 
+#### 視点の転換 — 「探究者は中立ではない」(γνῶθι σεαυτόν: 先入観の明示と認識の変容)
+観察者が中立であるという前提を覆す。情報収集の前に、あなたはすでに何かを信じている。その先入観を明示することで、探究が自己認識をどう変えたかが見えるようになる:
+- **Round 9 — 認識の変容 (Cognitive Shift)**: 単語登録時に **出発点の認識(priorBelief)** を選択(好奇 / 確信 / 懐疑 / 無知)。WORDSビューに先入観→現在の裁決の変容を常時表示(裁決が変化したとき`→`で対比)
+- 単語ドシエに frontmatter `prior_belief` と **`## 認識の変容`** セクションを追加。変容があれば「確信 (certain) → 保留 (suspended)」のようにソクラテス的論駁を記録
+- `PRIOR_BELIEF_DEFS` / `priorBeliefOf()` / `cognitiveShift()` をビュー/出力で共用
+- 探究がself-knowledgeの道具になる: 「信じていたことが崩れた」こと自体が知識の進歩
+
+#### 視点の転換 — 「探究は独白ではない」(elenchus: システムが問い返す)
+あなたが問い、ソースが答えるという独白の前提を覆す。ソクラテスの論駁(エレンコス)は対話であり、問いを投げ返して探究者自身の立場の矛盾と空白を暴く:
+- **Round 10 — 問答 (Elenchus)**: `socraticPrompts()` が探究の構造(知の階層 / 沈黙 / 裁決 / 先入観 / 未確認件数 / 未解決の問い)を診断し、探究者へ問いを投げ返す純粋関数
+- 例: 「一次情報がない。これは事実か意見か?」「裁決後にN件の新証拠。結論はまだ妥当か?」「確信して始めたが未決。何が欠けるか?」「解決としたが未解決の問いが残っている。本当に解決したか?」
+- WORDSビューに問答ブロック(アクセント枠)、単語ドシエに **`## 問答`** セクションを追加。重要度順に最大3件
+- システムが助産術(maieutics)の役を担う: 答えを与えず、矛盾を問いとして突きつけることで探究者自身の理解を引き出す
+
+#### 視点の転換 — 「問いそのものが暫定的」(elenchus: 問いの彫琢)
+問いは一度立てたら不変という前提を覆す。ソクラテスの対話はしばしば最初の問いが混乱していたことを暴き、再定式化を促す。問いを彫琢することが進歩である:
+- **Round 11 — 問いの彫琢 (Refining the Question)**: 登録後に編集できなかった問い(note)を、WORDSビューで彫琢可能に(「彫琢」ボタン→インライン入力→保存、Enter送信対応)
+- 旧い定式化は `questionHistory` に保存(最大5件)。推敲回数バッジ(推敲 N)をビューに表示
+- 単語ドシエに frontmatter `question_revisions` と **`## 問いの変遷`** セクション(旧定式化を打ち消し線、現在の問いを強調)を追加
+- `refineQuestion()` 純粋関数で共用(空文字での消去を防止、同一テキストは無変更、前後空白をtrim)
+- 副次的に、登録後に問いを一切編集できなかった実用上の欠落を解消
+
+#### 改良 — JSONエクスポートの完全化
+MDドシエが探究状態を全て含むのに対し、JSON出力は `term/lang/normalized/wiki` + items のみで、note / priorBelief / verdict / questions / questionHistory / sources / 各種タイムスタンプを取りこぼしていた(JSON出力すると探究状態が消失する不具合):
+- **`toWordJson()` 純粋関数を追加**: 探究状態を漏れなく含む自己記述的レコード(`schema:2`)。`word`(全フィールド+安全なデフォルト)+ `analysis`(層/空白/関連/認識の変容/再検討/問答キー/未確認数の派生値)+ `items`
+- `downloadJson` をこの関数経由に統一。バックアップ・再取込・機械処理でMDと等価な情報を保持
+
+#### 改良 — 単語ドシエのJSON取込(往復可能に)
+完全なJSON出力に対応する取込口を追加し、単語の探究を端末間で移送可能に:
+- **`wordFromImport()` 純粋関数**: ドシエJSON(schema 1 旧形式 / schema 2)から word を安全に再構成。kind検証・term必須・配列の型ガード・新フィールドの安全なデフォルト
+- WORDSモーダルに **IMPORT** ボタン(隠しファイル入力)を追加。`WordExporter.importJson()` がJSONを解析→単語を復元→付随アイテムも hash で重複排除しつつ取込
+- 同名語が既存なら確認の上で置換(既存IDを維持し `word:` タグの整合を保つ)
+- i18n(取込 / IMPORT)対応
+
+#### 改良 — WORDSビューの俯瞰サマリ
+裁決・再検討・問答・未確認などが各単語に蓄積する中、全探究の状態を一望する手段が無かった:
+- **`wordsOverview()` 純粋関数**: 全単語を集計(解決数/総数・要再検討・問答保留・未確認合計・未収集)
+- WORDSビュー上部にチップ列で表示。要再検討はアクセント色で強調(`ov-alert`)
+- 何に注意を向けるべきか(再検討すべき結論・未読の蓄積)が一目で分かる
+
+#### 改良 — 俯瞰チップで絞り込み
+俯瞰チップを操作可能にし、注意すべき単語へ即座に到達できるように:
+- 各チップ(解決 / 要再検討 / 問答 / 未確認 / 未収集)をクリックでトグル絞り込み。アクティブ時はアクセント色で反転表示、`解除` チップで全件へ復帰
+- `wordMatchesOv()` 純粋関数で判定。集計値(チップ表示)は常に全件基準、絞り込みは表示セクションのみに適用
+- 関連語検出は絞り込み中も全単語を対象に維持(孤立を防ぐ)
+
+
+#### 視点の転換 — 「裁決は一度下せば不変ではない」(エレンコスの自己適用: 再検討)
+下した結論はそのまま正しいという前提を覆す。真の知は反復的な再検討に耐えねばならない。エレンコスを他者でなく *自らの結論* に向ける:
+- **Round 8 — 再検討 (Re-examination)**: 裁決を下した時刻 `verdictAt` を記録。決着済み(answered / suspended)の語に、その後到来した新証拠(`timestamp > verdictAt`)があれば WORDS ビューに **再検討バッジ(件数つき)** を表示
+- バッジをクリックすると裁決を `open` に戻し探究を再開(`data-wact="reexamine"`)。converging は進行中とみなし対象外
+- 単語ドシエに frontmatter `reexamine` と `## 裁決` セクション内の「再検討」行を追加。「結論後に何件の反証が来たか」を可視化
+- `verdictStale()` / `SETTLED_VERDICTS` をビュー/出力で共用
+
 ### Added
 - Round 6 — 裁決 (Verdict): verdict lifecycle field on each watchword (open/converging/answered/suspended), with pill button to cycle status and dossier export support
 - Round 7 — 問い群 (Questions): open questions array on each watchword, with add/remove UI and dossier export support
+- Round 8 — 再検討 (Re-examination): verdictAt timestamp; settled verdicts (answered/suspended) flag new evidence arriving afterward with a re-examine badge that re-opens the inquiry, plus dossier `reexamine` frontmatter
+
+#### 改良 — 現段階の短所の洗い出しと修正
+収集機能の堅牢性とUIの一貫性に関する課題を洗い出して修正:
+- **収集の同時実行ガード**: 手動COLLECT / POLLボタン / periodicsync が重なると同一フィードを二重取得し帯域を浪費、件数トーストも崩れていた。`WordCollector` に `busy` ロックを追加し直列化(`isBusy()` 公開、公開 `collectOne`/`collectAll` はロック取得、内部 `_collectOne` はロックなし)
+- **件数表示の正直化・一貫化**: `collectOne` の戻り値は重複排除前の生取得数のため「collected N」は過大表示だった。トーストを「取得 / fetched」表記に修正し、フィールドを `lastCount` → `lastFetched` に改名。WORDSモーダルの件数を保存済み実数(タグ集計)に変更しWORDSビューと一致させた
+- **再検討の取り消し可能化**: 再検討バッジのクリックは決着済み裁決を一発で `open` に戻す破壊的操作だった。`UndoStack` でロールバック可能に(誤操作復旧)
+
+#### 改良 — アクセシビリティとキーボード操作の対等性(Apple HIG)
+動的生成される単語コントロールのa11yギャップを洗い出して修正:
+- **aria-label の付与**: 裁決ピル(現在の状態を読み上げ)/ 再検討バッジ(件数+理由)/ 関連チップ / 提案チップ / 問い入力欄 / 問い削除ボタンに `aria-label` を追加。アプリ他箇所(検索・キーワード入力等)の慣習に一致させた。これまで `title` のみでスクリーンリーダーに伝わりにくかった
+- **問い入力のEnter送信**: インラインの問い入力欄は「+ Q」ボタンのクリックでしか追加できずキーボードのみで完結しなかった。`#view` の keydown ハンドラで Enter 送信に対応し `enterkeyhint="done"` を付与
+
+#### 改良 — 語の正規化強化(重複登録防止)
+同じ語が表記揺れで二重登録される穴を塞いだ:
+- **`normalizeTerm()` を導入**: NFKC正規化(全角/半角・互換文字の統一)+ 内部空白の畳み込み + trim + 小文字化。「ＷｅｂＧＰＵ」「Web  GPU」「 WebGPU 」を同一キーに収束させ重複登録を防ぐ
+- 表示用 `term` は生のまま保持し、照合・タグ付けには `normalized` のみを使用(従来動作を維持)
+- 登録の全入口(addWord / 提案チップの登録 / 提案ランカー `rankWordSuggestions`)で共用。ASCII単語では従来と同一結果のため既存データは非破壊
 
 #### Tests
+- `tests/word-normalize.test.mjs`(NFKC全角畳み込み / 空白畳み込み / CJK保持 / 表記揺れ収束 / 別語の非衝突 / ワイヤリング)
+- `tests/word-a11y.test.mjs`(単語コントロールのaria-label + 問い入力のEnter送信・enterkeyhintワイヤリング)
+- `tests/word-collector-guard.test.mjs`(busyロックの直列化モデル + 例外時のロック解放 + ガード/件数/Undoワイヤリング)
 - `tests/word-feeds.test.mjs`(フィードURL生成 + ソースドリフトガード + 失敗トラッカー除外 + Wikipediaフォールバック順)
 - `tests/word-dossier.test.mjs`(ドシエMarkdown生成 + slug)
 - `tests/word-collect-integration.test.mjs`(フィードXML→パース→word:タグ付与→ドシエ出力のE2Eをjsdomで検証)
 - `tests/word-verdict.test.mjs`(VERDICT_DEFS / verdictOf / nextVerdict / toDossier裁決セクション)
 - `tests/word-questions.test.mjs`(問い群セクション生成 + addq/delq UIワイヤリング確認)
+- `tests/word-reexamine.test.mjs`(verdictStale / 境界条件 / reexamine UI・ドシエワイヤリング)
 
 ## [v0.11.0] - 2026-05-30
 
