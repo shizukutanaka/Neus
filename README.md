@@ -65,8 +65,8 @@ npx wrangler login
 # 3. Worker + Pages 一括デプロイ
 npm run deploy
 
-# GitHub Actions(CI/CD): .github/workflows/ を参照
-# Secrets: CF_API_TOKEN, CF_ACCOUNT_ID が必要
+# リリース(手動): CHANGELOG 追記 → タグ付け v{MAJOR}.{MINOR}.{PATCH} → npm run deploy
+# (CI/CD は未同梱。デプロイはローカルからの `npm run deploy` が正)
 ```
 
 ## 使い方
@@ -99,6 +99,13 @@ npm run deploy
 - 登録時とPOLL時に自動収集。各ソースの検索フィードを取得し、`word:{単語}` タグ付きで保存
 - **WORDS** ビュー → 単語ごとにWikipedia定義 + 直近アイテム + 出力ボタン(DOSSIER MD / JSON / VAULT)
 - 出力先(Vault): `{Vault}/neus/words/{単語}-{id}.md`(語ごとに一意。"C++" と "C" のように同じ slug に正規化される語でも上書きされない)
+
+**探究(ソクラテス式問答)** — 登録した単語は収集対象であると同時に「問い」になる。集めた情報を受動的に眺めるのではなく、自分の理解を吟味する装置として機能する。
+
+- **事前の考え**(prior belief)を記録し、収集後の認識変化(cognitive shift)を可視化
+- システムが結論に対して問い返す(**elenchus** / 自問プロンプト)。裁決に至っても別角度の問いで揺さぶり、独断を防ぐ
+- **反証条件**(何があれば結論を覆すか)を宣言でき、**Falsifier Watch** が以後の収集物を言語非依存の文字 bigram 被覆で走査して、該当しうるアイテムを能動検出(宣言した反証条件が「証拠を監視する能動センサー」になる)
+- **裁決**(verdict)とその**変遷**(dialectic)、**問いの解決**(aporia → resolution)を記録し、単語ドシエ Markdown に出力
 
 > 収集ソースのうちWikipedia(JSON)はワーカーの `GET /json?url=`(Wikipedia/Wikimedia限定の許可リスト)経由。その他はRSS検索フィードのため既存 `/rss` プロキシをそのまま使用。
 
