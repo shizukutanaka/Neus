@@ -1,9 +1,12 @@
 # Plan.md — Neus
 
-**version**: 0.3.0-draft
+**version**: 0.13.0(出荷済み)
 **license**: MIT
-**status**: PLANNING(精査完了、次は実装段階)
+**status**: SHIPPED(実装済み。この文書は初期の計画記録であり、現行仕様の正は `SPEC.md`)
 **positioning**: Personal Information Hub(個人情報ハブ)
+
+> このファイルは当初の計画草案(v0.3.0-draft)を残した歴史的記録。現行 v0.13.0 の
+> 正確な仕様・実装状況は `SPEC.md`、変更履歴は `CHANGELOG.md` を参照。
 
 ---
 
