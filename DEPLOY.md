@@ -143,22 +143,28 @@ PWAインストール環境(Chrome Desktop)+ Android Chrome で実施。
 | 19 | STATS → EXPORT JSON | `neus-backup-YYYY-MM-DD.json` 保存 | ☐ |
 | 20 | DevTools → IndexedDB全削除 → IMPORT JSON | 全データ復元 | ☐ |
 
-## STEP 8: リリースタグ(2分)
+## STEP 8: リリースタグ(手動・2分)
 
-全シナリオ完了後:
+全シナリオ完了後、ローカルから手動でリリースする(自動 CI/CD は未同梱):
 
 ```bash
-git add CHANGELOG.md
-git commit -m "chore(release): v0.1.0"
-git tag v0.1.0
+# 1. CHANGELOG / version を確定(日付入り)
+git add CHANGELOG.md package.json
+git commit -m "chore(release): v0.13.0"
+
+# 2. タグ付け v{MAJOR}.{MINOR}.{PATCH}
+git tag v0.13.0
 git push origin main --tags
+
+# 3. デプロイ(ローカルから。= wrangler pages deploy + wrangler deploy)
+npm run deploy
+
+# 4. GitHub Release: リポジトリ Releases → Draft a new release で
+#    タグ v0.13.0 を選び、CHANGELOG の該当節を本文へ貼って公開
 ```
 
-GitHub Actions が起動し、自動で:
-1. Verify (lint + test + check-html)
-2. Deploy Worker + Pages
-3. Sigstore cosign 署名
-4. GitHub Release 作成(署名添付)
+> 注: 自動パイプライン(Verify → Deploy → 署名 → Release 自動作成)は本リポジトリに
+> **未同梱**。上記の手動手順が正。将来 `.github/workflows/` を追加する際は別途 ADR を起票する。
 
 ## トラブルシューティング
 
