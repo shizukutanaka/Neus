@@ -6,6 +6,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [v0.13.0] - 2026-07-17
+
 ### Added
 - **Vault エクスポートのノート本文テンプレート**: 2026-07 の外部調査(PKM エコシステム比較)由来の採用候補。設定画面の VAULT EXPORT 欄にテンプレート文字列を保存すると、イベントノートの本文が `{{title}}` `{{url}}` `{{link}}` `{{source}}` `{{date}}` `{{tags}}` `{{summary}}` `{{snippet}}` `{{note}}` `{{quote}}` のプレースホルダ置換で組み立てられる(Obsidian 側の Vault 規約・Dataview 等に合わせられる)。制御構文は意図的に持たない(ゼロ依存・簡潔原則): 空行区切りのブロック内の既知プレースホルダが全て空ならブロックごと脱落する規則で条件分岐を代替。未知のプレースホルダは打ち間違いが見えるよう原文のまま残す。YAML frontmatter はテンプレート対象外(常に固定+`yamlScalar` エスケープ)で、機械可読キー(neus_id/hash)の欠落や YAML 破壊が起きない。空欄保存で既定形式に戻る / User-customizable note body template for Vault export ({{placeholder}} substitution, empty-block dropping, fixed frontmatter); clear the field to restore the built-in format
 - **反証候補 (Falsifier Watch)**: ソクラテス式問答から導いた新機能。システムは探究者に反証条件(「何があれば結論を覆すか」=最も鋭い論駁)を述べさせるのに、述べられた反証条件は受動的なテキストにすぎず、収集し続ける証拠と接続されていなかった — 人に手動確認を促すだけだった。反証条件の文字bigram集合と各収集物の被覆率(言語非依存、CJKも可)で、宣言した反証条件に該当しうるアイテムを能動検出。WORDSビューに `word-fwatch` ブロック(該当アイテム + 一致率)、最優先の `falsifier-seen` 問答プロンプト(具体的該当があれば漠然とした stale 系を抑制)、ドシエの `## 反証候補` セクションを追加。反証条件が「証拠を監視する能動センサー」になる / Falsifier Watch: actively scan collected evidence against the user's stated falsifier and surface possible matches (language-agnostic bigram coverage)

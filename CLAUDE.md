@@ -1,4 +1,4 @@
-# CLAUDE.md — Lensy
+# CLAUDE.md — Neus
 
 ## Why
 
