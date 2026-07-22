@@ -52,7 +52,7 @@ Personal Information Hub. サーバーレス・端末内完結・個人データ
 1. Plan.md / goal.md と整合性確認(North Star 4問チェック)
 2. ADR起票(影響大の場合)
 3. 実装 → 単体テスト → 統合テスト
-4. クロスレビュー(AI 2名独立判定)
+4. クロスレビュー(AI 2名独立判定)→ `docs/reviews/`(AUDIT-BRIEF + Opus/Sonnet 指示書)
 5. Lighthouse / カバレッジ再計測
 
 ### バグ修正
