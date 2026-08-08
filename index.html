@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-xJL2DNjx57V5zGPzaVNDhGiLk1TOuATgWcitBMKoAEQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-90An+N9CdaNS1NTqsuPbtJSR3pMbJgsfuQAH2DVecEM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1401,6 +1401,7 @@ const VaultWriter=(()=>{
 // ===== FTS INDEX ========================================================
 const FTSIndex=(()=>{
   const index=new Map();const eventGrams=new Map();const wordGrams=new Map();
+  const docLen=new Map();let totalLen=0;
   function ngrams(text,n=CONFIG.ftsGram){
     const t=(text||'').toLowerCase().replace(/\s+/g,' ').trim();const grams=new Set();
     if(t.length<n){if(t)grams.add(t);return grams;}
@@ -1408,12 +1409,17 @@ const FTSIndex=(()=>{
   }
   function eventText(ev){return[ev.content.title,ev.content.snippet,ev.content.summary,ev.user?.note,ev.user?.quote,...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])].filter(Boolean).join(' ');}
   function wordText(w){return[w.term,w.normalized,w.note,...(w.questions||[]).map(q=>q.text),w.verdict?.note,w.falsifier].filter(Boolean).join(' ');}
-  function add(ev){remove(ev.id);const grams=ngrams(eventText(ev));eventGrams.set(ev.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add(ev.id);}}
-  function remove(eid){const grams=eventGrams.get(eid);if(!grams)return;for(const g of grams){const s=index.get(g);if(s){s.delete(eid);if(s.size===0)index.delete(g);}}eventGrams.delete(eid);}
-  function addWord(w){removeWord(w.id);const grams=ngrams(wordText(w));wordGrams.set(w.id,grams);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add('word:'+w.id);}}
-  function removeWord(wid){const gs=wordGrams.get(wid);if(!gs)return;wordGrams.delete(wid);for(const g of gs){const s=index.get(g);if(s){s.delete('word:'+wid);if(s.size===0)index.delete(g);}}}
+  // 文書長(= その文書の異なりgram数)を index と同じ id 空間(event は ev.id、word は
+  // 'word:'+id)で保持し、平均長を O(1) で引けるよう合計を差分更新する。検索のたびに
+  // 全文書を走査すると INP を損なうため。
+  function setLen(id,n){const p=docLen.get(id);if(p!==undefined)totalLen-=p;docLen.set(id,n);totalLen+=n;}
+  function delLen(id){const p=docLen.get(id);if(p!==undefined){totalLen-=p;docLen.delete(id);}}
+  function add(ev){remove(ev.id);const grams=ngrams(eventText(ev));eventGrams.set(ev.id,grams);setLen(ev.id,grams.size);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add(ev.id);}}
+  function remove(eid){const grams=eventGrams.get(eid);if(!grams)return;for(const g of grams){const s=index.get(g);if(s){s.delete(eid);if(s.size===0)index.delete(g);}}eventGrams.delete(eid);delLen(eid);}
+  function addWord(w){removeWord(w.id);const grams=ngrams(wordText(w));wordGrams.set(w.id,grams);setLen('word:'+w.id,grams.size);for(const g of grams){let s=index.get(g);if(!s)index.set(g,s=new Set());s.add('word:'+w.id);}}
+  function removeWord(wid){const gs=wordGrams.get(wid);if(!gs)return;wordGrams.delete(wid);delLen('word:'+wid);for(const g of gs){const s=index.get(g);if(s){s.delete('word:'+wid);if(s.size===0)index.delete(g);}}}
   async function rebuild(){
-    index.clear();eventGrams.clear();wordGrams.clear();
+    index.clear();eventGrams.clear();wordGrams.clear();docLen.clear();totalLen=0;
     const all=await Store.allEvents();
     // Yield to main thread every 100 events to keep INP < 200ms for large datasets
     for(let i=0;i<all.length;i++){
@@ -1446,7 +1452,6 @@ const FTSIndex=(()=>{
     // 単純なヒット数だと "の"/"ing" のような頻出gramと "rust" が同価値になる問題を解消。
     // (BM25のTF項はNeusがgram有無のSetベースのため、文書間のIDF重み付けで近似)
     const counts=new Map();   // id -> 累積IDFスコア
-    const maxScore=new Map(); // id -> 取りうる最大スコア(正規化用)
     let qTotalIdf=0;
     for(const g of qGrams){
       const s=index.get(g);if(!s)continue;
@@ -1457,8 +1462,21 @@ const FTSIndex=(()=>{
       for(const id of s)counts.set(id,(counts.get(id)||0)+idf);
     }
     if(qTotalIdf===0)return[];
+    // 文書長正規化(BM25 の b 項)。長い文書ほど多くの異なりgramを持つため、クエリのgramを
+    // 偶然含む確率が上がり、短く的確な文書と同点になってしまう(長文バイアス)。b=0.75 は
+    // BM25 の慣用既定値で、BM11(b=1、長文を過度に罰する)と BM15(b=0、正規化なし)の中間。
+    // ただし採用するのは「長文へのペナルティ」側だけで、短文ボーナスは付けない:
+    // score は UI に「match NN%」として出るため 0〜1 の契約と「完全一致=100%」を壊せない。
+    // したがって dl<=avgdl では係数はちょうど 1.0 になり、平均より長い文書だけが減点される。
+    // なお dl は「異なりgram数」なので、同じ語を繰り返しただけの文書は長くならない
+    // (罰されるのは語彙の広がり=話題の散漫さであって、反復ではない)。
+    const docs=docLen.size||1;const avgdl=(totalLen/docs)||1;const B=0.75;
     return[...counts.entries()]
-      .map(([id,acc])=>({id,score:acc/qTotalIdf})) // 0〜1に正規化(全qGram一致で1)
+      .map(([id,acc])=>{
+        const dl=docLen.get(id);
+        const norm=dl===undefined?1:1/(1-B+B*Math.max(1,dl/avgdl));
+        return{id,score:(acc/qTotalIdf)*norm}; // 0〜1(全qGram一致かつ平均長以下で1)
+      })
       .filter(r=>r.score>=CONFIG.ftsScoreMin)
       .sort((a,b)=>b.score-a.score)
       .slice(0,limit);
