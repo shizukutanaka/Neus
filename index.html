@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-r0YzeH4wyxtHM/wpmOb3/sT8ORxJXFQrmtvF4jM69Yo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-aIdd61vE1Wkiy6BuGqvovyLf0E6QRzqVUCPMBCJR5Rs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -757,6 +757,8 @@ const CONFIG = Object.freeze({
   // 抑制側の上限は昇格側より小さい(非対称)。理由は scoreBoost のコメント参照。
   interestPenaltyMax:10,
   dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000, dedupCompareMax:300,
+  // CJK見出し用の文字bigram閾値。値の決め方は titleDupSim のコメント参照(実測ベース)。
+  dedupCjkTitleThreshold:0.75,
   ftsGram:2, ftsScoreMin:0.4,
   vaultMatchMinTokens:2, vaultMatchMax:5,
   sourceMaxFails:5,
@@ -1138,6 +1140,27 @@ function jaccard(A,B){
   if(A.size===0&&B.size===0)return 0;
   let i=0;for(const x of A)if(B.has(x))i++;
   return(A.size+B.size-i)?(i/(A.size+B.size-i)):0;
+}
+
+// 日本語などCJKは単語境界に空白が無いため、tokenize() は見出し全体をほぼ1トークンにしてしまう。
+// 結果 token jaccard は近い見出しでもほとんど 0 になり(実測: 「AIの未来について考える」と
+// 「AIの未来を考える」で 0.000)、Qiita/Zenn/はてな等の日本語ソース間のクロスソース重複が
+// 事実上まったく検出できていなかった。CJKを含む見出しに限り、Falsifier Watch と同じ
+// 言語非依存の文字bigram(fsBigrams)で再判定する。英語のみの見出しは従来経路のまま。
+//
+// 閾値を本則(0.8)ではなく専用の 0.75 にしているのは、文字bigramの値域が語彙jaccardと
+// 異なるため。値は実測で決めた: 別記事ペアの最大類似度 0.563 に対し 0.188 の余裕がある。
+// 意図的に保守的であり、取りこぼし(サフィックス違い等 0.6〜0.73)は許容する。損失が非対称で、
+//  - 重複の見逃し → 似たカードが2枚並ぶだけ。可逆で、本人にも見える。
+//  - 別記事の誤merge → 受信側は破棄され links に足されるだけ。不可逆で、本人に見えない。
+const CJK_RE=/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+// 重複なら類似度(>0)を、重複でなければ 0 を返す。
+function titleDupSim(newTitle,newTok,oldTitle){
+  const tok=jaccard(newTok,new Set(tokenize(oldTitle)));
+  if(tok>=CONFIG.dedupTitleThreshold)return tok;
+  if(!CJK_RE.test(newTitle)&&!CJK_RE.test(oldTitle))return 0;
+  const bg=jaccard(fsBigrams(newTitle),fsBigrams(oldTitle));
+  return bg>=CONFIG.dedupCjkTitleThreshold?bg:0;
 }
 
 function fmtTime(ms){
@@ -2280,7 +2303,7 @@ Bus.subscribe('event.normalized',(ev)=>withHashGate(ev.hash,async()=>{
     const recent=await Store.recentEvents(CONFIG.dedupWindowMs,CONFIG.dedupCompareMax);
     const newTok=new Set(tokenize(ev.content.title));
     if(newTok.size>0){
-      for(const r of recent){const sim=jaccard(newTok,new Set(tokenize(r.content.title)));if(sim>=CONFIG.dedupTitleThreshold){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
+      for(const r of recent){const sim=titleDupSim(ev.content.title,newTok,r.content.title);if(sim>0){if(ev.url&&!(r.links||[]).includes(ev.url)){r.links=[...(r.links||[]),ev.url];await Store.putEvent(r);FTSIndex.add(r);}Bus.publish('event.duplicate',{ev,reason:'similar',matched:r.id,sim});return;}}
     }
     // キーワードルール適用
     const matched=KeywordRules.evaluate(ev);
