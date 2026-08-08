@@ -6,7 +6,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-## [v0.13.0] - 2026-07-17
+### Added
+- **RESURFACE(再浮上)ビュー**: First Principles で過不足を洗い出した結果(round 32)見つかった構造的な穴への回答。情報が知識になるまでの段階(捕捉→取捨→理解→吟味→接続→**想起**→行動)のうち「想起」だけが能動検索依存で、人は「何を忘れたか」を検索できない(想起の逆説)ため `LATER` は入れたきり戻らない箱になっていた。放置された「あとで読む」とスター済み未読を少数だけ再浮上させる。**スコアは素朴な「古い順」ではなく逆U字**: spacing effect の研究(Cepeda et al. 2008 ほか)が示すとおり間隔と効果は単調増加ではないため、早すぎる再提示(復習として無駄)も遅すぎる再提示(陳腐化した情報の押し上げ)も減点する対数正規型の重みを採用。既存 `state`(later/laterAt/starred/read/archived)と `timestamp` のみから導出し**新しい永続フィールドを足さない**(データモデル不変)。決定的(乱数なし)で同点は id 順、描画が揺れない / RESURFACE view: brings back neglected read-later and unread-starred items, weighted by an inverted-U (spacing-effect) curve rather than naive oldest-first, derived purely from existing state
 
 ### Added
 - **Vault エクスポートのノート本文テンプレート**: 2026-07 の外部調査(PKM エコシステム比較)由来の採用候補。設定画面の VAULT EXPORT 欄にテンプレート文字列を保存すると、イベントノートの本文が `{{title}}` `{{url}}` `{{link}}` `{{source}}` `{{date}}` `{{tags}}` `{{summary}}` `{{snippet}}` `{{note}}` `{{quote}}` のプレースホルダ置換で組み立てられる(Obsidian 側の Vault 規約・Dataview 等に合わせられる)。制御構文は意図的に持たない(ゼロ依存・簡潔原則): 空行区切りのブロック内の既知プレースホルダが全て空ならブロックごと脱落する規則で条件分岐を代替。未知のプレースホルダは打ち間違いが見えるよう原文のまま残す。YAML frontmatter はテンプレート対象外(常に固定+`yamlScalar` エスケープ)で、機械可読キー(neus_id/hash)の欠落や YAML 破壊が起きない。空欄保存で既定形式に戻る / User-customizable note body template for Vault export ({{placeholder}} substitution, empty-block dropping, fixed frontmatter); clear the field to restore the built-in format

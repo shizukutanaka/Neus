@@ -271,6 +271,32 @@
 - **アンカー**: `async function fetchValidated` / `\[::1?\]` / `tests/worker.test.mjs` の
   「fetchValidated — SSRF prevention across redirects」ブロック
 
+### 1-14. 「想起」段階の欠落 → RESURFACE ビュー【解決済み・round 32】
+
+- **出所**: First Principles による過不足の洗い出し(SPEC §10.21)。情報が知識になるまでの
+  段階を分解すると 捕捉→取捨→理解→吟味→接続→**想起**→行動 となるが、想起だけが
+  能動検索(FTS)依存だった。人は「何を忘れたか」を検索できない(想起の逆説)ため、`LATER` は
+  入れたきり戻らない箱として機能していた。コード上も再浮上機構は実在しないことを確認済み。
+- **修正**: RESURFACE ビューを追加。既存 `state`(later/laterAt/starred/read/archived)と
+  `timestamp` のみから導出し、**新しい永続フィールドを足さない**(データモデルのゲート非抵触)。
+  スコアは spacing effect の逆U字に従い、下限 `resurfaceAfterMs`(7日)・ピーク
+  `resurfacePeakMs`(30日)の対数正規型。素朴な「古い順」を明示的に否定している点が核心。
+- **却下した代替案**: (a) 間隔反復 SM-2 = 新フィールド必須 → データモデルゲート抵触。
+  (b) 通知プッシュ再浮上 = 同意/煩わしさ、既存 notify 設計と競合。
+- **アンカー**: `function resurfaceWeight` / `function pickResurface` /
+  `data-view="resurface"` / `tests/resurface.test.mjs`
+
+### 1-15. round 32 で確認済み・見送りとした項目
+
+- **過剰機能は無し**: 全機能を「第一原理のどの段階に効くか」で採点した結果、どの段階にも
+  紐づかない機能は見つからなかった。§2 が却下案を記録し肥大を抑えている運用も含め長所。
+- **i18n 回帰なし**: `currentLang` を経由しない `toast()` は round 29 で意図的に対象外と
+  記録した3箇所のみ(生エラー passthrough / 既にバイリンガルな変数 / "vault:" ラベル)。
+- **製品ソースに残骸なし**: `TODO`/`FIXME`/`console.log` ゼロ。
+- **`wrangler.toml` の `compatibility_date`(2024-09-23)**: 陳腐化しているが、§1-4 が
+  「`wrangler dev` を検証できる環境で」と条件付けており、round 30 の「高ブラスト半径の変更は
+  信頼できる検証手段が無いなら投入しない」教訓にも該当するため**本ラウンドでは更新しない**。
+
 ---
 
 ## 2. 過剰(却下済み — 再提案しないこと)
