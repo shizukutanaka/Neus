@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-90An+N9CdaNS1NTqsuPbtJSR3pMbJgsfuQAH2DVecEM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-r0YzeH4wyxtHM/wpmOb3/sT8ORxJXFQrmtvF4jM69Yo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -754,6 +754,8 @@ const CONFIG = Object.freeze({
   summaryPrompt:'Summarize the following article in 3 short bullet points (each <= 20 words). Match the source language. Output bullets only, no preamble.\n\nTitle: {title}\n\nContent:\n{content}',
   tagLearnMinFreq:3, tagSuggestMax:3,
   interestMaxVocab:300, interestMinDf:2, interestBoostMax:25, interestDecay:0.98,
+  // 抑制側の上限は昇格側より小さい(非対称)。理由は scoreBoost のコメント参照。
+  interestPenaltyMax:10,
   dedupTitleThreshold:0.8, dedupWindowMs:24*60*60*1000, dedupCompareMax:300,
   ftsGram:2, ftsScoreMin:0.4,
   vaultMatchMinTokens:2, vaultMatchMax:5,
@@ -2417,7 +2419,17 @@ const InterestProfile=(()=>{
     if(matched===0)return 0;
     // 平均極性 × 上限。matched語数で平均し、語彙過多でも安定。
     const avg=signal/matched;
-    return Math.round(avg*CONFIG.interestBoostMax);
+    // 昇格と抑制で上限を変える(非対称)。損失が対称でないため:
+    //  - 誤って持ち上げた場合 → 読み飛ばすだけ。可逆で、本人にも見えている。
+    //  - 誤って沈めた場合 → そもそも出会わない。不可逆で、しかも本人に見えない。
+    // 推薦研究がフィルターバブル/エコーチェンバーとして繰り返し報告しているのはこの後者で、
+    // 「関連性を優先して多様性を犠牲にする」構造が確証バイアスを強化する。Neus は反証条件を
+    // 能動監視する(Falsifier Watch)ほど確証バイアスに抗うことを設計思想に据えているのに、
+    // 暗黙の興味学習が昇格と同じ強さで異論を沈められるのは自己矛盾になる。
+    // 明示的な抑制手段は KeywordRules の block(ユーザーが書き・見え・編集できる)が既にあり、
+    // 学習による暗黙の抑制まで同等の力を持つ必要は無い。よって抑制側だけ上限を絞る。
+    const cap=avg<0?CONFIG.interestPenaltyMax:CONFIG.interestBoostMax;
+    return Math.round(avg*cap);
   }
   function stats(){
     let pos=0,neg=0;for(const[,e]of vocab){pos+=e.pos;neg+=e.neg;}

@@ -6,6 +6,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+- **暗黙の興味学習の「抑制」を昇格より弱くした(非対称化、round 35)**: `InterestProfile` は star/archive から学習した語彙の極性で `meta.score` を最大 ±25 補正していたが、**抑制側が昇格側と同じ強さ**だった。これは推薦研究がフィルターバブル/エコーチェンバーとして報告する構造(personalization が関連性を優先して多様性を犠牲にし確証バイアスを強化する)そのもので、**反証条件を能動監視する Falsifier Watch を看板に据える本プロダクトの設計思想と自己矛盾**していた。しかも補正は ingest 時に score へ焼き込まれ永続する(語彙は減衰するが沈められたイベントは戻らない)。損失が非対称であること — 誤って持ち上げれば読み飛ばすだけ(可逆・可視)だが、誤って沈めればそもそも出会わない(不可逆・不可視) — を根拠に、`interestPenaltyMax`(=10)を新設して抑制側の上限のみ絞った。学習の符号は保たれるため「嫌いなものが下がる」挙動は失われない。明示的な抑制は従来どおり KeywordRules の block(ユーザーが書き・見え・編集できる)が担う / Made implicit interest-learning suppression weaker than promotion (asymmetric cap), so learned dislikes can no longer bury dissenting items as hard as the app's own falsifier-driven design fights confirmation bias
+
 ### Fixed
 - **全文検索の長文バイアスを是正(文書長正規化、round 34)**: スコアが「クエリのIDF質量の被覆率」のみで文書長を考慮していなかったため、長い文書ほど異なりgramを多く持ちクエリのgramを偶然含む確率が上がり、短く的確な文書と同点(ともに1.0)になっていた。IR で古くから知られる長文バイアスで、BM25 が `b` 項を持つのはこの補正のため(`b=0.75` は慣用既定値。BM11=1 は長文を過度に罰し BM15=0 は無補正)。round 33 の関連アイテムが同じ採点式を使うため、放置すると冗長な1件があらゆる記事の「関連」に出現するハブ(雑音)になる実害があった。**採用したのは長文への減点側のみ**で、`dl<=avgdl` では係数がちょうど1.0になり短文ボーナスは付かない — スコアは UI に「match NN%」と表示され 0〜1 と「完全一致=100%」の契約があるため。文書長は異なりgram数なので、同じ語の反復では長くならず、罰されるのは語彙の散漫さのみ。あわせて未使用の `maxScore` マップ(デッドコード)を削除 / Fixed long-document bias in full-text ranking via BM25-style length normalization (penalty side only, preserving the 0..1 match-percent contract); removed dead maxScore map
 
