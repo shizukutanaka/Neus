@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-DarZHNSVEHMszNl9Y6fQ9u1pXQeppvaP07AClbk4glM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-o4LofQeSrx1qBBmk4dWfC619mHvKzz2M2RgGli7RqBc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -438,6 +438,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
     <button data-view="starred" role="tab" aria-selected="false">STARRED<span class="count" id="cnt-starred">0</span></button>
     <button data-view="archived" role="tab" aria-selected="false">ARCHIVED<span class="count" id="cnt-archived">0</span></button>
     <button data-view="later" role="tab" aria-selected="false">LATER<span class="count" id="cnt-later">0</span></button>
+    <button data-view="resurface" id="nav-resurface" role="tab" aria-selected="false">RESURFACE</button>
     <button data-view="words" id="nav-words" role="tab" aria-selected="false">WORDS<span class="count" id="cnt-words">0</span></button>
     <button data-view="digest" id="nav-digest" role="tab" aria-selected="false">DIGEST</button>
     <button data-view="search" id="nav-search" role="tab" aria-selected="false" style="display:none;">SEARCH<span class="count" id="cnt-search">0</span></button>
@@ -759,6 +760,10 @@ const CONFIG = Object.freeze({
   sourceMaxFails:5,
   storageQuotaThreshold:0.85,
   storageCheckDebounceMs:2000,
+  // RESURFACE: 放置と見なす下限、重みのピーク、一度に提示する件数。
+  // 多すぎると「また溜まった山」になり再浮上の意味を失うため少数に絞る。
+  // ピークを持たせる理由は下の pickResurface のコメント(spacing effect の逆U字)参照。
+  resurfaceAfterMs:7*24*60*60*1000, resurfacePeakMs:30*24*60*60*1000, resurfaceMax:5,
   presetSources:[
     {name:'Hacker News',     url:'https://news.ycombinator.com/rss'},
     {name:'GitHub Blog',     url:'https://github.blog/feed/'},
@@ -860,6 +865,9 @@ const DICT={
     'detail.resummarize':'再要約',
     'detail.copy':'MDをコピー',
     'nav.later':'LATER',
+    'nav.resurface':'RESURFACE',
+    'resurface.hint':'放置された「あとで読む」とスター済み未読を再浮上。集めたまま忘れた情報に再び出会うための一覧。',
+    'resurface.empty':'再浮上する項目なし',
     'nav.digest':'DIGEST',
     'digest.title':'本日のダイジェスト',
     'digest.subtitle':'過去24時間に取得したイベント',
@@ -980,6 +988,9 @@ const DICT={
     'detail.resummarize':'RE-SUMMARIZE',
     'detail.copy':'COPY MD',
     'nav.later':'LATER',
+    'nav.resurface':'RESURFACE',
+    'resurface.hint':'Neglected read-later and unread starred items, brought back up. What you saved and forgot.',
+    'resurface.empty':'nothing to resurface',
     'nav.digest':'DIGEST',
     'digest.title':"Today's Digest",
     'digest.subtitle':'Events fetched in last 24 hours',
@@ -3132,6 +3143,42 @@ let wordSortKey='date'; // WORDS view sort: 'date'|'new'|'verdict'
 let wordNameFilter=''; // WORDS view text filter on word name
 const VIEW_FILTERS={inbox:{read:false,archived:false},all:{archived:false},starred:{starred:true},archived:{archived:true},later:{later:true,archived:false}};
 
+// ===== RESURFACE ========================================================
+// 第一原理: 集めた情報は「能動的に検索した時」しか再会できない。しかし人は
+// 「何を忘れたか」を検索できない(想起の逆説)。結果 LATER は入れたきり戻らない箱になる。
+// PIM 研究でも「保存した時点で意識から消え、再訪の動機が無い」ことと、web 利用の相当部分が
+// 再アクセス(re-finding)であることが報告されており、再浮上の欠如は構造的な穴。
+//
+// スコア設計: 素朴な「古い順」は誤り。spacing effect の研究(Cepeda et al. 2008 ほか)は
+// 間隔と効果の関係が単調増加ではなく逆U字であることを示す。早すぎる再提示は復習として
+// 無駄(massed)になり、遅すぎる再提示は陳腐化した情報を上位へ押し上げてしまう。
+// そこで resurfaceAfterMs を下限、resurfacePeakMs をピークとする対数正規型の重みを使う。
+// 決定的(乱数なし)なのでテスト可能。
+// 注: 元研究は暗記材料の保持に関するもので、保存記事の再浮上への転用は類推。ここで採用したのは
+// 「逆U字」という定性的な形のみで、具体的な保持率は主張しない。
+function resurfaceWeight(age){
+  const r=Math.log(age/CONFIG.resurfacePeakMs);
+  return Math.exp(-(r*r)/(2*0.9*0.9));
+}
+// 既存の state のみから導出する(新しい永続フィールドを足さない = データモデル不変)。
+function pickResurface(events,now=Date.now(),limit=CONFIG.resurfaceMax){
+  const out=[];
+  for(const ev of events||[]){
+    if(!ev||!ev.state||ev.state.archived)continue;
+    const later=ev.state.later===true;
+    const starredUnread=ev.state.starred===true&&!ev.state.read;
+    if(!later&&!starredUnread)continue;
+    const anchor=(later?ev.state.laterAt:0)||ev.timestamp;
+    if(!anchor)continue;
+    const age=now-anchor;
+    if(age<CONFIG.resurfaceAfterMs)continue;
+    // later は「後で読む」と明示的に意思表示した分だけ優先度を上げる。
+    out.push({ev,age,score:resurfaceWeight(age)*(later?1:0.8)});
+  }
+  // 同点は id で決定的に並べる(描画の揺れを防ぐ)。
+  return out.sort((a,b)=>b.score-a.score||a.ev.id.localeCompare(b.ev.id)).slice(0,limit);
+}
+
 async function refreshCounts(){
   // Guard all callers (~15 call sites) at once: an IDB error here must not become
   // an unhandled rejection that aborts the awaiting handler (poll, search, actions).
@@ -3697,6 +3744,13 @@ async function renderView(){
     if(currentView==='words'){
       view.scrollTop=0;
       commit(await renderWords());return;
+    }
+    if(currentView==='resurface'){
+      const picked=pickResurface(await Store.allEvents());
+      if(picked.length===0){
+        commit(`<div class="empty"><div class="icon">[ ]</div><div>${t('resurface.empty')}</div><div class="hint">${t('resurface.hint')}</div></div>`);return;
+      }
+      commit(`<div class="hint-text" id="resurface-hint">${t('resurface.hint')}</div>`+picked.map(({ev})=>cardHtml(ev)).join(''));return;
     }
     if(currentView==='search'){
       if(!searchQuery){commit(`<div class="empty"><div class="icon">/</div><div>${currentLang==='ja'?'検索ワードを入力':'type to search'}</div></div>`);return;}
