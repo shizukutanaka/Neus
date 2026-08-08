@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-o4LofQeSrx1qBBmk4dWfC619mHvKzz2M2RgGli7RqBc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-xJL2DNjx57V5zGPzaVNDhGiLk1TOuATgWcitBMKoAEQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -311,10 +311,10 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
 .detail-title a:hover{color:var(--accent);}
 .detail-summary{background:var(--accent-dim);border-left:2px solid var(--accent);padding:10px 14px;font-size:13px;color:var(--fg);margin:16px 0;white-space:pre-wrap;}
 .detail-body{font-size:13px;color:var(--fg-2);margin-bottom:16px;white-space:pre-wrap;}
-.detail-vault-list{margin-bottom:14px;}
-.detail-vault-list a{display:block;padding:6px 10px;margin-bottom:4px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-mono);font-size:11px;color:var(--accent);text-decoration:none;}
-.detail-vault-list a:hover{border-color:var(--accent-line);}
-.detail-vault-list .vault-score{color:var(--fg-3);margin-left:8px;}
+.detail-vault-list,.detail-related-list{margin-bottom:14px;}
+.detail-vault-list a,.detail-related-list a{display:block;padding:6px 10px;margin-bottom:4px;background:var(--bg-3);border:1px solid var(--line);border-radius:var(--radius);font-family:var(--font-mono);font-size:11px;color:var(--accent);text-decoration:none;}
+.detail-vault-list a:hover,.detail-related-list a:hover{border-color:var(--accent-line);}
+.detail-vault-list .vault-score,.detail-related-list .vault-score{color:var(--fg-3);margin-left:8px;}
 
 .tag-input-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
 .tag-input-row .tag-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;background:var(--accent-dim);border:1px solid var(--accent-line);border-radius:10px;font-family:var(--font-mono);font-size:10px;color:var(--accent);}
@@ -764,6 +764,8 @@ const CONFIG = Object.freeze({
   // 多すぎると「また溜まった山」になり再浮上の意味を失うため少数に絞る。
   // ピークを持たせる理由は下の pickResurface のコメント(spacing effect の逆U字)参照。
   resurfaceAfterMs:7*24*60*60*1000, resurfacePeakMs:30*24*60*60*1000, resurfaceMax:5,
+  // RELATED: 詳細を開いた時に辿れる関連アイテムの上限。多いと「連想の小径」でなく雑音になる。
+  relatedMax:3,
   presetSources:[
     {name:'Hacker News',     url:'https://news.ycombinator.com/rss'},
     {name:'GitHub Blog',     url:'https://github.blog/feed/'},
@@ -861,6 +863,7 @@ const DICT={
     'detail.note.ph':'自分のメモ',
     'detail.tag.ph':'タグを追加してEnter',
     'detail.vaultnotes':'関連Vaultノート',
+    'detail.related':'関連アイテム',
     'detail.vault':'Vaultへ書き出し',
     'detail.resummarize':'再要約',
     'detail.copy':'MDをコピー',
@@ -984,6 +987,7 @@ const DICT={
     'detail.note.ph':'your note',
     'detail.tag.ph':'add tag + Enter',
     'detail.vaultnotes':'RELATED VAULT NOTES',
+    'detail.related':'RELATED ITEMS',
     'detail.vault':'EXPORT TO VAULT',
     'detail.resummarize':'RE-SUMMARIZE',
     'detail.copy':'COPY MD',
@@ -2716,6 +2720,32 @@ function bigramCoverageHits(text,events){
   return hits.sort((a,b)=>b.score-a.score).slice(0,3);
 }
 function falsifierHits(word,events){return bigramCoverageHits(word.falsifier,events);}
+// 関連イベント(associative trail)。Bush の Memex が示した「連想の小径」— 分類ではなく意味的な
+// 近さで情報同士を辿れること。Luhmann の Zettelkasten も同型で、"serendipity" に見えるものは
+// 実際には意味的関係が導いた必然とされる。Neus は収集も検索も持つが、「いま読んでいる物」から
+// 「手元にある関連物」へ辿る経路が無く、能動的に検索語を思いつけた時しか繋がらなかった。
+//
+// 重要: `links[]` へ書き込まない。FEATURE-AUDIT §1-3 が ADR ゲートにしているのは links[] の
+// 意味論変更(現在は「同一記事の別URL」)であって、ここは Falsifier Watch と同じく描画時に
+// 導出するだけなのでデータモデルは不変。永続的な関連リンク生成は引き続き ADR 待ち。
+//
+// 類似度は新規実装せず FTSIndex.search を再利用する。既に BM25 の IDF 概念で重み付け済みで、
+// ありふれた gram を下げ稀少な gram を強調するため "more like this" にそのまま適した性質を持つ
+// (CLAUDE.md: 既存実装があるなら新規コードを足さない)。閾値も search 側の ftsScoreMin に従い、
+// 雑音を出すくらいなら0件を返す。
+async function relatedEvents(ev,limit=CONFIG.relatedMax){
+  if(!ev||!ev.content||!ev.content.title)return[];
+  const linked=new Set(ev.links||[]);
+  const out=[];
+  for(const h of FTSIndex.search(ev.content.title,limit*5)){
+    if(out.length>=limit)break;
+    if(h.id===ev.id||h.id.startsWith('word:'))continue;
+    const other=await Store.getEvent(h.id);
+    if(!other||other.state.archived||linked.has(other.url))continue;
+    out.push({ev:other,score:h.score});
+  }
+  return out;
+}
 // 問いの手がかり(Question Watch): falsifierHits と対称な機構。未解決の問い(アポリア)は
 // これまで受動的なテキストで、該当しうる証拠が届いても人が手動で見比べるしかなかった。
 // 同じ被覆率照合を問いのテキストに適用し、未解決の問いにも能動センサーを与える。
@@ -3975,6 +4005,9 @@ function bindDetailTagInput(){$('#tag-input').addEventListener('keydown',(e)=>{i
 $('#detail-card').addEventListener('click',(e)=>{
   const rm=e.target.closest('[data-tag-rm]');if(rm){detailTags.splice(+rm.dataset.tagRm,1);refreshDetailTagsRow();}
   const promote=e.target.closest('[data-auto-promote]');if(promote){const t2=promote.dataset.autoTag;if(!detailTags.includes(t2))detailTags.push(t2);refreshDetailTagsRow();promote.style.display='none';}
+  // 関連アイテムを辿る(連想の小径)。未保存の編集を破棄しないよう、そのまま差し替える。
+  const rel=e.target.closest('[data-related-id]');
+  if(rel){e.preventDefault();Store.getEvent(rel.dataset.relatedId).then(next=>{if(next)openDetailModal(next);}).catch(err=>console.warn('[related-open]',err));}
 });
 
 async function openDetailModal(ev){
@@ -3984,11 +4017,17 @@ async function openDetailModal(ev){
   const summary=ev.content.summary?`<div class="detail-summary">${escapeHtml(ev.content.summary)}</div>`:'';
   const snippet=ev.content.snippet?`<div class="detail-body">${escapeHtml(ev.content.snippet)}</div>`:'';
   const vaultHtml=vaultLinks.length?`<h4>${t('detail.vaultnotes')}</h4><div class="detail-vault-list">${vaultLinks.map(l=>{const p=l.slice(6);const n=p.split('/').pop().replace(/\.md$/,'');return`<a href="#" data-vault-path="${escapeAttr(p)}">[[${escapeHtml(n)}]]<span class="vault-score">${escapeHtml(p)}</span></a>`;}).join('')}</div>`:'';
+  // 関連は派生値(非永続)。取得失敗しても詳細表示自体は壊さない。
+  let relatedHtml='';
+  try{
+    const rel=await relatedEvents(ev);
+    if(rel.length)relatedHtml=`<h4>${t('detail.related')}</h4><div class="detail-related-list">${rel.map(({ev:r})=>`<a href="#" data-related-id="${escapeAttr(r.id)}">${escapeHtml(r.content.title)}<span class="vault-score">${escapeHtml(r.source.name)}</span></a>`).join('')}</div>`;
+  }catch(err){console.warn('[relatedEvents]',err);}
   $('#detail-card').innerHTML=`
     <h3 id="hd-detail">${t('detail.title')}</h3>
     <div class="detail-meta"><span class="accent">${escapeHtml(ev.source.name)}</span><span>${fmtTime(ev.publishedAt||ev.timestamp)}</span>${ev.meta.author?`<span>${escapeHtml(ev.meta.author)}</span>`:''}</div>
     <h2 class="detail-title"><a href="${escapeHtml(safeHref(ev.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.content.title)}</a></h2>
-    ${summary}${snippet}${vaultHtml}
+    ${summary}${snippet}${vaultHtml}${relatedHtml}
     <h4>${t('detail.usertags')}</h4>
     <div class="tag-input-row" id="user-tags-row">${renderTagChips(detailTags)}<input type="text" id="tag-input" maxlength="50" placeholder="${escapeAttr(t('detail.tag.ph'))}"></div>
     ${autoTags.length?`<h4>${t('detail.autotags')}</h4><div class="tag-input-row" id="auto-tags-row">${autoTags.map((tg,i)=>`<span class="tag-chip" data-auto-promote="${i}" data-auto-tag="${escapeAttr(tg)}" style="cursor:pointer;">${escapeHtml(tg)}</span>`).join('')}</div>`:''}
