@@ -30,9 +30,33 @@ const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 const CONFIG = { dedupTitleThreshold: 0.8, dedupCjkTitleThreshold: 0.75 };
 
 // Mirrors tokenize / jaccard / fsBigrams / titleDupSim in index.html.
+const CJK_RE = new RegExp('[\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff]');
+function charKind(ch) {
+  const c = ch.codePointAt(0);
+  if (c >= 0x3040 && c <= 0x309f) return 'hira';
+  if (c >= 0x30a0 && c <= 0x30ff) return 'kata';
+  if ((c >= 0x4e00 && c <= 0x9fff) || (c >= 0x3400 && c <= 0x4dbf)) return 'han';
+  return 'other';
+}
+function scriptRuns(word) {
+  const out = []; let cur = '', prev = '';
+  for (const ch of word) {
+    const k = charKind(ch);
+    if (cur && k !== prev) { out.push(cur); cur = ''; }
+    cur += ch; prev = k;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
 function tokenize(text) {
   if (!text) return [];
-  return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length >= 2 && w.length <= 30);
+  const words = text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean);
+  const out = [];
+  for (const w of words) {
+    if (CJK_RE.test(w)) for (const r of scriptRuns(w)) out.push(r);
+    else out.push(w);
+  }
+  return out.filter(w => w.length >= 2 && w.length <= 30);
 }
 function jaccard(A, B) {
   if (A.size === 0 && B.size === 0) return 0;
@@ -43,7 +67,6 @@ function fsBigrams(text) {
   const s = String(text || '').toLowerCase().replace(/\s+/g, '');
   const g = new Set(); for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2)); return g;
 }
-const CJK_RE = /[぀-ヿ㐀-䶿一-鿿豈-﫿]/;
 function titleDupSim(newTitle, newTok, oldTitle) {
   const tok = jaccard(newTok, new Set(tokenize(oldTitle)));
   if (tok >= CONFIG.dedupTitleThreshold) return tok;
@@ -54,11 +77,19 @@ function titleDupSim(newTitle, newTok, oldTitle) {
 const dup = (a, b) => titleDupSim(a, new Set(tokenize(a)), b) > 0;
 
 describe('CJK dedup — the regression this fixes', () => {
-  it('token jaccard genuinely fails on Japanese (the root cause)', () => {
-    // Documents WHY the fallback is needed: whitespace tokenization cannot segment Japanese.
+  it('tokenize() now segments Japanese instead of emitting one opaque blob', () => {
+    // Round 37 taught tokenize() to split CJK on script boundaries, which by itself lifted
+    // this pair to the 0.8 token threshold — it no longer depends on the bigram fallback.
     const a = 'Rustの所有権を理解する', b = 'Rustの所有権を理解する【入門】';
-    expect(tokenize(a)).toHaveLength(1);                       // whole headline = one token
-    expect(jaccard(new Set(tokenize(a)), new Set(tokenize(b)))).toBeLessThan(CONFIG.dedupTitleThreshold);
+    expect(tokenize(a).length).toBeGreaterThan(1);
+    expect(jaccard(new Set(tokenize(a)), new Set(tokenize(b)))).toBeGreaterThanOrEqual(CONFIG.dedupTitleThreshold);
+  });
+
+  it('the bigram fallback still carries pairs the token path cannot reach', () => {
+    // Not redundant with the tokenizer fix: these land below 0.8 on tokens.
+    const a = 'TypeScript 5.0 の新機能まとめ', b = 'TypeScript 5.0の新機能まとめ';
+    expect(jaccard(fsBigrams(a), fsBigrams(b))).toBeGreaterThanOrEqual(CONFIG.dedupCjkTitleThreshold);
+    expect(dup(a, b)).toBe(true);
   });
 
   it('now catches a Japanese near-duplicate that was previously missed entirely', () => {
@@ -115,15 +146,20 @@ describe('CJK dedup — English behaviour is unchanged', () => {
 });
 
 describe('CJK dedup — deliberate, documented misses (conservative by design)', () => {
-  // These are true duplicates the conservative threshold does NOT catch. Recorded so the
-  // trade-off is explicit rather than an unknown gap: lowering the threshold to catch them
-  // would leave only ~0.04 margin above the closest distinct pair (0.563).
+  // True duplicates that neither path catches. Recorded so the trade-off stays an explicit
+  // decision rather than an unknown gap: lowering the bigram threshold to reach them would
+  // leave only ~0.04 margin above the closest distinct pair (0.563).
+  // NOTE: round 37's CJK tokenizer shrank this list — 'React 19の新機能を解説 - Qiita' now
+  // reaches 0.800 on the token path and IS caught, so it moved out of here.
   it.each([
-    ['React 19の新機能を解説', 'React 19の新機能を解説 - Qiita'],
-    ['Goの並行処理入門', 'Goの並行処理入門 | Zenn'],
-    ['Dockerではじめる開発環境構築', 'Dockerではじめる開発環境構築【2026年版】'],
+    ['Goの並行処理入門', 'Goの並行処理入門 | Zenn'],                          // tokens 0.667 / bigrams 0.615
+    ['Dockerではじめる開発環境構築', 'Dockerではじめる開発環境構築【2026年版】'], // tokens 0.600 / bigrams 0.667
   ])('still misses the source-suffix variant: %s', (a, b) => {
     expect(dup(a, b)).toBe(false);
+  });
+
+  it('round 37 tokenizer newly catches a suffix variant the previous round could not', () => {
+    expect(dup('React 19の新機能を解説', 'React 19の新機能を解説 - Qiita')).toBe(true);
   });
 });
 

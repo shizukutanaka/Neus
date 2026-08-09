@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-aIdd61vE1Wkiy6BuGqvovyLf0E6QRzqVUCPMBCJR5Rs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-hxJGItWi7C4tCZve5PW6fyn+jXkcToO3GClTQq+tXlc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1131,9 +1131,44 @@ const mdEsc=(s)=>(s||'').replace(/\[/g,'\\[').replace(/\]/g,'\\]');
 const mdLink=(title,url)=>{const safe=url?safeHref(url):'';return safe&&safe!=='#'?`[${mdEsc(title)}](<${safe}>)`:`**${mdEsc(title)}**`;};
 const mdImgLink=(alt,url)=>{const safe=url?safeHref(url):'';return safe&&safe!=='#'?`![${mdEsc(alt)}](<${safe}>)`:'';};
 
+const CJK_RE=/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
+// 字種(ひらがな/カタカナ/漢字/その他)の判定。CJK の語境界近似に使う。
+function charKind(ch){
+  const c=ch.codePointAt(0);
+  if(c>=0x3040&&c<=0x309f)return 'hira';
+  if(c>=0x30a0&&c<=0x30ff)return 'kata';
+  if((c>=0x4e00&&c<=0x9fff)||(c>=0x3400&&c<=0x4dbf))return 'han';
+  return 'other';
+}
+// 字種が切り替わる位置で分割する。
+function scriptRuns(word){
+  const out=[];let cur='',prev='';
+  for(const ch of word){
+    const k=charKind(ch);
+    if(cur&&k!==prev){out.push(cur);cur='';}
+    cur+=ch;prev=k;
+  }
+  if(cur)out.push(cur);
+  return out;
+}
+// CJK は単語境界に空白が無いため、空白分割だけだと見出し全体が1トークンになり、
+// 「トークンの重なり」に依存する機能 — TagLearner(タグ推定)/ InterestProfile(興味学習)/
+// VaultMatcher(ノート照合)/ 近似重複 — が日本語でまったく効かなかった。
+// 実測: 日本語記事3件で学習したタグモデルと、同じタグが付くべき4件目の重なりは常に 0
+// (英語では 3)。形態素解析器はゼロ依存原則により導入できないため、字種の切り替わりを
+// 語境界の近似として使う。日本語は助詞がひらがな・内容語が漢字/カタカナに寄るため、この
+// 単純な規則でも内容語をよく拾える。
+//   「Rustの所有権とライフタイム入門」-> rust / 所有権 / ライフタイム / 入門
+// 1文字トークン(助詞など)は既存の length>=2 フィルタで落ちる。
 function tokenize(text){
   if(!text)return[];
-  return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(w=>w.length>=2&&w.length<=30);
+  const words=text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(Boolean);
+  const out=[];
+  for(const w of words){
+    if(CJK_RE.test(w))for(const r of scriptRuns(w))out.push(r);
+    else out.push(w);
+  }
+  return out.filter(w=>w.length>=2&&w.length<=30);
 }
 
 function jaccard(A,B){
@@ -1153,7 +1188,6 @@ function jaccard(A,B){
 // 意図的に保守的であり、取りこぼし(サフィックス違い等 0.6〜0.73)は許容する。損失が非対称で、
 //  - 重複の見逃し → 似たカードが2枚並ぶだけ。可逆で、本人にも見える。
 //  - 別記事の誤merge → 受信側は破棄され links に足されるだけ。不可逆で、本人に見えない。
-const CJK_RE=/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/;
 // 重複なら類似度(>0)を、重複でなければ 0 を返す。
 function titleDupSim(newTitle,newTok,oldTitle){
   const tok=jaccard(newTok,new Set(tokenize(oldTitle)));
