@@ -547,11 +547,14 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
       <option value="anthropic">Anthropic (Claude)</option>
       <option value="openai">OpenAI (GPT)</option>
       <option value="gemini">Google (Gemini)</option>
+      <option value="qwen">Alibaba (Qwen)</option>
+      <option value="gemma">Google (Gemma 4)</option>
+      <option value="glm">Zhipu (GLM)</option>
     </select>
     <label for="set-byok-model">モデル</label>
-    <input type="text" id="set-byok-model" placeholder="claude-haiku-4-5-20251001">
+    <input type="text" id="set-byok-model" placeholder="claude-haiku-4-5-20251001 / gpt-4o-mini / glm-4.7-flash">
     <label for="set-byok-key">APIキー</label>
-    <input type="password" id="set-byok-key" placeholder="sk-... / sk-ant-... / AI...">
+    <input type="password" id="set-byok-key" placeholder="sk-... / sk-ant-... / AI... / DashScope / Zhipu">
     <label for="set-byok-budget">日次予算(リクエスト数)</label>
     <input type="number" id="set-byok-budget" min="0" value="100">
 
@@ -750,6 +753,12 @@ const CONFIG = Object.freeze({
     anthropic:{ model:'claude-haiku-4-5-20251001', endpoint:'https://api.anthropic.com/v1/messages' },
     openai:   { model:'gpt-4o-mini',               endpoint:'https://api.openai.com/v1/chat/completions' },
     gemini:   { model:'gemini-1.5-flash',          endpoint:'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent' },
+    // Qwen (Alibaba Cloud DashScope) — OpenAI-compatible mode
+    qwen:     { model:'qwen-plus',                 endpoint:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions' },
+    // Gemma 4 — served via Google AI Studio / Vertex AI Gemini-compatible API
+    gemma:    { model:'gemma-4-flash',            endpoint:'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent' },
+    // GLM (Zhipu AI) — OpenAI-compatible endpoint
+    glm:      { model:'glm-4.7-flash',             endpoint:'https://open.bigmodel.cn/api/paas/v4/chat/completions' },
   },
   summaryPrompt:'Summarize the following article in 3 short bullet points (each <= 20 words). Match the source language. Output bullets only, no preamble.\n\nTitle: {title}\n\nContent:\n{content}',
   tagLearnMinFreq:3, tagSuggestMax:3,
@@ -800,7 +809,7 @@ const DICT={
     'onboard.pass.title':'STEP 2 — パスフレーズ(任意)',
     'onboard.pass.desc':'起動時のパスフレーズでAPIキーをAES-GCM暗号化する。現バージョンでスキップ可。後から設定画面で設定できる。',
     'onboard.byok.title':'STEP 3 — AI要約(任意)',
-    'onboard.byok.desc':'OpenAI/Anthropic/GeminiのAPIキーを登録すると各Eventを自動要約する。後から設定可。',
+    'onboard.byok.desc':'OpenAI/Anthropic/Gemini/Qwen/Gemma/GLMのAPIキーを登録すると各Eventを自動要約する。後から設定可。',
     'onboard.preset.title':'STEP 4 — 初期ソース',
     'onboard.preset.desc':'購読ソースを選択。後からOPML取込やURL追加も可。',
     'onboard.vault.title':'STEP 5 — Obsidian Vault(任意)',
@@ -924,7 +933,7 @@ const DICT={
     'onboard.pass.title':'STEP 2 — Passphrase (optional)',
     'onboard.pass.desc':'Encrypt your API key with a passphrase using AES-GCM. You can skip this or configure it later in Settings.',
     'onboard.byok.title':'STEP 3 — AI Summary (optional)',
-    'onboard.byok.desc':'Enter an API key to enable automatic article summaries. Configurable later in Settings.',
+    'onboard.byok.desc':'Enter an API key (OpenAI / Anthropic / Gemini / Qwen / Gemma / GLM) to enable automatic article summaries. Configurable later in Settings.',
     'onboard.preset.title':'STEP 4 — Starter Sources',
     'onboard.preset.desc':'Choose sources to subscribe to. You can add more via OPML or URL later.',
     'onboard.vault.title':'STEP 5 — Obsidian Vault (optional)',
@@ -2527,6 +2536,12 @@ const Summarizer=(()=>{
   async function callAnthropic(prompt,s){const res=await fetch(CONFIG.byokDefaults.anthropic.endpoint,{method:'POST',headers:{'content-type':'application/json','x-api-key':s,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.anthropic.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`anthropic_${res.status}`);return((await res.json()).content?.[0]?.text||'');}
   async function callOpenAI(prompt,s){const res=await fetch(CONFIG.byokDefaults.openai.endpoint,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.openai.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`openai_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
   async function callGemini(prompt,s){const model=(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.gemini.model;const url=CONFIG.byokDefaults.gemini.endpoint.replace('{model}',model)+`?key=${encodeURIComponent(s)}`;const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:400}})});if(!res.ok)throw new Error(`gemini_${res.status}`);return((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'');}
+  // Qwen (DashScope) — OpenAI-compatible chat/completions
+  async function callQwen(prompt,s){const res=await fetch(CONFIG.byokDefaults.qwen.endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.qwen.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`qwen_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
+  // Gemma 4 — Google AI Studio / Vertex AI Gemini-compatible generateContent
+  async function callGemma(prompt,s){const model=(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.gemma.model;const url=CONFIG.byokDefaults.gemma.endpoint.replace('{model}',model)+`?key=${encodeURIComponent(s)}`;const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:400}})});if(!res.ok)throw new Error(`gemma_${res.status}`);return((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'');}
+  // GLM (Zhipu AI) — OpenAI-compatible chat/completions
+  async function callGlm(prompt,s){const res=await fetch(CONFIG.byokDefaults.glm.endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.glm.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`glm_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
   async function summarize(ev){
     if(!loaded)await load();
     await resetIfNewDay();const s=await Store.getSetting('byok');
@@ -2540,7 +2555,7 @@ const Summarizer=(()=>{
     }
     const prompt=CONFIG.summaryPrompt.replace('{title}',ev.content.title).replace('{content}',(ev.content.body||ev.content.snippet||'').slice(0,4000));
     let text;
-    try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){Bus.publish('summarizer.error',{ev,error:err.message});return null;}
+    try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else if(s.provider==='qwen')text=await callQwen(prompt,apiKey);else if(s.provider==='gemma')text=await callGemma(prompt,apiKey);else if(s.provider==='glm')text=await callGlm(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){Bus.publish('summarizer.error',{ev,error:err.message});return null;}
     dailyCount++;await persist();return text.trim();
   }
   return{summarize,getDailyCount:()=>dailyCount,load};
