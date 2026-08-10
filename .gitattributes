@@ -1,0 +1,9 @@
+# Tests assert on exact source substrings with LF newlines (tests/*.test.mjs).
+# A CRLF checkout (core.autocrlf=true on Windows) breaks those assertions,
+# so pin the working tree to LF for all text files.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
