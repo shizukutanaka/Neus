@@ -20,6 +20,9 @@ describe('BYOK provider config (byokDefaults)', () => {
   it('declares glm with Zhipu OpenAI-compatible endpoint', () => {
     expect(html).toContain("glm:      { model:'glm-4.7-flash',             endpoint:'https://open.bigmodel.cn/api/paas/v4/chat/completions' }");
   });
+  it('declares ollama with local OpenAI-compatible endpoint', () => {
+    expect(html).toContain("ollama:   { model:'llama3',                     endpoint:'http://localhost:11434/v1/chat/completions' }");
+  });
 });
 
 describe('BYOK call functions', () => {
@@ -32,6 +35,9 @@ describe('BYOK call functions', () => {
   it('defines callGlm (OpenAI-compatible)', () => {
     expect(html).toContain("async function callGlm(prompt,s){");
   });
+  it('defines callOllama (local LLM, OpenAI-compatible)', () => {
+    expect(html).toContain("async function callOllama(prompt,s){");
+  });
 });
 
 describe('BYOK dispatch branch', () => {
@@ -39,6 +45,9 @@ describe('BYOK dispatch branch', () => {
     expect(html).toContain("else if(s.provider==='qwen')text=await callQwen(prompt,apiKey)");
     expect(html).toContain("else if(s.provider==='gemma')text=await callGemma(prompt,apiKey)");
     expect(html).toContain("else if(s.provider==='glm')text=await callGlm(prompt,apiKey)");
+  });
+  it('routes ollama to callOllama', () => {
+    expect(html).toContain("else if(s.provider==='ollama')text=await callOllama(prompt,apiKey)");
   });
 });
 
@@ -48,13 +57,17 @@ describe('BYOK provider <select> options', () => {
     expect(html).toContain('<option value="gemma">Google (Gemma 4)</option>');
     expect(html).toContain('<option value="glm">Zhipu (GLM)</option>');
   });
+  it('offers Local (Ollama) in both settings and onboarding dropdowns', () => {
+    expect(html).toContain('<option value="ollama">Local (Ollama)</option>');
+    expect(html).toContain('<option value="ollama">Local (Ollama)</option>');
+  });
 });
 
 describe('BYOK i18n copy mentions new providers', () => {
-  it('ja onboard copy lists all six providers', () => {
-    expect(html).toContain("'onboard.byok.desc':'OpenAI/Anthropic/Gemini/Qwen/Gemma/GLMのAPIキーを登録すると各Eventを自動要約する。後から設定可。'");
+  it('ja onboard copy lists all seven providers', () => {
+    expect(html).toContain("'onboard.byok.desc':'OpenAI/Anthropic/Gemini/Qwen/Gemma/GLM/Ollama(ローカル)のAPIキーを登録すると各Eventを自動要約する。後から設定可。'");
   });
-  it('en onboard copy lists all six providers', () => {
-    expect(html).toContain("'onboard.byok.desc':'Enter an API key (OpenAI / Anthropic / Gemini / Qwen / Gemma / GLM) to enable automatic article summaries. Configurable later in Settings.'");
+  it('en onboard copy lists all seven providers', () => {
+    expect(html).toContain("'onboard.byok.desc':'Enter an API key (OpenAI / Anthropic / Gemini / Qwen / Gemma / GLM / local Ollama) to enable automatic article summaries. Configurable later in Settings.'");
   });
 });
