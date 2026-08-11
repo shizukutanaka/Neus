@@ -6,6 +6,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+- **BYOK の追加プロバイダ (Qwen / GLM / Ollama) が CSP に阻まれて到達不能だった**: v0.13.0 で `CONFIG.byokDefaults` に qwen (`dashscope.aliyuncs.com`) / glm (`open.bigmodel.cn`) / ollama (`localhost:11434`) を追加したが、CSP を生成する `scripts/compute-csp-hash.mjs` の `connect-src` は当初3プロバイダぶんがハードコードされたままで更新されていなかった。結果 `_headers` と index.html の meta CSP の双方が新プロバイダのオリジンを許可せず、要約リクエストはブラウザにブロックされる(テストは fetch をモックするため素通りし、release ゲートも緑のままだった)。`connect-src` を index.html の `endpoint:` 宣言から**導出**する方式に変更し、プロバイダを足せば許可オリジンが自動追従するようにした(1件も抽出できなければ CSP を狭めずエラー終了)。回帰テスト `tests/csp-connect-src.test.mjs` を追加 / Fixed CSP connect-src silently blocking the Qwen/GLM/Ollama BYOK providers by deriving the directive from the declared endpoints instead of a hard-coded list
+
 ## [v0.13.0] - 2026-08-11
 
 ### Changed

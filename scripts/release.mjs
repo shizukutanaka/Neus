@@ -66,12 +66,15 @@ for (const step of steps) {
   } catch (err) {
     console.log('FAIL');
     console.error(`  ${err.message.split('\n')[0]}`);
-    // Surface the child process output; without it a failing gate is undiagnosable.
-    const out = [err.stdout, err.stderr]
-      .map(b => (b ? b.toString().trim() : ''))
-      .filter(Boolean)
-      .join('\n');
-    if (out) console.error(out.split('\n').slice(-40).map(l => `  | ${l}`).join('\n'));
+    // Surface the child's output; without it a failing gate is undiagnosable.
+    // stderr last (and uncapped-ish) — that is where the actual cause lands.
+    const tail = (b, n) => {
+      const s = b ? b.toString().trim() : '';
+      return s ? s.split('\n').slice(-n).map(l => `  | ${l}`).join('\n') : '';
+    };
+    for (const line of [tail(err.stdout, 20), tail(err.stderr, 80)]) {
+      if (line) console.error(line);
+    }
     failed++;
     if (!step.allowFail) break;
   }

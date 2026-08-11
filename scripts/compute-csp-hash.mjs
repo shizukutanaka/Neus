@@ -42,7 +42,22 @@ const scriptSrc = `script-src 'self' ${[...scriptHashes].join(' ')}`;
 // To fully harden style-src, we'd need to eliminate all `element.style.X = ...` mutations.
 const styleSrc = `style-src 'self' 'unsafe-inline'`; // pragmatic: keep style for now (dynamic styles ubiquitous)
 
-const newCSP = `Content-Security-Policy: default-src 'self'; ${scriptSrc}; ${styleSrc} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests`;
+// connect-src must cover every BYOK provider endpoint declared in index.html's
+// CONFIG.byokDefaults. Deriving it (instead of hard-coding) keeps CSP from
+// silently blocking a provider added later — qwen/glm/ollama were added in
+// v0.13.0 and were unreachable because this list was not updated.
+const byokOrigins = new Set();
+for (const m of html.matchAll(/endpoint\s*:\s*'(https?:\/\/[^'\/]+)/g)) {
+  byokOrigins.add(m[1]);
+}
+const connectSrc = ["'self'", ...[...byokOrigins].sort(), 'https://*.workers.dev'].join(' ');
+if (byokOrigins.size === 0) {
+  console.error('ERROR: no BYOK endpoints found in index.html — refusing to emit a narrowed connect-src');
+  process.exit(1);
+}
+console.log(`connect-src origins: ${byokOrigins.size}`);
+
+const newCSP = `Content-Security-Policy: default-src 'self'; ${scriptSrc}; ${styleSrc} https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src ${connectSrc}; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests`;
 
 // Patch _headers
 const headers = readFileSync('_headers', 'utf8');
