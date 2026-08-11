@@ -33,7 +33,10 @@ describe('axe-core — WCAG 2.0/2.1/2.2 A/AA compliance', () => {
         rules: { 'color-contrast': { enabled: false } },
       }, (err, r) => err ? reject(err) : resolve(r));
     });
-  }, 30000);
+    // 120s, not 30s: parsing a 350KB index.html into JSDOM and running the full
+    // axe ruleset takes ~16s alone, but 3-5x that when the suite's other 78 files
+    // are competing for CPU — the old budget made the whole run flaky, not this test.
+  }, 120000);
 
   it('axe-core executes without crash', () => {
     expect(results).toBeTruthy();
