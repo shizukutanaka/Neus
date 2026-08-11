@@ -6,6 +6,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [v0.13.0] - 2026-08-11
+
 ### Changed
 - **暗黙の興味学習の「抑制」を昇格より弱くした(非対称化、round 35)**: `InterestProfile` は star/archive から学習した語彙の極性で `meta.score` を最大 ±25 補正していたが、**抑制側が昇格側と同じ強さ**だった。これは推薦研究がフィルターバブル/エコーチェンバーとして報告する構造(personalization が関連性を優先して多様性を犠牲にし確証バイアスを強化する)そのもので、**反証条件を能動監視する Falsifier Watch を看板に据える本プロダクトの設計思想と自己矛盾**していた。しかも補正は ingest 時に score へ焼き込まれ永続する(語彙は減衰するが沈められたイベントは戻らない)。損失が非対称であること — 誤って持ち上げれば読み飛ばすだけ(可逆・可視)だが、誤って沈めればそもそも出会わない(不可逆・不可視) — を根拠に、`interestPenaltyMax`(=10)を新設して抑制側の上限のみ絞った。学習の符号は保たれるため「嫌いなものが下がる」挙動は失われない。明示的な抑制は従来どおり KeywordRules の block(ユーザーが書き・見え・編集できる)が担う / Made implicit interest-learning suppression weaker than promotion (asymmetric cap), so learned dislikes can no longer bury dissenting items as hard as the app's own falsifier-driven design fights confirmation bias
 

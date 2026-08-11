@@ -66,6 +66,12 @@ for (const step of steps) {
   } catch (err) {
     console.log('FAIL');
     console.error(`  ${err.message.split('\n')[0]}`);
+    // Surface the child process output; without it a failing gate is undiagnosable.
+    const out = [err.stdout, err.stderr]
+      .map(b => (b ? b.toString().trim() : ''))
+      .filter(Boolean)
+      .join('\n');
+    if (out) console.error(out.split('\n').slice(-40).map(l => `  | ${l}`).join('\n'));
     failed++;
     if (!step.allowFail) break;
   }
