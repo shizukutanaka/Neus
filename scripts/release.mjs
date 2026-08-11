@@ -22,8 +22,8 @@ const steps = [
   }},
   { name: 'CSP hash regeneration', cmd: 'node scripts/compute-csp-hash.mjs' },
   { name: 'JS syntax check', cmd: 'node --check _worker.js && node --check sw.js' },
-  { name: 'HTML integrity (52 checks)', cmd: 'node scripts/check-html.mjs' },
-  { name: 'Vitest (148 tests)', cmd: 'npm test --silent' },
+  { name: 'HTML integrity (83 checks)', cmd: 'node scripts/check-html.mjs' },
+  { name: 'Vitest (1399 tests)', cmd: 'npm test --silent' },
   { name: 'npm audit (0 vulnerabilities)', cmd: 'npm audit --audit-level=high', allowFail: false },
   { name: 'CHANGELOG has version section', fn: () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'));

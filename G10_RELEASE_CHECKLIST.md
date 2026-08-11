@@ -8,7 +8,7 @@
 | # | 項目 | 判定 | メモ |
 |---|------|------|------|
 | G10.01 | Linter 警告ゼロ(`npm run lint` / `npm run lint:html`) | ☐ | |
-| G10.02 | 自動テスト全通過(`npm test`、カバレッジ ≥ 80%) | ☐ | 1,277 tests passing(カバレッジは `npm run test:coverage` で確認) |
+| G10.02 | 自動テスト全通過(`npm test`、カバレジ ≥ 80%) | ☐ | 1,399 tests passing(カバレジは `npm run test:coverage` で確認) |
 | G10.03 | 脆弱性スキャン完了(Critical/High ゼロ) | ☐ | |
 | G10.04 | クロスレビュー完了(独立判定2名) | ☐ | 監査ラウンド 6–31 を `SPEC.md` §10 に記録 |
 | G10.05 | ドキュメント最終確認(README / LICENSE / Schema / UX) | ☐ | |
