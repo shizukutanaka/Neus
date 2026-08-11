@@ -253,7 +253,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
 .card .actions button.vault-btn.done{opacity:.5;}
 
 .empty{text-align:center;padding:80px 20px;color:var(--fg-3);font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;}
-.empty .icon{font-size:32px;margin-bottom:16px;opacity:.4;}
+.empty .icon{font-size:32px;margin-bottom:16px;color:var(--fg-2);opacity:.6;}
 .empty .hint{margin-top:12px;color:var(--fg-2);}
 .empty button{margin-top:20px;padding:10px 20px;font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;color:var(--accent);border:1px solid var(--accent-line);border-radius:var(--radius);}
 
@@ -477,7 +477,7 @@ kbd{display:inline-block;padding:2px 8px;background:var(--bg-3);border:1px solid
 </div>
 
 <!-- Onboarding -->
-<div class="onboarding" id="onboarding">
+<div class="onboarding" id="onboarding" role="dialog" aria-modal="true" aria-label="Setup / Onboarding">
   <div class="onboard-card">
     <div class="onboard-header"><div class="onboard-brand">NEUS</div><div class="onboard-steps" id="onboard-dots"></div></div>
     <div class="onboard-title" id="onboard-step-label"></div>
