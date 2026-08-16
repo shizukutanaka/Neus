@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-IBeuTh+eeAIQOJGc4lAMATk7h8TRd1tiUVisoxFwtQM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-IA47tIXbZ6LIVvrJSFumT0VEuzZE38MOexu1/N+hEJg='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2371,6 +2371,9 @@ const TagLearner=(()=>{
   // ニュースは固有名詞(人名/組織/製品)が興味の核。学習タグが無い初期段階の補完として、
   // タイトルから大文字始まり連続語(英語)とカタカナ語(日本語)を抽出。ゼロ依存・軽量。
   const STOP=new Set(['The','A','An','This','That','These','Those','I','We','You','It','He','She','They','But','And','Or','For','In','On','At','To','Of','With','How','Why','What','When','Where','Who','New','Why','Is','Are','Was','Were','Will','Can']);
+  // 日本語見出しに頻出する一般語。漢字ラン**全体**との完全一致のみ落とすため、
+  // 「機械学習」「最新動向」のような複合語は残る(英語 STOP と対称の設計)。
+  const JA_STOP=new Set(['入門','基礎','応用','解説','理解','方法','対策','活用','紹介','実践','最新','徹底','完全','比較','考察','事例','初心','必見','注意','以下','場合','使用','利用','設定','確認','作成','実装','導入']);
   function extractEntities(title){
     if(!title)return[];
     const out=new Set();
@@ -2391,6 +2394,16 @@ const TagLearner=(()=>{
     // 日本語: カタカナ語(3文字以上の固有名詞候補)
     const kataMatches=title.match(/[ァ-ヴー]{3,}/g)||[];
     for(const m of kataMatches)out.add(m);
+    // 日本語: 漢字複合語。用語抽出研究(Nakagawa らの複合名詞ベース termhood)が示すとおり、
+    // 日本語の技術用語の大半は漢語(漢字の連続)かカタカナ語で表される。カタカナ側しか
+    // 見ていなかったため「機械学習のための線形代数」のような見出しは抽出結果が空になり、
+    // 学習データが無い時のフォールバック(コールドスタート)が日本語で機能していなかった。
+    // ひらがな(助詞)が自然な区切りになるので、漢字ランを取るだけで複合語の境界が出る。
+    // 複合語ほど termhood が高いため長い順に採り、上限は既存の slice(0,3) を共有する。
+    const kanjiRuns=(title.match(/[一-鿿㐀-䶿]{2,10}/g)||[])
+      .filter(m=>!JA_STOP.has(m))
+      .sort((a,b)=>b.length-a.length);
+    for(const m of kanjiRuns)out.add(m);
     return[...out].slice(0,3);
   }
   async function rebuild(){
