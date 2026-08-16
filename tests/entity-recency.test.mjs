@@ -5,8 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-// === Mirror of TagLearner.extractEntities ===
+// === Mirror of TagLearner.extractEntities (stays in sync via ci check) ===
 const STOP = new Set(['The','A','An','This','That','These','Those','I','We','You','It','He','She','They','But','And','Or','For','In','On','At','To','Of','With','How','Why','What','When','Where','Who','New','Is','Are','Was','Were','Will','Can']);
+const JA_STOP = new Set(['入門','基礎','応用','解説','理解','方法','対策','活用','紹介','実践','最新','徹底','完全','比較','考察','事例','初心','必見','注意','以下','場合','使用','利用','設定','確認','作成','実装','導入']);
 function extractEntities(title) {
   if (!title) return [];
   const out = new Set();
@@ -24,6 +25,10 @@ function extractEntities(title) {
   }
   const kataMatches = title.match(/[ァ-ヴー]{3,}/g) || [];
   for (const m of kataMatches) out.add(m);
+  const kanjiRuns = (title.match(/[一-鿿㐀-䶿]{2,10}/g) || [])
+    .filter(m => !JA_STOP.has(m))
+    .sort((a, b) => b.length - a.length);
+  for (const m of kanjiRuns) out.add(m);
   return [...out].slice(0, 3);
 }
 
