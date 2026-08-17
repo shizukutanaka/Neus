@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-T7WcMz5nyTgDY+0WIhSPKDnsBiL+Zkrap3dhg1PBzPY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Nua8HXOIBc9/uvPf9w0wQk/EmpN6L7cLDU1Yxa/0kO0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -808,7 +808,7 @@ const DICT={
     'btn.import-opml':'OPML取込','btn.export-opml':'OPML出力',
     'btn.bookmarklet':'ブックマークレット','btn.select-vault':'Vault選択',
     'btn.rescan':'再スキャン','btn.disconnect':'切断','btn.export-all':'スター済みを一括書出',
-    'lbl.src-url':'RSS / Atom URL','search.placeholder':'タイトル・内容・タグを検索...',
+    'lbl.src-url':'RSS / Atom URL','search.placeholder':'検索... "完全一致" -除外 が使えます',
     'empty.inbox':'INBOXは空','empty.hint':'ソースを追加してPOLLを実行',
     'vault.hint':'Vaultフォルダを選択すると関連ノートを自動発見し、Markdownで書き出しできる。ファイル名のみ参照、本文不読取。',
     'lock.title':'ロック','lock.desc':'パスフレーズを入力してください。',
@@ -933,7 +933,7 @@ const DICT={
     'btn.import-opml':'IMPORT OPML','btn.export-opml':'EXPORT OPML',
     'btn.bookmarklet':'BOOKMARKLET','btn.select-vault':'SELECT VAULT',
     'btn.rescan':'RESCAN','btn.disconnect':'DISCONNECT','btn.export-all':'EXPORT ALL STARRED',
-    'lbl.src-url':'RSS / Atom URL','search.placeholder':'search title / snippet / tags...',
+    'lbl.src-url':'RSS / Atom URL','search.placeholder':'search... use "exact phrase" and -exclude',
     'empty.inbox':'inbox is empty','empty.hint':'add sources and trigger POLL',
     'vault.hint':'Select your Vault folder to auto-detect related notes and export Markdown. Only filenames are read, not note content.',
     'lock.title':'LOCKED','lock.desc':'Enter passphrase to unlock.',
@@ -4148,10 +4148,48 @@ $$('.nav button').forEach(b=>{
 });
 
 // ===== SEARCH ===========================================================
+// 検索演算子: "完全一致" と -除外。関連ソフト(Feedly / Inoreader / Obsidian / Gmail /
+// GitHub 等)でほぼ共通の記法に合わせ、学習コストをゼロにする。
+//
+// なぜ必要か: FTSIndex は文字N-gram索引で、**語順を保持しない**。そのため日本語では
+// 構成文字が同じ別語が高スコアで返る。実測(Node): クエリ「情報検索」に対し
+// 「検索情報のまとめ」が score=0.489(閾値0.4超)で返る — 意味の異なる語なのにヒットする。
+// N-gram索引は本質的に「取りこぼしの無い候補生成器(lossy filter)」なので、IR で定石どおり
+// 候補生成(索引)→ 検証(実テキストで literal 照合)の2段にして精度を回復する。
+function parseSearchQuery(raw){
+  const q=String(raw||'');
+  const phrases=[];const excludes=[];
+  // "..." を取り出す(閉じ引用符が無い場合は演算子扱いしない = 打鍵途中で結果が消えない)
+  let base=q.replace(/"([^"]+)"/g,(_,p)=>{const t=p.trim();if(t)phrases.push(t.toLowerCase());return ' ';});
+  // -term を取り出す。ハイフン始まりの語のみ。語中のハイフン(e-mail)は対象外。
+  base=base.replace(/(^|\s)-([^\s"]+)/g,(_,sp,t)=>{const x=t.trim().toLowerCase();if(x)excludes.push(x);return ' ';});
+  return{base:base.replace(/\s+/g,' ').trim(),phrases,excludes};
+}
+// 索引が返した候補を実テキストで検証する。演算子が無ければ常に true(既存挙動と同じ)。
+function matchesSearchOps(text,ops){
+  if(!ops||(ops.phrases.length===0&&ops.excludes.length===0))return true;
+  const t=String(text||'').toLowerCase();
+  for(const p of ops.phrases)if(!t.includes(p))return false;
+  for(const x of ops.excludes)if(t.includes(x))return false;
+  return true;
+}
 const doSearch=debounce(async(q)=>{
   searchQuery=q.trim();
   if(!searchQuery){searchResults=[];$('#nav-search').style.display='none';if(currentView==='search'){$$('.nav button').forEach(x=>x.classList.remove('active'));$('.nav button[data-view="inbox"]').classList.add('active');currentView='inbox';}kbCursor=-1;await refreshCounts();await renderView();return;}
-  searchResults=FTSIndex.search(searchQuery);$('#nav-search').style.display='';$$('.nav button').forEach(x=>x.classList.remove('active'));$('#nav-search').classList.add('active');currentView='search';kbCursor=-1;await refreshCounts();await renderView();
+  const ops=parseSearchQuery(searchQuery);
+  // 索引は語順を持たないため、演算子があるときだけ候補を実テキストで検証する。
+  // base が空(例: `"..."` だけ)の場合は語句そのものを候補生成に使う。
+  searchResults=FTSIndex.search(ops.base||ops.phrases.join(' ')||searchQuery);
+  if(ops.phrases.length||ops.excludes.length){
+    const verified=[];
+    for(const r of searchResults){
+      if(r.id.startsWith('word:')){const w=await Store.getWord(r.id.slice(5));if(w&&matchesSearchOps([w.term,w.note].filter(Boolean).join(' '),ops))verified.push(r);continue;}
+      const ev=await Store.getEvent(r.id);
+      if(ev&&matchesSearchOps([ev.content.title,ev.content.snippet,ev.content.summary,...(ev.meta.userTags||[]),...(ev.meta.autoTags||[])].filter(Boolean).join(' '),ops))verified.push(r);
+    }
+    searchResults=verified;
+  }
+  $('#nav-search').style.display='';$$('.nav button').forEach(x=>x.classList.remove('active'));$('#nav-search').classList.add('active');currentView='search';kbCursor=-1;await refreshCounts();await renderView();
 },200);
 $('#search-input').addEventListener('input',(e)=>doSearch(e.target.value));
 
