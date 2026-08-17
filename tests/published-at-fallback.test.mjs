@@ -15,7 +15,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 // Mirror of parseFeed's date extraction (the only place publishedAt is derived).
-const parseDate = (pubDate) => (pubDate ? Date.parse(pubDate) || undefined : undefined);
+// round 42: a feed-declared date beyond the clock-skew tolerance is treated as UNKNOWN
+// (undefined) rather than trusted, because a future date would otherwise pin the item to
+// the top of DIGEST and the tag/word views permanently. See tests/published-at-skew.test.mjs.
+const PUBLISHED_AT_MAX_SKEW_MS = 60 * 60 * 1000;
+const sanePublishedAt = (ms) => {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return undefined;
+  if (ms > Date.now() + PUBLISHED_AT_MAX_SKEW_MS) return undefined;
+  return ms;
+};
+const parseDate = (pubDate) => (pubDate ? sanePublishedAt(Date.parse(pubDate)) : undefined);
 
 describe('publishedAt derivation (mirrors parseFeed)', () => {
   it('is a real epoch when the feed provides a parseable date', () => {
@@ -50,7 +59,7 @@ describe('date-fallback at sort/display (mirrors consumers)', () => {
 
 describe('source invariants (index.html)', () => {
   it('parseFeed leaves publishedAt undefined for date-less items (no fabrication)', () => {
-    expect(html).toContain('publishedAt:pubDate?Date.parse(pubDate)||undefined:undefined');
+    expect(html).toContain('publishedAt:pubDate?sanePublishedAt(Date.parse(pubDate)):undefined');
   });
   it('never assigns publishedAt = timestamp at parse time', () => {
     expect(html).not.toMatch(/publishedAt:\s*(Date\.now\(\)|raw\.timestamp|timestamp)\b/);

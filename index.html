@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Nua8HXOIBc9/uvPf9w0wQk/EmpN6L7cLDU1Yxa/0kO0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Z1NQjWB5x7DCaI1pLw40VNpuXyOrH+IEIubvH6KgV+Y='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -779,6 +779,9 @@ const CONFIG = Object.freeze({
   // ユーザー定義 regex ルールが走査するテキストの上限。バックトラッキング量は入力長に対して
   // 指数的に効くため、フィード由来の長い本文をそのまま食わせない(詳細は matchRule のコメント)。
   regexScanMaxChars:4000,
+  // フィードが申告する publishedAt を信用する上限(時計ずれの許容)。これを超える未来日付は
+  // 「不明」として扱う。理由は sanePublishedAt のコメント参照。
+  publishedAtMaxSkewMs:60*60*1000,
   storageQuotaThreshold:0.85,
   storageCheckDebounceMs:2000,
   // RESURFACE: 放置と見なす下限、重みのピーク、一度に提示する件数。
@@ -1188,6 +1191,23 @@ function tokenize(text){
     else out.push(w);
   }
   return out.filter(w=>w.length>=2&&w.length<=30);
+}
+
+// フィード申告の公開日時を検証する。`publishedAt` は第三者(配信元)が値を決められるのに、
+// ランキングでは強い重みを持つ:
+//   - DIGEST の鮮度加点は `Math.max(0, now-publishedAt)` を使うため、未来日付は age=0 に
+//     clamp され **常に最大点(25)** を取り続ける(実測: 1年後の日付で 25.0 を維持)
+//   - タグ/単語ビューは `(publishedAt||timestamp)` の降順なので、未来日付は **恒久的に先頭**
+// つまり配信側が日付を未来にするだけで、利用者のダイジェスト上位を占有できてしまう
+// (RSS では既知のスパム手法)。時計ずれ相当の許容を超える未来日付は「不明」として扱う。
+//
+// clamp して now を入れないのは、本プロジェクトの `publishedAt` 非捏造規約に従うため:
+// 実際の公開日時が分からないなら値を作らず undefined にし、消費側の `||timestamp`
+// (取得時刻)へ委ねる。取得直後の項目なら取得時刻がほぼ正しいので実害も無い。
+function sanePublishedAt(ms){
+  if(typeof ms!=='number'||!Number.isFinite(ms))return undefined;
+  if(ms>Date.now()+CONFIG.publishedAtMaxSkewMs)return undefined;
+  return ms;
 }
 
 function jaccard(A,B){
@@ -2119,7 +2139,7 @@ const RSSPoller=(()=>{
         const bmc=Number(get('hatena\\:bookmarkcount'))||0;
         items.push({raw:{
           title,link:normalizeUrl(link),summary,
-          publishedAt:pubDate?Date.parse(pubDate)||undefined:undefined,
+          publishedAt:pubDate?sanePublishedAt(Date.parse(pubDate)):undefined,
           author:decodeEntities(get('author > name')||get('author')||get('dc\\:creator')||''),
           media,
           ...(bmc>0?{score:engagementScore(bmc)}:{}),
@@ -2205,7 +2225,7 @@ const WORD_FEEDS={
     build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=30`,
     // JSON.parse throws on malformed input (collector records 'parse'). A valid-but-non-array
     // body (e.g. an error object returned with HTTP 200) yields no items rather than a TypeError.
-    parse:(text)=>{const d=JSON.parse(text);return Array.isArray(d)?d.map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:Date.parse(it.created_at)||undefined,author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)})):[];}},
+    parse:(text)=>{const d=JSON.parse(text);return Array.isArray(d)?d.map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:sanePublishedAt(Date.parse(it.created_at)),author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)})):[];}},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   // topicStyle:true = トピックフィード設計(一致トピックが無ければ 404、取得失敗ではなく
