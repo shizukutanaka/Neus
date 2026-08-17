@@ -1063,3 +1063,32 @@ catch が捕まえるのは**コンパイルエラーだけ**で、実行時の�
 - テストは 1415 → 1445 件(`tests/keyword-redos.test.mjs` 新設30件: 検出器の危険6/安全9分類、
   境界量化子、凍結入力が即時復帰すること、fail-closed、安全ルールの不変性、走査長打ち切り、
   保存時検証が watch/block 両方に入っていること、配線アンカー、i18n 両言語)。
+
+### 10.29 第27次監査 (round 40) — 暗号パラメータの陳腐化(ゲート対象のため提案のみ)
+
+**確認済み・問題なし(修正を作らない)**:
+- **Service Worker が個人データをキャッシュしていないこと**: `sw.js` の fetch ハンドラは
+  `url.origin !== self.location.origin` で早期 return するため、BYOK の API リクエスト
+  (api.anthropic.com 等)も Worker プロキシ応答(`*.workers.dev`、URL に検索語を含む)も
+  **一切 interception されない** = Cache API に個人データが入らない。G0-1 の不変条件を維持。
+  Share Target / Bookmarklet の `/?url=...&title=...` は pathname が `/` で SHELL 分岐に入り、
+  書き込みキーが pathname のみに正規化されるため、クエリ内の個人データも残らない。
+- **Crypto の実装**: IV は暗号化ごとに `getRandomValues` で新規生成(AES-GCM の IV 再利用なし)、
+  導出鍵は `extractable=false`、salt は16バイト乱数で永続化、`decrypt` 失敗は例外 →
+  呼び出し側 `catch{return null}` で **fail-closed**(部分鍵や空文字をプロバイダへ送らない)。
+
+**発見(ゲート対象・未実装)**: `CONFIG.pbkdf2Iterations` は **300,000**。
+[OWASP Password Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)
+の現行推奨は PBKDF2-HMAC-SHA256 で **600,000** であり、**ちょうど半分**。
+
+単純な定数変更は**してはならない**: 反復回数は鍵導出の入力なので、変更すると同じパスフレーズから
+別の鍵が導出され、保存済み BYOK API キーが復号不能になる。しかも unlock 処理は復号例外を
+「パスフレーズが違います」と表示するため、**正しいパスフレーズなのに永久に拒否され続ける**
+という原因究明困難な壊れ方をする。
+
+本項目は CLAUDE.md「重要分岐」の**マスターパスフレーズの暗号化方式変更**に該当するため、
+**実装せず `docs/adr/ADR-0021-pbkdf2-iterations-migration.md` を提案(Proposed)として起票**した。
+推奨は「暗号文にパラメータを埋め込む版付き形式」で、旧データは旧反復回数で復号し、
+次回保存時に新パラメータへ遅延移行する(後方互換・再入力不要)。承認前に定数を書き換えない。
+
+- コード変更なし。テスト件数は 1445 のまま。
