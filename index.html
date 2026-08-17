@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-IA47tIXbZ6LIVvrJSFumT0VEuzZE38MOexu1/N+hEJg='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-T7WcMz5nyTgDY+0WIhSPKDnsBiL+Zkrap3dhg1PBzPY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -776,6 +776,9 @@ const CONFIG = Object.freeze({
   ftsGram:2, ftsScoreMin:0.4,
   vaultMatchMinTokens:2, vaultMatchMax:5,
   sourceMaxFails:5,
+  // ユーザー定義 regex ルールが走査するテキストの上限。バックトラッキング量は入力長に対して
+  // 指数的に効くため、フィード由来の長い本文をそのまま食わせない(詳細は matchRule のコメント)。
+  regexScanMaxChars:4000,
   storageQuotaThreshold:0.85,
   storageCheckDebounceMs:2000,
   // RESURFACE: 放置と見なす下限、重みのピーク、一度に提示する件数。
@@ -854,6 +857,7 @@ const DICT={
     'hd.kw.status':'状態',
     'kw.hint':'気になるキーワードでハイライト・自動スター、不要キーワードで自動アーカイブ・破棄。入力してEnter。カードのタグを長押しで素早く追加。',
     'kw.adv.hint':'JSON形式でmode/scope/caseを指定。mode: contains/exact/prefix/suffix/word/regex。scope: title/snippet/summary/tags/source/all。',
+    'kw.err.redos':'この正規表現は入力次第で処理が爆発し画面が固まります(量化グループの中に無制限量化子)。書き換えてください:',
     'kw.watch.action':'マッチ時の動作',
     'kw.block.action':'マッチ時の動作',
     'kw.watch.input':'キーワード(1行1個)',
@@ -978,6 +982,7 @@ const DICT={
     'hd.kw.status':'STATUS',
     'kw.hint':'Highlight watched keywords, auto-archive blocked ones. Type and press Enter. Long-press a card tag for quick add.',
     'kw.adv.hint':'JSON format with mode/scope/case. mode: contains/exact/prefix/suffix/word/regex. scope: title/snippet/summary/tags/source/all.',
+    'kw.err.redos':'This regex can blow up on some inputs and freeze the app (unbounded quantifier inside a quantified group). Please rewrite:',
     'kw.watch.action':'Match action',
     'kw.block.action':'Match action',
     'kw.watch.input':'Keywords (one per line)',
@@ -1820,9 +1825,45 @@ const KeywordRules=(()=>{
     if(scope==='source'||scope==='all')parts.push(ev.source.name||'');
     return parts.join(' ');
   }
+  // 破滅的バックトラッキング(ReDoS)を起こす形 — 量化されたグループの中身にさらに無制限量化子が
+  // 入る `(x+)+` / `(x*)*` / `(\w+\s?)+` — を検出する。ルールはユーザーが書くが、照合対象は
+  // フィード由来(=第三者が中身を決められる)で、`evaluate()` は ingest ごとにメインスレッドで
+  // 同期実行される。したがって「うっかり書いた正規表現」1つで、POLL のたびにタブが恒久的に
+  // 固まる。実測: `^(\w+\s?)+$` は入力26文字で既に449ms、2文字ごとに約2倍(指数)。
+  // 注: これは緩和であって完全な ReDoS 防御ではない。JS では任意の正規表現の実行時間を
+  // メインスレッド上で中断できないため、(1)保存時に検出可能な危険形を拒否し、
+  // (2)実行時にも同じ判定で握りつぶし、(3)走査長を上限で切る、の多層で被害を抑える。
+  function hasNestedQuantifier(pattern){
+    const starts=[];
+    for(let i=0;i<pattern.length;i++){
+      const c=pattern[i];
+      if(c==='\\'){i++;continue;}
+      if(c==='['){while(i<pattern.length&&pattern[i]!==']'){if(pattern[i]==='\\')i++;i++;}continue;}
+      if(c==='('){starts.push(i);continue;}
+      if(c!==')')continue;
+      const s=starts.pop();if(s===undefined)continue;
+      const q=pattern[i+1];
+      // 外側が無制限量化(+ / * / {n,})のときだけ危険。{n} や {n,m} は上限があるので対象外。
+      if(!(q==='+'||q==='*'||(q==='{'&&/^\{\d+,\}/.test(pattern.slice(i+1)))))continue;
+      const body=pattern.slice(s+1,i);
+      for(let j=0;j<body.length;j++){
+        const b=body[j];
+        if(b==='\\'){j++;continue;}
+        if(b==='['){while(j<body.length&&body[j]!==']'){if(body[j]==='\\')j++;j++;}continue;}
+        if(b==='+'||b==='*')return true;
+        if(b==='{'&&/^\{\d+,\}/.test(body.slice(j)))return true;
+      }
+    }
+    return false;
+  }
   function matchRule(text,rule){
     if(!text||!rule.pattern)return false;
-    if(rule.mode==='regex'){try{return new RegExp(rule.pattern,rule.case?'':'i').test(text);}catch{return false;}}
+    if(rule.mode==='regex'){
+      // 保存時検証を通っていないルール(バックアップ復元・旧版由来)でも凍結しないための実行時ガード。
+      if(hasNestedQuantifier(rule.pattern))return false;
+      const scan=text.length>CONFIG.regexScanMaxChars?text.slice(0,CONFIG.regexScanMaxChars):text;
+      try{return new RegExp(rule.pattern,rule.case?'':'i').test(scan);}catch{return false;}
+    }
     let t=text,p=rule.pattern;if(!rule.case){t=t.toLowerCase();p=p.toLowerCase();}
     switch(rule.mode){
       case 'contains':return t.includes(p);
@@ -1877,7 +1918,7 @@ const KeywordRules=(()=>{
     return changed;
   }
   return{
-    load,save,evaluate,apply,reapplyAll,
+    load,save,evaluate,apply,reapplyAll,hasNestedQuantifier,
     getRules:()=>structuredClone(rules),
     addRule(type,rule){if(!['watch','block'].includes(type))return;rules[type].push(rule);return save();},
     removeRule(type,idx){if(!rules[type]?.[idx])return;rules[type].splice(idx,1);return save();},
@@ -4459,14 +4500,24 @@ $('#kw-save').addEventListener('click',async()=>{
       if(r.mode&&!VALID_MODES.includes(r.mode)){setKwErr(`invalid mode: ${r.mode}`);return;}
       if(r.scope&&!VALID_SCOPES.includes(r.scope)){setKwErr(`invalid scope: ${r.scope}`);return;}
       if(r.action&&!VALID_W_ACTIONS.includes(r.action)){setKwErr(`invalid watch action: ${r.action}`);return;}
-      if(r.mode==='regex'){try{new RegExp(r.pattern);}catch{setKwErr(`invalid regex: ${r.pattern}`);return;}}
+      if(r.mode==='regex'){
+        try{new RegExp(r.pattern);}catch{setKwErr(`invalid regex: ${r.pattern}`);return;}
+        // 破滅的バックトラッキングを起こす形は保存させない。実行時に握りつぶすだけだと
+        // 「ルールが静かに効かない」状態になり、原因が分からないため保存時に伝える。
+        if(KeywordRules.hasNestedQuantifier(r.pattern)){setKwErr(t('kw.err.redos')+` ${r.pattern}`);return;}
+      }
     }
     for(const r of advBlock){
       if(!r.pattern||typeof r.pattern!=='string'){setKwErr('block rule: pattern required');return;}
       if(r.mode&&!VALID_MODES.includes(r.mode)){setKwErr(`invalid mode: ${r.mode}`);return;}
       if(r.scope&&!VALID_SCOPES.includes(r.scope)){setKwErr(`invalid scope: ${r.scope}`);return;}
       if(r.action&&!VALID_B_ACTIONS.includes(r.action)){setKwErr(`invalid block action: ${r.action}`);return;}
-      if(r.mode==='regex'){try{new RegExp(r.pattern);}catch{setKwErr(`invalid regex: ${r.pattern}`);return;}}
+      if(r.mode==='regex'){
+        try{new RegExp(r.pattern);}catch{setKwErr(`invalid regex: ${r.pattern}`);return;}
+        // 破滅的バックトラッキングを起こす形は保存させない。実行時に握りつぶすだけだと
+        // 「ルールが静かに効かない」状態になり、原因が分からないため保存時に伝える。
+        if(KeywordRules.hasNestedQuantifier(r.pattern)){setKwErr(t('kw.err.redos')+` ${r.pattern}`);return;}
+      }
     }
   }
   await KeywordRules.replaceRules({watch:[...watchSimple,...advWatch],block:[...blockSimple,...advBlock]});
