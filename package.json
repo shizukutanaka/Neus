@@ -31,7 +31,8 @@
     "audit:a11y": "vitest run tests/axe-a11y.test.mjs",
     "test:browser": "playwright test --config playwright.config.mjs",
     "test:offline": "playwright test --config playwright.config.mjs browser-offline",
-    "test:perf": "playwright test --config playwright.config.mjs browser-perf"
+    "test:perf": "playwright test --config playwright.config.mjs browser-perf",
+    "g10": "node scripts/g10.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
