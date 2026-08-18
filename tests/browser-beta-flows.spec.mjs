@@ -1014,3 +1014,111 @@ test.describe('G10.07 — scenario 7: the bookmarklet Neus hands out matches wha
     expect(doc, 'the placeholder must name this product').toContain('YOUR_NEUS_URL');
   });
 });
+
+// ---------------------------------------------------------------------------
+// round 73 — 「読む → await → 書き戻す」型の lost update
+//
+// round 69 / 72 で潰したのは「確認 → await → 変更」だった。近い親戚に
+// **「レコードを読む → 長い await → まるごと書き戻す」**がある。await の最中に同じレコードが
+// 別経路で更新されると、**古いコピーで丸ごと上書き**され、その更新が消える。
+//
+// 要約はこの形に真正面から当たる。LLM 呼び出しは秒単位で、その間カードは画面に出ていて
+// 操作できるため、待っている間の星付け・既読・アーカイブ・メモ保存が**普通に起こる**。
+//
+//   Bus.subscribe('event.tagged', …)  … `ev` を保持したまま summarize を await → putEvent(ev)
+//   #detail-resummarize                … `cur` を保持したまま summarize を await → putEvent(cur)
+//
+// どちらも「自分が担当するのは summary だけ」なのに、レコード全体を書き戻していた。
+// ---------------------------------------------------------------------------
+
+// A vendor stub that holds the response open until the test releases it, so the window
+// during which the record can be edited is deterministic rather than a race.
+async function stubSlowVendor(page, { text = 'Late summary.' } = {}) {
+  await page.route('**/api.anthropic.com/**', async route => {
+    await new Promise(r => setTimeout(r, 2500));
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ content: [{ type: 'text', text }] }),
+    });
+  });
+}
+
+test.describe('G10.07 — a slow summary must not undo what the reader did meanwhile', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+  });
+
+  test('starring a card while its summary is in flight is not lost', async ({ page }) => {
+    await stubSlowVendor(page);
+    await configureByok(page);
+    await seedEvents(page);
+
+    // The summary requests are open right now. Star the top card while they hang.
+    await page.keyboard.press('j');
+    await page.keyboard.press('s');
+    await page.waitForTimeout(400);
+
+    const starredNow = await page.evaluate(() => new Promise(resolve => {
+      const req = indexedDB.open('neus-v1');
+      req.onsuccess = () => {
+        const tx = req.result.transaction(['events']).objectStore('events').getAll();
+        tx.onsuccess = () => resolve(tx.result.filter(e => e.state?.starred).length);
+        tx.onerror = () => resolve(-1);
+      };
+      req.onerror = () => resolve(-1);
+    }));
+    expect(starredNow, 'the star must be written immediately').toBe(1);
+
+    // Now let the summaries land and overwrite whatever they were holding.
+    await page.waitForTimeout(4000);
+
+    const after = await page.evaluate(() => new Promise(resolve => {
+      const req = indexedDB.open('neus-v1');
+      req.onsuccess = () => {
+        const tx = req.result.transaction(['events']).objectStore('events').getAll();
+        tx.onsuccess = () => resolve({
+          starred: tx.result.filter(e => e.state?.starred).length,
+          summarized: tx.result.filter(e => e.content?.summary).length,
+        });
+        tx.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    }));
+    expect(after.starred, 'the summary write must not clobber the star').toBe(1);
+    expect(after.summarized, 'and the summary must still arrive').toBeGreaterThan(0);
+  });
+
+  test('a note saved during a re-summarize survives', async ({ page }) => {
+    // Same shape through the detail modal: RESUMMARIZE holds a copy across a slow call while
+    // SAVE writes notes and tags to the same record.
+    await stubSlowVendor(page, { text: 'Fresh summary.' });
+    await configureByok(page);
+    await seedEvents(page);
+    await page.waitForTimeout(4000); // let the initial pass finish so it cannot interfere
+
+    await page.keyboard.press('j');
+    await page.keyboard.press('Enter');           // open the detail modal
+    await expect(page.locator('#modal-detail')).toHaveClass(/show/);
+    const id = await page.evaluate(() => window.__detailId ?? null);
+
+    await page.click('#detail-resummarize');       // starts a 2.5s vendor call
+    await page.waitForTimeout(300);
+    await page.fill('#user-note', 'my note written while it summarized');
+    await page.click('#detail-save');              // writes notes, closes the modal
+    await page.waitForTimeout(4000);               // now the summary lands
+
+    const notes = await page.evaluate(() => new Promise(resolve => {
+      const req = indexedDB.open('neus-v1');
+      req.onsuccess = () => {
+        const tx = req.result.transaction(['events']).objectStore('events').getAll();
+        tx.onsuccess = () => resolve(tx.result.map(e => e.user?.note).filter(Boolean));
+        tx.onerror = () => resolve([]);
+      };
+      req.onerror = () => resolve([]);
+    }));
+    expect(notes, 'the re-summarize write must not drop the note saved meanwhile')
+      .toContain('my note written while it summarized');
+  });
+});

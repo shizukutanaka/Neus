@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-PEelPuMQGMuwwdCVSaP/4uyKiecH0idhCkjVv3lFAHs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-WcV8qW5MRVQqkGvf+sbLUuFQXZtInvsUXJYEm/2QAWo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1484,8 +1484,13 @@ const VaultWriter=(()=>{
       await writeNote(root,ev,md);
       const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
       await appendDaily(root,[`- [${mdEsc(ev.content.title)}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`]);
-      ev.state.exported=true;ev.state.exportedAt=Date.now();
-      await Store.putEvent(ev);FTSIndex.add(ev);
+      // 同じ lost update 対策。`ensureWriteAccess` はディレクトリ選択ダイアログを出しうるので
+      // 待機時間は原理的に無制限で、その間に要約や他の操作が同じレコードを書きうる。
+      // ここが担当するのは exported フラグだけなので、直前に読み直してそれだけを載せる。
+      const fresh=await Store.getEvent(ev.id)||ev;
+      fresh.state.exported=true;fresh.state.exportedAt=Date.now();
+      ev.state.exported=fresh.state.exported;ev.state.exportedAt=fresh.state.exportedAt; // 呼び出し元の手元のコピーも合わせる
+      await Store.putEvent(fresh);FTSIndex.add(fresh);
       return true;
     }catch(e){console.warn('[VaultWriter] export failed:',e);return false;}
   }
@@ -1499,8 +1504,11 @@ const VaultWriter=(()=>{
         await writeNote(root,ev,md);
         const tags=(ev.meta.userTags||[]).map(t=>`#${t}`).join(' ');
         dailyLines.push(`- [${mdEsc(ev.content.title)}](neus/${ev.id}) — _${ev.source.name}_ ${tags}`);
-        ev.state.exported=true;ev.state.exportedAt=Date.now();
-        await Store.putEvent(ev);FTSIndex.add(ev);count++;
+        // exportEvent と同じ理由で読み直す(バッチは1件ずつ await するため窓はさらに長い)。
+        const fresh=await Store.getEvent(ev.id)||ev;
+        fresh.state.exported=true;fresh.state.exportedAt=Date.now();
+        ev.state.exported=fresh.state.exported;ev.state.exportedAt=fresh.state.exportedAt;
+        await Store.putEvent(fresh);FTSIndex.add(fresh);count++;
       }catch(e){console.warn('[VaultWriter] batch item failed:',ev.id,e);}
     }
     if(dailyLines.length)try{await appendDaily(root,dailyLines);}catch(e){console.warn('[VaultWriter] appendDaily failed:',e);}
@@ -2705,7 +2713,11 @@ const Summarizer=(()=>{
   return{summarize,getDailyCount:()=>dailyCount,load};
 })();
 
-Bus.subscribe('event.tagged',async(ev)=>{try{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;ev.content.summary=sum;await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.summarized',ev);}catch(err){console.error('[event.tagged]',err);}});
+// 要約は LLM 呼び出しなので秒単位かかる。その間カードは画面に出ていて操作できるため、
+// 待機中の星付け・既読・アーカイブ・メモ保存が普通に起きる。保持していたコピーをそのまま
+// 書き戻すと、その更新が丸ごと消える(実測: 要約待ちの間に星を付けると 1 → 0 になった)。
+// このハンドラが担当するのは summary だけなので、書く直前に読み直してそのフィールドだけ載せる。
+Bus.subscribe('event.tagged',async(ev)=>{try{if(ev.content.summary)return;const sum=await Summarizer.summarize(ev);if(!sum)return;const fresh=await Store.getEvent(ev.id)||ev;fresh.content.summary=sum;await Store.putEvent(fresh);FTSIndex.add(fresh);Bus.publish('event.summarized',fresh);}catch(err){console.error('[event.tagged]',err);}});
 Bus.subscribe('summarizer.error',({ev,error})=>{console.warn('[Summarizer]',error);if(error?.includes('401')||error?.includes('403'))toast(currentLang==='ja'?'BYOK APIキーが無効です':'BYOK key invalid','err');});
 Bus.subscribe('summarizer.budget-exceeded',()=>toast(currentLang==='ja'?'本日の要約予算に達しました':'daily summary budget reached','err'));
 
@@ -4336,7 +4348,11 @@ async function openDetailModal(ev){
   $('#detail-save').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;cur.meta.userTags=detailTags;cur.user.note=$('#user-note').value.trim()||undefined;cur.user.quote=$('#user-quote').value.trim()||undefined;await Store.putEvent(cur);FTSIndex.add(cur);Bus.publish('event.user-annotated',cur);toast(currentLang==='ja'?'保存しました':'saved','ok');$('#modal-detail').classList.remove('show');await renderView();}catch(err){console.error('[detail-save]',err);toast(currentLang==='ja'?'保存に失敗しました':'save failed','err');}});
   $('#detail-copy').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(cur)MarkdownExporter.copy(cur);});
   $('#detail-vault').addEventListener('click',async()=>{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'書出中...':'exporting...');const ok=await VaultWriter.exportEvent(cur);if(ok){toast(currentLang==='ja'?'書出完了':'exported','ok');$('#modal-detail').classList.remove('show');await renderView();}else toast(currentLang==='ja'?'書出に失敗しました':'vault export failed','err');});
-  $('#detail-resummarize').addEventListener('click',async()=>{try{const cur=await Store.getEvent(currentDetailId);if(!cur)return;toast(currentLang==='ja'?'要約中...':'summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast(currentLang==='ja'?'要約に失敗しました(BYOK設定を確認)':'summarize failed (check BYOK settings)','err');return;}cur.content.summary=sum;await Store.putEvent(cur);FTSIndex.add(cur);toast(currentLang==='ja'?'要約を更新しました':'summary updated','ok');openDetailModal(cur);}catch(err){console.error('[detail-resummarize]',err);toast(currentLang==='ja'?'要約に失敗しました':'summarize failed','err');}});
+  // 上の event.tagged と同じ理由で読み直す。SAVE は同じレコードにメモとタグを書くので、
+  // 要約待ちの間に保存された内容が古いコピーで消えていた(実測: メモが消滅)。
+  // あわせて対象 id を開始時に固定する。`currentDetailId` を後から読むと、待機中に別カードを
+  // 開かれた場合に**別のイベントを書き、そのモーダルを開き直す**ことになる。
+  $('#detail-resummarize').addEventListener('click',async()=>{try{const id=currentDetailId;const cur=await Store.getEvent(id);if(!cur)return;toast(currentLang==='ja'?'要約中...':'summarizing...');cur.content.summary=undefined;const sum=await Summarizer.summarize(cur);if(!sum){toast(currentLang==='ja'?'要約に失敗しました(BYOK設定を確認)':'summarize failed (check BYOK settings)','err');return;}const fresh=await Store.getEvent(id)||cur;fresh.content.summary=sum;await Store.putEvent(fresh);FTSIndex.add(fresh);toast(currentLang==='ja'?'要約を更新しました':'summary updated','ok');openDetailModal(fresh);}catch(err){console.error('[detail-resummarize]',err);toast(currentLang==='ja'?'要約に失敗しました':'summarize failed','err');}});
 }
 $('#modal-detail').addEventListener('click',(e)=>{if(e.target.id==='modal-detail')$('#modal-detail').classList.remove('show');});
 
