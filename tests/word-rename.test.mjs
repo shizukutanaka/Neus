@@ -82,7 +82,8 @@ describe('rename wiring (index.html)', () => {
   });
   it('saverename guards against double-submit via btn.disabled', () => {
     expect(html).toContain('if(btn.disabled)return;');
-    expect(html).toContain('btn.disabled=true;\n    const oldNorm=word.normalized;');
+    // round 59: oldTerm is captured too, so a failed rename can restore in-memory state.
+    expect(html).toContain('const oldNorm=word.normalized,oldTerm=word.term;');
   });
   it('saverename reports a conflict toast', () => {
     expect(html).toContain("plan.error==='conflict'");
@@ -92,5 +93,37 @@ describe('rename wiring (index.html)', () => {
     expect(html).toContain("input[data-wrinput]");
     expect(html).toContain('button[data-wmact="saverename"]');
     expect(html).toContain("e.key==='Escape'");
+  });
+});
+
+
+describe('rename failure recovery (round 59)', () => {
+  // The rename retags every event and then saves the word; putEvent runs one at a time, so
+  // it cannot be a single transaction. What makes a mid-way failure survivable is that the
+  // in-memory word is restored, leaving it consistent with IDB so a re-run replans the same
+  // rename — and the retag loop skips already-updated events, so the retry finishes the job.
+  it('wraps the retag + save in try/catch', () => {
+    expect(html).toContain("}catch(err){\n      console.error('[word-rename]',err);");
+  });
+  it('restores the in-memory word so it matches what IDB still holds', () => {
+    expect(html).toContain('word.normalized=oldNorm;word.term=oldTerm;');
+  });
+  it('re-enables the button so the user can retry', () => {
+    expect(html).toContain('btn.disabled=false;                          // 再実行できるようにする');
+  });
+  it('tells the user a retry resumes rather than restarting', () => {
+    expect(html).toContain('rename failed — running it again resumes where it stopped');
+  });
+  it('still saves the word LAST, which is what makes the retry converge', () => {
+    const src = html.slice(html.indexOf('const oldNorm=word.normalized,oldTerm=word.term;'));
+    const retagAt = src.indexOf("const oldTag='word:'+oldNorm");
+    const saveAt = src.indexOf('await Store.putWord(word);FTSIndex.addWord(word);');
+    expect(retagAt).toBeGreaterThan(-1);
+    expect(saveAt).toBeGreaterThan(retagAt);
+  });
+  it('the retag skips events already carrying the new tag (idempotent)', () => {
+    // indexOf(oldTag) < 0 for an already-migrated event, so a re-run only fixes the rest.
+    expect(html).toContain("const tags=ev.meta?.autoTags||[];const i=tags.indexOf(oldTag);");
+    expect(html).toContain('if(i>=0){tags[i]=newTag;');
   });
 });

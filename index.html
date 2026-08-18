@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-bOZ1aum536kAAgwsEJPjBvqGVQY+JnwkbpKb/w/2hXw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Mmq0Dd+C5bj5cyl66OVlQz+Y4RSBmah58cQOSAu9zxM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4536,17 +4536,31 @@ $('#word-list').addEventListener('click',async(e)=>{
     if(plan.error==='conflict'){toast(currentLang==='ja'?'その用語は既に登録済み':'that term already exists','err');return;}
     if(plan.noop){const row=$(`[data-wrename="${word.id}"]`);if(row)row.style.display='none';return;}
     btn.disabled=true;
-    const oldNorm=word.normalized;
+    const oldNorm=word.normalized,oldTerm=word.term;
     Object.assign(word,plan.patch);
-    if(plan.retag){
-      const oldTag='word:'+oldNorm,newTag='word:'+word.normalized;
-      const events=await Store.allEvents();
-      for(const ev of events){
-        const tags=ev.meta?.autoTags||[];const i=tags.indexOf(oldTag);
-        if(i>=0){tags[i]=newTag;await Store.putEvent(ev);FTSIndex.add(ev);}
+    // 改名は「全イベントの word: タグ差し替え」→「単語レコード保存」の順で、単一トランザクション
+    // には収まらない(putEvent は1件ずつ)。途中で失敗すると部分適用が残るため、失敗時は
+    // **メモリ上の word を元に戻す**ことが要点になる。そうすれば IDB(旧 normalized のまま)と
+    // 一致し、再実行時に renameWordPlan が同じ改名を再計画できる。差し替えループは
+    // `indexOf(oldTag)` で判定するので**適用済みイベントは自然に読み飛ばされ**、残りだけが
+    // 直る = 再実行で収束する(冪等)。word の保存を最後に置いているのはこのため。
+    try{
+      if(plan.retag){
+        const oldTag='word:'+oldNorm,newTag='word:'+word.normalized;
+        const events=await Store.allEvents();
+        for(const ev of events){
+          const tags=ev.meta?.autoTags||[];const i=tags.indexOf(oldTag);
+          if(i>=0){tags[i]=newTag;await Store.putEvent(ev);FTSIndex.add(ev);}
+        }
       }
+      await Store.putWord(word);FTSIndex.addWord(word);
+    }catch(err){
+      console.error('[word-rename]',err);
+      word.normalized=oldNorm;word.term=oldTerm;   // メモリを IDB の実状態へ戻す
+      btn.disabled=false;                          // 再実行できるようにする
+      toast(currentLang==='ja'?'用語の変更に失敗しました(再実行で続きから修復されます)':'rename failed — running it again resumes where it stopped','err');
+      return;
     }
-    await Store.putWord(word);FTSIndex.addWord(word);
     await renderWordList();await refreshCounts();await renderView();
     toast(currentLang==='ja'?'用語を変更しました':'term renamed','ok');
     return;
