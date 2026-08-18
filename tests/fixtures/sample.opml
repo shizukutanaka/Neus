@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Neus — OPML import fixture.
+  DEPLOY.md STEP 7 scenario #6 instructs the beta tester to import
+  `tests/fixtures/sample.opml`, but the file did not exist, so that scenario
+  could not be run by a human either. Added in round 47 alongside the
+  automated coverage in tests/browser-beta-flows.spec.mjs.
+-->
+<opml version="2.0">
+  <head>
+    <title>Neus sample subscriptions</title>
+  </head>
+  <body>
+    <outline text="Hacker News" title="Hacker News" type="rss"
+             xmlUrl="https://news.ycombinator.com/rss"
+             htmlUrl="https://news.ycombinator.com/"/>
+    <outline text="Tech" title="Tech">
+      <outline text="Zenn Trending" title="Zenn Trending" type="rss"
+               xmlUrl="https://zenn.dev/feed"
+               htmlUrl="https://zenn.dev/"/>
+      <outline text="Qiita Popular" title="Qiita Popular" type="rss"
+               xmlUrl="https://qiita.com/popular-items/feed"
+               htmlUrl="https://qiita.com/"/>
+    </outline>
+  </body>
+</opml>

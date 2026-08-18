@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-MRJnpuplKijX7uqeQMjbHEc81TB2zr4277uhqg4LqMc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-0Scbl7tq2yhLG0FXSfB/wNxaPVHEeBILUuay/a+4UnQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -5011,7 +5011,13 @@ const Onboarding=(()=>{
     const next=`<button id="ob-next" class="primary" type="button">${step<TOTAL?t('onboard.btn.next'):t('onboard.btn.done')}</button>`;
     if(step===1){
       body.innerHTML=`<div class="lang-grid"><div class="lang-opt${selected.lang==='ja'?' selected':''}" data-lang="ja"><span class="flag">JA</span><span class="name">日本語</span></div><div class="lang-opt${selected.lang==='en'?' selected':''}" data-lang="en"><span class="flag">EN</span><span class="name">English</span></div></div>`;
-      body.querySelectorAll('.lang-opt').forEach(el=>el.addEventListener('click',()=>{selected.lang=el.dataset.lang;currentLang=selected.lang;applyI18N();body.querySelectorAll('.lang-opt').forEach(x=>x.classList.toggle('selected',x.dataset.lang===selected.lang));$('#onboard-step-label').textContent=t('onboard.lang.title');$('#onboard-desc').textContent=t('onboard.lang.desc');$('#ob-skip').textContent=t('onboard.btn.skip');$('#ob-next').textContent=t('onboard.btn.next');}));
+      // Re-render the whole step instead of hand-patching four labels. The old code set
+      // $('#ob-skip').textContent, but step 1's footer renders ONLY the next button, so
+      // #ob-skip is null there and picking a language threw
+      // "Cannot set properties of null" on the very first screen a new user sees —
+      // leaving the next button stuck in the previous language. render() already applies
+      // every label for the current step, so the duplicated logic is deleted rather than guarded.
+      body.querySelectorAll('.lang-opt').forEach(el=>el.addEventListener('click',()=>{selected.lang=el.dataset.lang;currentLang=selected.lang;applyI18N();render().catch(err=>console.warn('[onboard.lang]',err));}));
       footer.innerHTML=next;
     }else if(step===2){
       body.innerHTML=`<label style="display:block;margin-bottom:6px;font-size:12px;color:var(--fg-2);font-family:var(--font-mono);">${currentLang==='ja'?'パスフレーズ(任意)':'Passphrase (optional)'}</label><input type="password" id="ob-pass" placeholder="${currentLang==='ja'?'空欄でスキップ':'leave blank to skip'}">`;

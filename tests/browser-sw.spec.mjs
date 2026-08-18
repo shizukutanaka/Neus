@@ -72,9 +72,14 @@ test.describe('Real Service Worker — registration & offline', () => {
     const cached = await page.evaluate(async () => {
       const names = await caches.keys();
       if (names.length === 0) return { names, hasIndex: false };
-      const cache = await caches.open(names[0]);
-      const keys = await cache.keys();
-      const urls = keys.map(r => new URL(r.url).pathname);
+      // Search EVERY cache, not names[0]. A second cache (neus-prefs-v1) was added later and
+      // caches.keys() has no guaranteed order, so indexing [0] could open the prefs cache and
+      // wrongly report the shell as uncached.
+      const urls = [];
+      for (const n of names) {
+        const keys = await (await caches.open(n)).keys();
+        for (const r of keys) urls.push(new URL(r.url).pathname);
+      }
       return { names, urls, hasIndex: urls.some(u => u === '/' || u === '/index.html') };
     });
     expect(cached.names.length).toBeGreaterThan(0);

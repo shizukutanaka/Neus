@@ -8,12 +8,12 @@
 | # | 項目 | 判定 | 実測値 / メモ |
 |---|------|------|------|
 | G10.01 | Linter 警告ゼロ(`npm run lint` / `npm run lint:html`) | **PASS** | `lint: OK` / HTML 静的検査 全項目 PASS |
-| G10.02 | 自動テスト全通過 + **モジュール網羅 100%** | **PASS** | **1,514 tests / 86 files 全通過**(+ ブラウザ spec は別ランナー)。index.html のトップレベルモジュール **21/21 がテストから参照**(`tests/install-promo.test.mjs` が固定) |
+| G10.02 | 自動テスト全通過 + **モジュール網羅 100%** | **PASS** | **1,514 tests / 86 files 全通過** + **ブラウザ spec 88件 全通過**。index.html のトップレベルモジュール **21/21 がテストから参照**(`tests/install-promo.test.mjs` が固定) |
 | G10.03 | 脆弱性スキャン(Critical/High ゼロ) | **PASS** | `npm audit --audit-level=high` → **found 0 vulnerabilities** |
 | G10.04 | クロスレビュー(独立判定2名) | **PASS** | 指示書 `docs/reviews/`(AUDIT-BRIEF + OPUS + SONNET)。監査ラウンド 6–46 を `SPEC.md` §10 に記録 |
 | G10.05 | ドキュメント最終確認(README / LICENSE / Schema / UX) | **PASS** | README/SPEC/CHANGELOG/ADR 同期済み。`tests/dict-no-dead-keys.test.mjs` が i18n の死にキー・片言語漏れを機械検査 |
 | G10.06 | PWA 署名ビルド + Lighthouse Performance 90+ | **CONDITIONAL PASS** | 実ブラウザ(Chromium)で Core Web Vitals を実測: **FCP 124ms / LCP 124ms / CLS 0.000 / TBT 0ms** — Lighthouse の good 閾値(1800/2500/0.1/200)に対し全て桁違いの余裕。`tests/browser-vitals.spec.mjs` で恒常監視。**ただし Lighthouse スコアそのものではない**(下記参照)。署名ビルドと throttled 実測は人間が実施 |
-| G10.07 | ベータ確認(主要フロー全動作・クラッシュゼロ・主観評価 ≥ 4/5) | **BLOCKED** | 人間による実機シナリオ確認が要る(`DEPLOY.md` STEP 7 のシナリオ表)。**代行不可** |
+| G10.07 | ベータ確認(主要フロー全動作・クラッシュゼロ・主観評価 ≥ 4/5) | **CONDITIONAL PASS** | 要件を3分解し、機械検証できる2つを自動化: **主要フロー動作**(11シナリオ中 #1/#4/#6/#10/#11 + キーワードルールを browser spec が検証)と**クラッシュゼロ**(pageerror/console.error 監視)。**ブラウザ spec 88件 全通過**。残るのは外部ネットワーク・実端末・**主観評価**のみ(下記) |
 
 判定記法: `☐`(未) / `PENDING` / `CONDITIONAL PASS` / `PASS` / `BLOCKED`(担当者が人間)。
 
@@ -63,6 +63,30 @@ Chromium で直接測り、閾値には web.dev の "good" 境界をそのまま
 よって「Lighthouse 90+ を達成した」とは主張しない。主張できるのは
 **「スコアの大半を占める指標が good 閾値に対し桁違いの余裕を持つ」**ところまでで、
 正式判定は実機 + Lighthouse(`DEPLOY.md` STEP 6)で人間が行う。PWA 署名ビルドも同様。
+
+## G10.07 を CONDITIONAL PASS とした根拠(round 47)
+
+G10.07 は**複合要件**で、分解すると三つに割れる:
+  (a) 主要フローが動くか → 実ブラウザで機械検証**できる**
+  (b) クラッシュゼロか   → pageerror / console.error 監視で機械検証**できる**
+  (c) 主観評価 ≥ 4/5     → 人間にしかできない
+「人間が要る」は (c) にしか掛からないのに、round 44 では (a)(b) まで人手扱いにしていた。
+
+さらに、`DEPLOY.md` STEP 7 の11シナリオのうち多くは**既存の browser spec が既に検証済み**だった
+(台帳が算入していなかっただけ):
+
+| # | シナリオ | 検証元 |
+|---|---|---|
+| 1 | オンボーディング | `browser-beta-flows.spec.mjs`(round 47 で追加) |
+| 4 | 検索の絞込 | `browser-ui.spec.mjs` |
+| 6 | OPML 取込 | `browser-beta-flows.spec.mjs`(round 47 で追加) |
+| 10 | オフライン | `browser-offline.spec.mjs` / `browser-sw.spec.mjs` |
+| 11 | パスフレーズ暗号 | `browser-functional.spec.mjs` |
+| — | キーワードルール | `browser-ui.spec.mjs` / `browser-functional.spec.mjs` |
+
+**機械化できないまま残るもの(理由つき)**: #2 RSS取得・#3 BYOK要約(外部ネットワークと実APIキー=課金)/
+#5 Vault書出(File System Access API の実ディレクトリ選択)/ #7 Bookmarklet・#9 Android共有
+(別ページ・実端末のOS統合)/ #8 PWAインストール(ブラウザUI)/ **主観評価**(人間の判断)。
 
 ## 残る項目について
 
