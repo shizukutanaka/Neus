@@ -67,9 +67,13 @@ test.describe('Real Service Worker — registration & lifecycle', () => {
     const cached = await page.evaluate(async () => {
       const names = await caches.keys();
       if (names.length === 0) return { names: [], hasShell: false };
-      const cache = await caches.open(names[0]);
-      const keys = await cache.keys();
-      const urls = keys.map(k => new URL(k.url).pathname);
+      // Search every cache: neus-prefs-v1 exists alongside the shell cache and
+      // caches.keys() order is not guaranteed, so names[0] may not be the shell.
+      const urls = [];
+      for (const n of names) {
+        const keys = await (await caches.open(n)).keys();
+        for (const k of keys) urls.push(new URL(k.url).pathname);
+      }
       return { names, urls, hasShell: urls.some(u => u === '/' || u.endsWith('/index.html')) };
     });
     expect(cached.names.length).toBeGreaterThan(0);
