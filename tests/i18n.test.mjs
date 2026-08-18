@@ -74,11 +74,14 @@ describe('i18n — DICT completeness', () => {
 });
 
 describe('i18n — coverage of UI elements', () => {
-  it('core navigation labels exist', () => {
+  // NOTE (round 43): nav.* keys were deliberately removed. applyI18N's navMap falls back to
+  // `dataset.view.toUpperCase()`, so every nav tab renders as uppercase English (INBOX / ALL /
+  // LATER / DIGEST / WORDS / RESURFACE) in BOTH locales by design. A DICT entry for them could
+  // never render, so requiring one asserted a requirement that did nothing.
+  it('core UI button labels exist', () => {
     const dict = extractDict();
     const required = ['btn.sources', 'btn.vault', 'btn.settings', 'btn.poll',
                       'btn.keywords', 'btn.stats',
-                      'nav.later', 'nav.digest',
                       'btn.add', 'btn.close', 'btn.save'];
     for (const k of required) {
       expect(dict.ja.has(k), `Missing JA key: ${k}`).toBe(true);

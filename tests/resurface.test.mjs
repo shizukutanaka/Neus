@@ -165,7 +165,10 @@ describe('RESURFACE wiring (index.html)', () => {
     expect(html).toContain('<button data-view="resurface" id="nav-resurface" role="tab" aria-selected="false">RESURFACE</button>');
   });
   it('has bilingual DICT entries for the view copy', () => {
-    for (const key of ['nav.resurface', 'resurface.hint', 'resurface.empty']) {
+    // nav.resurface was dropped in round 43: the tab label comes from the uppercase
+    // fallback in navMap, so a DICT entry for it can never render. Only the copy that is
+    // actually passed through t() is asserted here.
+    for (const key of ['resurface.hint', 'resurface.empty']) {
       const count = (html.match(new RegExp(`'${key.replace('.', '\\.')}':`, 'g')) || []).length;
       expect(count, `${key} should be declared in both ja and en`).toBe(2);
     }

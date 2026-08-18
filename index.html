@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Z1NQjWB5x7DCaI1pLw40VNpuXyOrH+IEIubvH6KgV+Y='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-MRJnpuplKijX7uqeQMjbHEc81TB2zr4277uhqg4LqMc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -849,10 +849,8 @@ const DICT={
     'word.elenchus':'問答(システムからの問い)',
     'word.fwatch':'反証候補(あなたの反証条件に該当しうる)',
     'word.qhits':'関連しうる収集物',
-    'word.verdict':'裁決',
-    'word.verdict.cycle':'裁決を変更',
-    'word.q.add':'問いを追加',
-    'word.q.ph':'未解決の問いを追加...',
+
+    
     'hd.keywords':'キーワード管理',
     'hd.kw.watch':'WATCH(気になる)',
     'hd.kw.block':'BLOCK(ブロック)',
@@ -863,14 +861,9 @@ const DICT={
     'kw.err.redos':'この正規表現は入力次第で処理が爆発し画面が固まります(量化グループの中に無制限量化子)。書き換えてください:',
     'kw.watch.action':'マッチ時の動作',
     'kw.block.action':'マッチ時の動作',
-    'kw.watch.input':'キーワード(1行1個)',
-    'kw.block.input':'キーワード(1行1個)',
-    'kw.btn.reapply':'全件に再適用',
-    'kw.watch.highlight':'ハイライト(スコア+30)',
-    'kw.watch.star':'自動スター',
-    'kw.watch.tag':'自動タグ追加',
-    'kw.block.archive':'自動アーカイブ',
-    'kw.block.delete':'破棄(保存しない)',
+
+
+
     'kw.watched.badge':'WATCH',
     'kw.blocked.badge':'BLOCKED',
     'kwsheet.hint':'このキーワードのルールを追加',
@@ -892,11 +885,9 @@ const DICT={
     'detail.vault':'Vaultへ書き出し',
     'detail.resummarize':'再要約',
     'detail.copy':'MDをコピー',
-    'nav.later':'LATER',
-    'nav.resurface':'RESURFACE',
+
     'resurface.hint':'放置された「あとで読む」とスター済み未読を再浮上。集めたまま忘れた情報に再び出会うための一覧。',
     'resurface.empty':'再浮上する項目なし',
-    'nav.digest':'DIGEST',
     'digest.title':'本日のダイジェスト',
     'digest.subtitle':'過去24時間に取得したイベント',
     'digest.top3':'今日のトップ3',
@@ -908,7 +899,6 @@ const DICT={
     'digest.empty':'過去24時間に新着なし。POLLを実行してください。',
     'digest.week.trend':'週次トレンド',
     'btn.stats':'統計',
-    'btn.help':'ヘルプ',
     'stats.events.total':'保存イベント数',
     'stats.events.unread':'未読',
     'stats.events.starred':'スター済み',
@@ -924,8 +914,7 @@ const DICT={
     'stats.interest.dislike':'除外(自動学習)',
     'stats.storage':'ストレージ',
     'stats.words':'単語',
-    'filter.tag':'タグ',
-    'filter.source':'ソース',
+
     'filter.clear':'クリア',
     'backup.confirm':'現在のデータを置き換えますか?',
     'backup.imported':'復元完了',
@@ -974,10 +963,8 @@ const DICT={
     'word.elenchus':'Elenchus (questions for you)',
     'word.fwatch':'Possible falsifier (may match your stated condition)',
     'word.qhits':'may relate',
-    'word.verdict':'Verdict',
-    'word.verdict.cycle':'Cycle verdict',
-    'word.q.add':'Add question',
-    'word.q.ph':'Add an open question...',
+
+    
     'hd.keywords':'KEYWORD RULES',
     'hd.kw.watch':'WATCH (Highlight)',
     'hd.kw.block':'BLOCK (Hide)',
@@ -988,14 +975,9 @@ const DICT={
     'kw.err.redos':'This regex can blow up on some inputs and freeze the app (unbounded quantifier inside a quantified group). Please rewrite:',
     'kw.watch.action':'Match action',
     'kw.block.action':'Match action',
-    'kw.watch.input':'Keywords (one per line)',
-    'kw.block.input':'Keywords (one per line)',
-    'kw.btn.reapply':'REAPPLY TO ALL',
-    'kw.watch.highlight':'Highlight (score+30)',
-    'kw.watch.star':'Auto-star',
-    'kw.watch.tag':'Auto-tag',
-    'kw.block.archive':'Auto-archive',
-    'kw.block.delete':'Discard (do not save)',
+
+
+
     'kw.watched.badge':'WATCH',
     'kw.blocked.badge':'BLOCKED',
     'kwsheet.hint':'Add a rule for this keyword',
@@ -1017,11 +999,9 @@ const DICT={
     'detail.vault':'EXPORT TO VAULT',
     'detail.resummarize':'RE-SUMMARIZE',
     'detail.copy':'COPY MD',
-    'nav.later':'LATER',
-    'nav.resurface':'RESURFACE',
+
     'resurface.hint':'Neglected read-later and unread starred items, brought back up. What you saved and forgot.',
     'resurface.empty':'nothing to resurface',
-    'nav.digest':'DIGEST',
     'digest.title':"Today's Digest",
     'digest.subtitle':'Events fetched in last 24 hours',
     'digest.top3':'Top 3 today',
@@ -1033,7 +1013,6 @@ const DICT={
     'digest.empty':'No new events in the last 24h. Press POLL to fetch.',
     'digest.week.trend':'Week trend',
     'btn.stats':'STATS',
-    'btn.help':'HELP',
     'stats.events.total':'Total events',
     'stats.events.unread':'Unread',
     'stats.events.starred':'Starred',
@@ -1049,8 +1028,7 @@ const DICT={
     'stats.interest.dislike':'Filtered (auto-learned)',
     'stats.storage':'Storage',
     'stats.words':'Words',
-    'filter.tag':'tag',
-    'filter.source':'source',
+
     'filter.clear':'clear',
     'backup.confirm':'Replace current data with backup?',
     'backup.imported':'restored',
@@ -1066,6 +1044,18 @@ function applyI18N(){
   $('#btn-sources').textContent=t('btn.sources');
   $('#btn-stats').textContent=t('btn.stats');
   $('#btn-keywords').textContent=t('btn.keywords');
+  // KEYWORDS モーダルは DICT に JA/EN 両方が揃っていたのに applyI18N へ配線されておらず、
+  // 見出しと説明文が HTML 直書きの日本語のままだった(英語利用者には日本語が出ていた)。
+  // 「UI は i18n で JA/EN 両対応」は CLAUDE.md の規約なので、削除ではなく配線して充足させる。
+  $('#hd-keywords').textContent=t('hd.keywords');
+  $('#kw-hint').textContent=t('kw.hint');
+  $('#hd-kw-watch').textContent=t('hd.kw.watch');
+  $('#kw-watch-action').textContent=t('kw.watch.action');
+  $('#hd-kw-block').textContent=t('hd.kw.block');
+  $('#kw-block-action').textContent=t('kw.block.action');
+  $('#hd-kw-adv').textContent=t('hd.kw.adv');
+  $('#kw-adv-hint').textContent=t('kw.adv.hint');
+  $('#hd-kw-status').textContent=t('hd.kw.status');
   $('#btn-words').textContent=t('btn.words');
   $('#word-hint').textContent=t('word.hint');
   $('#lbl-word-input').textContent=t('word.input');
