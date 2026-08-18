@@ -2087,3 +2087,46 @@ round 66 の OPML ミラーと同じ構図なので、同じように機械で�
 
 - 変更: `tests/browser-beta-flows.spec.mjs`(+3 spec)、`scripts/g10.mjs`(導出化)。
   実装コードの変更なし。
+
+### 10.61 第59次監査 (round 72) — 「確認 → await → 変更」型を総当たりし、もう1件見つけた
+
+round 69 の BYOK 予算超過は「確認と変更の間に await がある」形の欠陥だった。**同じ形が他に
+無いか**、モジュールレベルの可変フラグ・カウンタを総当たりで見た。結果、`WordCollector.collectAll`
+に**同型の穴**が残っていた:
+
+```
+if(busy){...return 0;}                                 // 確認
+if(!NetworkMonitor.isOnline()){...return 0;}
+const words=(await Store.listWords()).filter(...);     // ← ここで await
+if(words.length===0)return 0;
+busy=true;                                             // 変更
+```
+
+**実測**: 3語登録した状態で `collectAll()` を2つ同時に走らせると、収集が **6回**(正しくは3回)。
+両方の呼び出しが門を通っていた。
+
+**机上の話ではない**。`collectAll` は4経路から呼ばれ、うち2つは利用者の操作と無関係に発火する:
+- `NetworkMonitor` のオンライン復帰ハンドラ(`fetchAll().then(collectAll())`、**await されない**)
+- Service Worker からの定期同期
+- POLL ボタン / COLLECT ALL ボタン
+
+定期同期やオンライン復帰が POLL 押下と重なるのは**ごく普通の並び**。しかも被害は
+「収集が二重に走る」では済まない — 単語収集は1語につき Wikipedia / HN / Reddit / arXiv /
+Qiita / Zenn / はてな / GitHub を叩くため、**登録語数 × ソース数の外部リクエストが丸ごと
+二重になる**。第三者サービスに対するレート制限・行儀の問題であり、同じ word レコードへの
+`Store.putWord` も競合する。
+
+**修正**: 確認の直後に同期で `busy=true` を立て、リスト取得を `try` の中へ移した。
+「単語ゼロで早期 return」も予約後に入るため、`finally` を通って必ずフラグが解放される
+(ここを間違えると**以後セッション中ずっと収集不能**になる)。
+
+**問題が無かったもの(記録)**: `collectOne` / `RSSPoller.fetchAll` / `addWord` /
+`VaultMatcher.scan` はいずれも確認の直後に同期でフラグを立てており、同じ穴は無い。
+再導出しなくて済むよう、この4つも同じ構造テストで固定した。
+
+**ヘルパーの欠陥も1件**: `extractFunction` が `async function` を見つけられなかった。
+つまり**非同期関数には一度も使えていなかった** — 面白い関数の大半がそれである。
+`collectAll` を取り出そうとして初めて判明。修正済み。
+
+- 変更: `index.html`(`collectAll` の予約順序)、`tests/collector-busy-guard.test.mjs`(新規9件)、
+  `tests/helpers/from-source.mjs`(async 対応)。
