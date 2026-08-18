@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-DQiFTgn76FiOZKOmFbI+NEh9zQQE2CmSkP1luU7sHZs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-3YUf4VcxtkDbgn13CUcgRyRZ9K02TUalvi71n0fy7NA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2374,9 +2374,17 @@ const WordCollector=(()=>{
       total+=r.items.length;
     }
     // total は取得した生件数(重複排除・ブロック前)。fetched としてのみ意味を持つ。
-    word.lastCollectedAt=Date.now();word.lastFetched=total;
-    word.lastErrors=Object.keys(errors).length?errors:null;
-    await Store.putWord(word);
+    // 収集は9ソースへの往復で秒単位かかる。その間 WORDS 画面の各操作(問いの追加・判定の保存・
+    // レビュー済み)は `Store.getWord` で**別のコピー**を読んで書き戻すため、手元のコピーを
+    // そのまま書くと利用者の入力が消える。ここが担当するのは収集の結果だけなので、
+    // 直前に読み直してそのフィールドだけを載せる。
+    const fresh=await Store.getWord(word.id)||word;
+    if(word.wiki)fresh.wiki=word.wiki;
+    fresh.lastCollectedAt=Date.now();fresh.lastFetched=total;
+    fresh.lastErrors=Object.keys(errors).length?errors:null;
+    // 呼び出し元が持つコピーも合わせる(直後の再描画が古い値を出さないように)。
+    word.lastCollectedAt=fresh.lastCollectedAt;word.lastFetched=fresh.lastFetched;word.lastErrors=fresh.lastErrors;
+    await Store.putWord(fresh);
     return total;
   }
   // 公開API: 単語1件の収集。多重起動を防ぐ。収集後にアイテム数をトーストで通知。
