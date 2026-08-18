@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-DO1nYtGMyDO1jfRME+cDJIc+iPKYYdTczEnwf0lSP/Q='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Jng0rWIGzsznw63RnNDXit71ID9wVqHDNzKbXMq2kw4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -777,6 +777,9 @@ const CONFIG = Object.freeze({
   // ユーザー定義 regex ルールが走査するテキストの上限。バックトラッキング量は入力長に対して
   // 指数的に効くため、フィード由来の長い本文をそのまま食わせない(詳細は matchRule のコメント)。
   regexScanMaxChars:4000,
+  // 見出しの上限。snippet/summary は 500 字で切っているのに title は無制限だった。
+  // title は FTS の N-gram 索引に入るため、巨大な title 1件で索引が膨張する(詳細は capTitle)。
+  titleMaxChars:300,
   // フィードが申告する publishedAt を信用する上限(時計ずれの許容)。これを超える未来日付は
   // 「不明」として扱う。理由は sanePublishedAt のコメント参照。
   publishedAtMaxSkewMs:60*60*1000,
@@ -1192,6 +1195,16 @@ function tokenize(text){
 // clamp して now を入れないのは、本プロジェクトの `publishedAt` 非捏造規約に従うため:
 // 実際の公開日時が分からないなら値を作らず undefined にし、消費側の `||timestamp`
 // (取得時刻)へ委ねる。取得直後の項目なら取得時刻がほぼ正しいので実害も無い。
+// 見出しを上限で切る。snippet / summary は取り込み時に 500 字へ切っているのに title だけ
+// 無制限で、しかも title は FTSIndex の N-gram 対象(eventText)に入る。ワーカーはフィード応答を
+// 5MB まで許すため、悪意あるいは壊れたフィードが巨大な <title> を1件返すだけで、その1文書が
+// 数百万個の bigram を索引へ流し込み、索引構築・検索・IndexedDB を一斉に膨張させられる。
+// 実在の見出しは 200 字に収まるので、切っても表示・検索の実用性は落ちない。
+function capTitle(t){
+  const s=String(t==null?'':t);
+  return s.length>CONFIG.titleMaxChars?s.slice(0,CONFIG.titleMaxChars):s;
+}
+
 function sanePublishedAt(ms){
   if(typeof ms!=='number'||!Number.isFinite(ms))return undefined;
   if(ms>Date.now()+CONFIG.publishedAtMaxSkewMs)return undefined;
@@ -2062,7 +2075,7 @@ const ShareTarget={
   async ingest(url,title){
     let nu;try{nu=normalizeUrl(url);}catch{nu=url;}
     if(safeHref(nu)==='#'){toast(currentLang==='ja'?'無効なURL':'invalid url','err');return;}
-    const displayTitle=title||nu;
+    const displayTitle=capTitle(title)||nu;
     const hash=await sha256(nu+'|'+displayTitle);
     // findByHash→putEvent の非アトミック性は withHashGate で直列化する(RSS取り込みと
     // 同じ hash に同時到達しても重複レコードを作らない。event.normalized と共有)。
@@ -2115,7 +2128,7 @@ const RSSPoller=(()=>{
       try{
         const get=(sel)=>{try{return item.querySelector(sel)?.textContent?.trim()||'';}catch{return'';}};
         const link=item.querySelector('link[href]')?.getAttribute('href')||get('link')||'';
-        let title=decodeEntities(get('title'))||'(untitled)';
+        let title=capTitle(decodeEntities(get('title')))||'(untitled)';
         // Google News appends " - {publisher}" to every headline and supplies the publisher
         // in the item's <source> element. Strip exactly that suffix: cleaner display, and the
         // bare headline title-dedups against the same article fetched directly (Qiita/Zenn/HN).
@@ -2224,7 +2237,7 @@ const WORD_FEEDS={
     build:(q)=>`https://qiita.com/api/v2/items?query=${q}&per_page=30`,
     // JSON.parse throws on malformed input (collector records 'parse'). A valid-but-non-array
     // body (e.g. an error object returned with HTTP 200) yields no items rather than a TypeError.
-    parse:(text)=>{const d=JSON.parse(text);return Array.isArray(d)?d.map(it=>({title:it.title||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:sanePublishedAt(Date.parse(it.created_at)),author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)})):[];}},
+    parse:(text)=>{const d=JSON.parse(text);return Array.isArray(d)?d.map(it=>({title:capTitle(it.title)||'(untitled)',link:it.url,summary:RSSPoller.decodeEntities((it.rendered_body||it.body||'').replace(/<[^>]+>/g,'')).replace(/\s+/g,' ').trim().slice(0,500),publishedAt:sanePublishedAt(Date.parse(it.created_at)),author:it.user?.id||'',tags:(it.tags||[]).map(t=>t&&t.name).filter(Boolean),score:engagementScore(it.likes_count)})):[];}},
   // Zenn は公式検索 API が無いためトピックの Atom フィードを使う。トピックは連結した小英数字
   // (+日本語)のみ(例 "Next.js"->"nextjs")。一致トピックが無ければ 404 が誠実に表示される。
   // topicStyle:true = トピックフィード設計(一致トピックが無ければ 404、取得失敗ではなく
