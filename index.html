@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-WcV8qW5MRVQqkGvf+sbLUuFQXZtInvsUXJYEm/2QAWo='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-DQiFTgn76FiOZKOmFbI+NEh9zQQE2CmSkP1luU7sHZs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1962,10 +1962,15 @@ const KeywordRules=(()=>{
   async function reapplyAll(){
     const all=await Store.allEvents();let changed=0;
     for(let i=0;i<all.length;i++){
-      const ev=all[i];
-      const m=evaluate(ev);
-      if(m.watch.length===0&&m.block.length===0&&!ev.meta.keywordMatched)continue;
-      // 既存のkeywordMatchedをリセット
+      const snapshot=all[i];
+      const m=evaluate(snapshot);
+      if(m.watch.length===0&&m.block.length===0&&!snapshot.meta.keywordMatched)continue;
+      // `all` はループ開始時のスナップショット。下の yield は INP のために**意図的に**制御を
+      // 手放すので、その隙に利用者が星を付けたり要約が届いたりする — 実際に起きる前提の設計。
+      // 古いコピーを書き戻すとその更新が消えるため、書く直前に読み直す。判定 (`evaluate`) は
+      // タイトル等の不変な値しか見ないのでスナップショットのままで良い。
+      const ev=await Store.getEvent(snapshot.id);
+      if(!ev)continue; // 走査中に削除された
       delete ev.meta.keywordMatched;
       apply(ev,m);
       try{await Store.putEvent(ev);FTSIndex.add(ev);changed++;}
@@ -4596,8 +4601,14 @@ $('#word-list').addEventListener('click',async(e)=>{
         const oldTag='word:'+oldNorm,newTag='word:'+word.normalized;
         const events=await Store.allEvents();
         for(const ev of events){
-          const tags=ev.meta?.autoTags||[];const i=tags.indexOf(oldTag);
-          if(i>=0){tags[i]=newTag;await Store.putEvent(ev);FTSIndex.add(ev);}
+          // スナップショットは走査の入口で撮ったもの。1件ごとの await で制御が戻るため、その間に
+          // 星付けや要約の到着があると古いコピーの書き戻しで消える。書く直前に読み直す。
+          if((ev.meta?.autoTags||[]).indexOf(oldTag)<0)continue;
+          const fresh=await Store.getEvent(ev.id);
+          if(!fresh)continue;
+          const tags=fresh.meta?.autoTags||[];const i=tags.indexOf(oldTag);
+          if(i<0)continue;   // 既に適用済み: 再実行時にここで読み飛ばされるのが冪等性の要
+          tags[i]=newTag;await Store.putEvent(fresh);FTSIndex.add(fresh);
         }
       }
       await Store.putWord(word);FTSIndex.addWord(word);
