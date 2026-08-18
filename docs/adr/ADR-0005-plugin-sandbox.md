@@ -5,7 +5,7 @@
 
 ## Context
 
-Lensy はサードパーティプラグインを受け入れる設計(Plugin SDK)。プラグインが Event Bus の任意トピックに publish できると、他モジュールへの干渉や XSS が発生し得る。
+Neus はサードパーティプラグインを受け入れる設計(Plugin SDK)。プラグインが Event Bus の任意トピックに publish できると、他モジュールへの干渉や XSS が発生し得る。
 
 ## Decision
 

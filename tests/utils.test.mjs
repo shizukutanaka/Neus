@@ -1,4 +1,4 @@
-// Lensy — Core utility unit tests
+// Neus — Core utility unit tests
 // Coverage target: ≥ 80% (goal.md §2.3)
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -67,22 +67,11 @@ function buildFTSIndex() {
   return { add, search, size: () => index.size };
 }
 
-// OPML parser
-function parseOPML(xml) {
-  const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  if (doc.querySelector('parsererror')) throw new Error('opml parse error');
-  return [...doc.querySelectorAll('outline[xmlUrl]')].map(o => {
-    const url = o.getAttribute('xmlUrl');
-    let name = o.getAttribute('title') || o.getAttribute('text');
-    if (!name) { try { name = new URL(url).hostname; } catch { name = url; } }
-    return url ? { url, name } : null;
-  }).filter(Boolean);
-}
-
-function buildOPML(sources) {
-  const items = sources.map(s => `    <outline type="rss" text="${s.name}" title="${s.name}" xmlUrl="${s.url}"/>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head><title>Lensy Sources</title></head>\n  <body>\n${items}\n  </body>\n</opml>`;
-}
+// The OPML mirror that used to live here was deleted in round 66. It had drifted from the real
+// implementation in two ways nobody noticed, because a mirror is only checked against itself:
+// its build() still emitted the pre-rename product name, and it lacked the escapeAttr/dateCreated
+// the real build() has. Coverage moved to tests/browser-opml-parse.spec.mjs, which evaluates the
+// real functions out of index.html in a real browser — see tests/helpers/from-source.mjs.
 
 // ===== TESTS =====
 
@@ -265,59 +254,6 @@ describe('FTSIndex', () => {
     fts.search('rust kubernetes');
     const elapsed = Date.now() - t0;
     expect(elapsed).toBeLessThan(100);
-  });
-});
-
-describe('OPML', () => {
-  const sampleOPML = `<?xml version="1.0"?>
-<opml version="2.0">
-  <head><title>Test</title></head>
-  <body>
-    <outline type="rss" text="HN" title="Hacker News" xmlUrl="https://news.ycombinator.com/rss"/>
-    <outline type="rss" text="GitHub" xmlUrl="https://github.blog/feed/"/>
-    <outline text="no-url"/>
-  </body>
-</opml>`;
-
-  it('parses sources from OPML', () => {
-    const sources = parseOPML(sampleOPML);
-    expect(sources).toHaveLength(2);
-    expect(sources[0].url).toBe('https://news.ycombinator.com/rss');
-    expect(sources[0].name).toBe('Hacker News');
-  });
-
-  it('uses text attribute as name when present', () => {
-    const sources = parseOPML(sampleOPML);
-    // second outline has text="GitHub" → name should be 'GitHub'
-    expect(sources[1].name).toBe('GitHub');
-  });
-  it('falls back to hostname when title/text missing', () => {
-    const xml = `<?xml version="1.0"?><opml version="2.0"><head/><body><outline type="rss" xmlUrl="https://dev.to/feed"/></body></opml>`;
-    const sources = parseOPML(xml);
-    expect(sources[0].name).toBe('dev.to');
-  });
-
-  it('throws on malformed XML', () => {
-    expect(() => parseOPML('not xml <<<')).toThrow('opml parse error');
-  });
-
-  it('builds valid OPML', () => {
-    const sources = [{ name: 'HN', url: 'https://news.ycombinator.com/rss' }];
-    const xml = buildOPML(sources);
-    expect(xml).toContain('<opml version="2.0">');
-    expect(xml).toContain('xmlUrl="https://news.ycombinator.com/rss"');
-  });
-
-  it('round-trips sources', () => {
-    const sources = [
-      { name: 'HN', url: 'https://news.ycombinator.com/rss' },
-      { name: 'GitHub Blog', url: 'https://github.blog/feed/' },
-    ];
-    const xml = buildOPML(sources);
-    const parsed = parseOPML(xml);
-    expect(parsed).toHaveLength(2);
-    expect(parsed[0].url).toBe(sources[0].url);
-    expect(parsed[1].name).toBe(sources[1].name);
   });
 });
 

@@ -5,7 +5,7 @@
 
 ## Context
 
-Lensy の最終出力先として Obsidian Vault へのエクスポートが求められる。出力手段の選択肢を評価した。
+Neus の最終出力先として Obsidian Vault へのエクスポートが求められる。出力手段の選択肢を評価した。
 
 ## Decision
 

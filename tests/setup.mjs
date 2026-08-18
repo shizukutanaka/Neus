@@ -1,4 +1,4 @@
-// Lensy — Vitest global setup
+// Neus — Vitest global setup
 // Runs before each test file.
 
 import { beforeEach, vi } from 'vitest';
