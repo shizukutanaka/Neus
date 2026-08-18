@@ -657,3 +657,160 @@ test.describe('G10.07 — Share Target intake, the app half of #7 and #9 (round 
     expect(await sharedEvents(page), 'a reload must not duplicate the shared article').toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// round 69 — #3(BYOK 要約)の「実APIキー(課金)が要る」も、要るのは端だけだった
+//
+// round 67 は #3 を「半分正しい」として一部だけ機械化した(要約が無くてもカードが壊れない)。
+// もう一段問い直すと、シナリオが確かめたいのは
+//   設定保存 → 予算管理 → プロバイダ分岐 → リクエスト組立 → 応答の取り出し → カードへ反映
+// という**Neus 側の経路**であって、ベンダが稼働しているかではない。#2 で proxy 応答だけを
+// 差し替えたのと同じ理屈で、**ベンダのエンドポイント応答だけ**を差し替えれば経路は実物のまま。
+//
+// 設定は IndexedDB へ直接書かず、**実際の SETTINGS モーダルを操作して**保存する。
+// シナリオの文言(「BYOK設定 → POLL → 要約自動生成」)がその順序を求めているし、
+// 設定 UI と `Store.getSetting('byok')` の結合自体が壊れうる箇所だから。
+//
+// 人手に残るのは「実ベンダが我々のリクエスト形を受け付けるか」だけになった。
+// ---------------------------------------------------------------------------
+
+// Stub only the vendor response. Everything from the settings form down to the card is real.
+async function stubVendor(page, { status = 200, text = 'Canned one-line summary.' } = {}) {
+  const seen = [];
+  await page.route('**/api.anthropic.com/**', route => {
+    const req = route.request();
+    seen.push({ headers: req.headers(), body: JSON.parse(req.postData() || '{}') });
+    if (status !== 200) return route.fulfill({ status, contentType: 'application/json', body: '{}' });
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ content: [{ type: 'text', text }] }),
+    });
+  });
+  return seen;
+}
+
+async function configureByok(page, { key = 'sk-ant-test-key', budget = 100 } = {}) {
+  await page.click('#btn-menu');
+  await page.click('#btn-settings');
+  await expect(page.locator('#modal-settings')).toHaveClass(/show/);
+  await page.selectOption('#set-byok-enabled', 'true');
+  await page.selectOption('#set-byok-provider', 'anthropic');
+  await page.fill('#set-byok-key', key);
+  await page.fill('#set-byok-budget', String(budget));
+  await page.click('#set-save');
+  await page.waitForTimeout(800);
+  await page.evaluate(() => document.querySelector('#modal-settings')?.classList.remove('show'));
+}
+
+const summaries = (page) => page.evaluate(() => new Promise(resolve => {
+  const req = indexedDB.open('neus-v1');
+  req.onsuccess = () => {
+    const tx = req.result.transaction(['events']).objectStore('events').getAll();
+    tx.onsuccess = () => resolve(tx.result.map(e => e.content?.summary).filter(Boolean));
+    tx.onerror = () => resolve([]);
+  };
+  req.onerror = () => resolve([]);
+}));
+
+test.describe('G10.07 — scenario 3, with only the vendor response stubbed (round 69)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+  });
+
+  test('configuring BYOK then polling puts a summary on the card', async ({ page }) => {
+    const problems = watchForCrashes(page);
+    const calls = await stubVendor(page);
+    await configureByok(page);
+    await seedEvents(page);
+    await page.waitForTimeout(2000);
+
+    const found = await summaries(page);
+    expect(found.length, 'every fetched item should have been summarized').toBeGreaterThan(0);
+    expect(found[0]).toBe('Canned one-line summary.');
+    expect(problems, `crashes during summarization:\n${problems.join('\n')}`).toEqual([]);
+  });
+
+  test('the request carries the key, the version header and the article text', async ({ page }) => {
+    const calls = await stubVendor(page);
+    await configureByok(page, { key: 'sk-ant-specific-key' });
+    await seedEvents(page);
+    await page.waitForTimeout(2000);
+
+    expect(calls.length, 'at least one vendor call must have been made').toBeGreaterThan(0);
+    const [first] = calls;
+    expect(first.headers['x-api-key'], 'the saved key must reach the vendor').toBe('sk-ant-specific-key');
+    expect(first.headers['anthropic-version']).toBe('2023-06-01');
+    expect(first.body.model, 'the provider default model is used when none is typed').toMatch(/claude/);
+    expect(first.body.max_tokens).toBe(400);
+    expect(JSON.stringify(first.body.messages), 'the prompt must contain the article title')
+      .toMatch(/Rust ownership|WebGPU|線形代数/);
+  });
+
+  test('a daily budget of 0 means no vendor call at all', async ({ page }) => {
+    // budget:0 is an explicit "summarize nothing today", and 0 is falsy — the implementation
+    // uses a typeof check so it cannot be misread as "unlimited". Pin that reading.
+    const calls = await stubVendor(page);
+    await configureByok(page, { budget: 0 });
+    await seedEvents(page);
+    await page.waitForTimeout(2000);
+
+    expect(calls, 'budget 0 must not be treated as unlimited').toEqual([]);
+    expect(await summaries(page)).toEqual([]);
+  });
+
+  test('the budget caps how many items get summarized, even when they arrive together', async ({ page }) => {
+    // This is the test that found the round-69 defect. A poll publishes every item at once,
+    // so all of them reached the budget check before any of them incremented the counter:
+    // budget 1 produced 3 vendor calls, i.e. three times the spend the user asked for.
+    // The counter is now reserved before the call, in the same synchronous block as the check.
+    const calls = await stubVendor(page);
+    await configureByok(page, { budget: 1 });
+    await seedEvents(page);
+    await page.waitForTimeout(2500);
+
+    expect(calls.length, 'concurrent items must not each get their own slot').toBe(1);
+    expect(await summaries(page)).toHaveLength(1);
+  });
+
+  test('a failed call returns its slot instead of burning the budget', async ({ page }) => {
+    // Reserving before the call must not mean a transient failure silently eats the day's
+    // allowance — nothing was summarized, so the slot goes back.
+    await stubVendor(page, { status: 500 });
+    await configureByok(page, { budget: 5 });
+    await seedEvents(page);
+    await page.waitForTimeout(2500);
+
+    const spent = await page.evaluate(() => new Promise(resolve => {
+      const req = indexedDB.open('neus-v1');
+      req.onsuccess = () => {
+        const tx = req.result.transaction(['settings']).objectStore('settings').get('summary-budget');
+        tx.onsuccess = () => resolve(tx.result?.value?.count ?? tx.result?.count ?? null);
+        tx.onerror = () => resolve(null);
+      };
+      req.onerror = () => resolve(null);
+    }));
+    expect(spent, 'failed calls must not count against the daily budget').toBe(0);
+  });
+
+  test('a rejected key surfaces as a toast and leaves cards intact', async ({ page }) => {
+    await stubVendor(page, { status: 401 });
+    await configureByok(page);
+    await seedEvents(page);
+    await page.waitForTimeout(2000);
+
+    expect(await summaries(page), 'a 401 must not fabricate a summary').toEqual([]);
+    // Cards must still render — a bad key degrades the feature, not the app.
+    expect(await page.locator('.card').count()).toBeGreaterThan(0);
+  });
+
+  test('with BYOK left disabled, no vendor call is made at all', async ({ page }) => {
+    const calls = await stubVendor(page);
+    await seedEvents(page);
+    await page.waitForTimeout(2000);
+    expect(calls, 'the default configuration must not talk to any vendor').toEqual([]);
+    expect(await summaries(page)).toEqual([]);
+  });
+});

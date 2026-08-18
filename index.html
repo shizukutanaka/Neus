@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-kjm+JrKkMDzChaA/nZ9NYxI6S0nKo/W6s6nXpY2qMhI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Q+YIj9qpNMTklA9LNopjRY6nYJuK84Kps+XmC+m5lLA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2684,10 +2684,17 @@ const Summarizer=(()=>{
       if(!budgetNotified){budgetNotified=true;Bus.publish('summarizer.budget-exceeded',{});}
       return null;
     }
+    // 予算枠は**呼び出しの前に**確保する。加算を応答後に置くと、同時に流れてくる複数の
+    // イベントが全員 dailyCount を同じ値で読んでから加算するため、budget を超えた回数だけ
+    // 課金される(実測: budget=1 に対し 3 件同時で 3 回呼ばれた)。ここは確認と加算の間に
+    // await が無い同期ブロックなので、他のイベントが割り込む余地がない。
+    // 予算は利用者の実費の上限なので、超過は「要約が出ない」より重い不具合。
+    dailyCount++;await persist();
     const prompt=CONFIG.summaryPrompt.replace('{title}',ev.content.title).replace('{content}',(ev.content.body||ev.content.snippet||'').slice(0,4000));
     let text;
-    try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else if(s.provider==='qwen')text=await callQwen(prompt,apiKey);else if(s.provider==='gemma')text=await callGemma(prompt,apiKey);else if(s.provider==='glm')text=await callGlm(prompt,apiKey);else if(s.provider==='ollama')text=await callOllama(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){Bus.publish('summarizer.error',{ev,error:err.message});return null;}
-    dailyCount++;await persist();return text.trim();
+    // 失敗時は枠を返す(要約が得られていないため)。返さないと一時的な障害で枠だけが減る。
+    try{if(s.provider==='anthropic')text=await callAnthropic(prompt,apiKey);else if(s.provider==='openai')text=await callOpenAI(prompt,apiKey);else if(s.provider==='gemini')text=await callGemini(prompt,apiKey);else if(s.provider==='qwen')text=await callQwen(prompt,apiKey);else if(s.provider==='gemma')text=await callGemma(prompt,apiKey);else if(s.provider==='glm')text=await callGlm(prompt,apiKey);else if(s.provider==='ollama')text=await callOllama(prompt,apiKey);else throw new Error('unknown_provider');}catch(err){dailyCount--;await persist();Bus.publish('summarizer.error',{ev,error:err.message});return null;}
+    return text.trim();
   }
   return{summarize,getDailyCount:()=>dailyCount,load};
 })();
