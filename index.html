@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-0Scbl7tq2yhLG0FXSfB/wNxaPVHEeBILUuay/a+4UnQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Sbo5VvfPKWnsmlWFK74n4zvlZpTxZMTquEqvRJcrn94='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1234,7 +1234,7 @@ function fmtTime(ms){
   if(dy<7)return currentLang==='ja'?`${dy}日前`:`${dy}d`;
   // 7日以上前: Intl.DateTimeFormat でロケール対応
   try{return new Intl.DateTimeFormat(currentLang==='ja'?'ja-JP':'en-US',{year:'numeric',month:'short',day:'numeric'}).format(new Date(ms));}
-  catch{return new Date(ms).toISOString().slice(0,10);}
+  catch{return localDateKey(new Date(ms));}
 }
 
 // 数値フォーマット (1,234 など)
@@ -1244,6 +1244,17 @@ function fmtNum(n){
 }
 
 const isoDate=(ms)=>new Date(ms).toISOString();
+// カレンダー上の「その人の1日」を YYYY-MM-DD で返す。
+// toISOString().slice(0,10) は **UTC 基準**なので、UTC+9 の利用者では 00:00-09:00 の間
+// 前日の日付になる。人間向けの日付グルーピングに使うと実害が出る:
+//   - Obsidian の Daily Note が朝の記録だけ前日のファイルへ紛れ込む(本製品の主要連携)
+//   - BYOK の「1日あたり予算」が現地 09:00 にリセットされ、利用者の1日と一致しない
+// 機械可読タイムスタンプ(YAML frontmatter の published_at / ingested_at)は曖昧さを避けるため
+// UTC のままが正しいので、そちらは isoDate を使い続ける。
+function localDateKey(d=new Date()){
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
 
 function toast(msg,type=''){
   const el=$('#toast');
@@ -1432,7 +1443,7 @@ const VaultWriter=(()=>{
   }
 
   async function appendDaily(root,lines){
-    const date=new Date().toISOString().slice(0,10);
+    const date=localDateKey();
     let existing='';
     try{const fh=await root.getFileHandle(`${date}.md`);existing=await(await fh.getFile()).text();}catch{}
     const header=existing?'':(`# ${date}\n\n## Neus\n\n`);
@@ -2591,15 +2602,15 @@ Bus.subscribe('event.stored',async(ev)=>{try{
 
 // ===== SUMMARIZER =======================================================
 const Summarizer=(()=>{
-  let dailyCount=0;let dailyKey=new Date().toISOString().slice(0,10);let loaded=false;
+  let dailyCount=0;let dailyKey=localDateKey();let loaded=false;
   // その日は既に予算超過を通知済みか。無いと event.tagged のたび(ingest 1件ごと)に
   // 同一のエラートーストが連発し、role="status" の aria-live 領域を連続読み上げさせる。
   let budgetNotified=false;
   // 予算カウンタは IndexedDB に永続化する。これが無いとリロードで dailyCount が 0 に
   // 戻り、日次予算(BYOK 課金上限)がページ再読込だけで回避できてしまう。
   async function persist(){await Store.putSetting('summary-budget',{key:dailyKey,count:dailyCount});}
-  async function load(){const b=await Store.getSetting('summary-budget');const today=new Date().toISOString().slice(0,10);if(b&&b.key===today){dailyKey=today;dailyCount=b.count||0;}else{dailyKey=today;dailyCount=0;}loaded=true;}
-  async function resetIfNewDay(){const today=new Date().toISOString().slice(0,10);if(today!==dailyKey){dailyKey=today;dailyCount=0;budgetNotified=false;await persist();}}
+  async function load(){const b=await Store.getSetting('summary-budget');const today=localDateKey();if(b&&b.key===today){dailyKey=today;dailyCount=b.count||0;}else{dailyKey=today;dailyCount=0;}loaded=true;}
+  async function resetIfNewDay(){const today=localDateKey();if(today!==dailyKey){dailyKey=today;dailyCount=0;budgetNotified=false;await persist();}}
   async function callAnthropic(prompt,s){const res=await fetch(CONFIG.byokDefaults.anthropic.endpoint,{method:'POST',headers:{'content-type':'application/json','x-api-key':s,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.anthropic.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`anthropic_${res.status}`);return((await res.json()).content?.[0]?.text||'');}
   async function callOpenAI(prompt,s){const res=await fetch(CONFIG.byokDefaults.openai.endpoint,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${s}`},body:JSON.stringify({model:(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.openai.model,max_tokens:400,messages:[{role:'user',content:prompt}]})});if(!res.ok)throw new Error(`openai_${res.status}`);return((await res.json()).choices?.[0]?.message?.content||'');}
   async function callGemini(prompt,s){const model=(await Store.getSetting('byok'))?.model||CONFIG.byokDefaults.gemini.model;const url=CONFIG.byokDefaults.gemini.endpoint.replace('{model}',model)+`?key=${encodeURIComponent(s)}`;const res=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:400}})});if(!res.ok)throw new Error(`gemini_${res.status}`);return((await res.json()).candidates?.[0]?.content?.parts?.[0]?.text||'');}
@@ -3302,7 +3313,7 @@ const WordExporter={
       const others=words.filter(o=>o.normalized!==w.normalized).map(o=>({term:o.term,normalized:o.normalized}));
       docs.push(this.toDossier(w,await this.gather(w),others));
     }
-    downloadFile(`neus-words-${new Date().toISOString().slice(0,10)}.md`,docs.join('\n\n'),'text/markdown');
+    downloadFile(`neus-words-${localDateKey()}.md`,docs.join('\n\n'),'text/markdown');
     toast(currentLang==='ja'?`${words.length}単語を書き出し`:`exported ${words.length} word(s)`,'ok');
     const now=Date.now();for(const w of words){w.reviewedAt=now;await Store.putWord(w);}
   },
@@ -4294,7 +4305,7 @@ $('#sources-list').addEventListener('click',async(e)=>{const del=e.target.closes
 $('#modal-sources').addEventListener('click',(e)=>{if(e.target.id==='modal-sources')$('#modal-sources').classList.remove('show');});
 $('#opml-import').addEventListener('click',()=>$('#opml-file').click());
 $('#opml-file').addEventListener('change',async(e)=>{const file=e.target.files?.[0];if(!file)return;try{const text=await file.text();e.target.value='';let parsed;try{parsed=OPML.parse(text);}catch{toast(currentLang==='ja'?'無効なOPMLです':'invalid OPML','err');return;}if(parsed.length===0){toast(currentLang==='ja'?'OPMLにソースがありません':'no sources in OPML','err');return;}let added=0,skipped=0;for(const p of parsed){if(safeHref(p.url)==='#'){skipped++;continue;}if(await Store.findSourceByUrl(p.url)){skipped++;continue;}await Store.putSource({id:uuid(),url:p.url,name:p.name,enabled:true,addedAt:Date.now()});added++;}toast(currentLang==='ja'?`${added}件追加、${skipped}件スキップ`:`imported ${added}, skipped ${skipped}`,'ok');openSourcesModal();}catch(err){console.error('[opml-import]',err);toast(currentLang==='ja'?'OPMLの取り込みに失敗しました':'OPML import failed','err');}});
-$('#opml-export').addEventListener('click',async()=>{try{const list=await Store.listSources();if(list.length===0){toast(currentLang==='ja'?'ソースなし':'no sources','err');return;}downloadFile(`neus-sources-${new Date().toISOString().slice(0,10)}.opml`,OPML.build(list),'application/xml');toast(currentLang==='ja'?`${list.length}件を書き出しました`:`exported ${list.length}`,'ok');}catch(err){console.error('[opml-export]',err);toast(currentLang==='ja'?'OPMLの書き出しに失敗しました':'OPML export failed','err');}});
+$('#opml-export').addEventListener('click',async()=>{try{const list=await Store.listSources();if(list.length===0){toast(currentLang==='ja'?'ソースなし':'no sources','err');return;}downloadFile(`neus-sources-${localDateKey()}.opml`,OPML.build(list),'application/xml');toast(currentLang==='ja'?`${list.length}件を書き出しました`:`exported ${list.length}`,'ok');}catch(err){console.error('[opml-export]',err);toast(currentLang==='ja'?'OPMLの書き出しに失敗しました':'OPML export failed','err');}});
 $('#bookmarklet-btn').addEventListener('click',()=>Bookmarklet.showUI());
 
 // ===== VAULT MODAL ======================================================
@@ -4643,7 +4654,7 @@ $('#stats-backup').addEventListener('click',async()=>{
         delete dump.settings.byok;
       }
     }
-    downloadFile(`neus-backup-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(dump,null,2),'application/json');
+    downloadFile(`neus-backup-${localDateKey()}.json`,JSON.stringify(dump,null,2),'application/json');
     toast(currentLang==='ja'?`${events.length}件エクスポート`:`exported ${events.length} events`,'ok');
   }catch(err){console.error('[stats-backup]',err);toast(currentLang==='ja'?'エクスポート失敗':'export failed','err');}
 });
