@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Jng0rWIGzsznw63RnNDXit71ID9wVqHDNzKbXMq2kw4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-pPQNlrbFsU6SeuPEeMVYS8Sntwjv7O1jBFyEL1/jZ1A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3523,10 +3523,16 @@ async function renderDigest(){
     .slice(0,3);
 
   // 週次トレンド(7日, 日別件数)
+  // 直近7日を**ローカルの暦日**でバケットする。経過24時間で割ると境界が現在時刻に張り付き、
+  // 例えば月曜10:00に見ると「日曜23:00の記事」が経過11時間なので "今日" に数えられてしまう
+  // (毎晩の活動が翌日へずれる)。日別トレンドを名乗る以上、区切りは暦日でなければならない。
+  // setDate による減算は月・年またぎと DST を正しく処理する。
   const week=Array(7).fill(0);
+  const dayIndex=new Map();
+  for(let i=0;i<7;i++){const d=new Date();d.setDate(d.getDate()-i);dayIndex.set(localDateKey(d),6-i);}
   for(const ev of all){
-    const days=Math.floor((Date.now()-ev.timestamp)/(24*60*60*1000));
-    if(days>=0&&days<7)week[6-days]++;
+    const slot=dayIndex.get(localDateKey(new Date(ev.timestamp)));
+    if(slot!==undefined)week[slot]++;
   }
   const maxWeek=Math.max(1,...week);
 
