@@ -2130,3 +2130,34 @@ Qiita / Zenn / はてな / GitHub を叩くため、**登録語数 × ソース�
 
 - 変更: `index.html`(`collectAll` の予約順序)、`tests/collector-busy-guard.test.mjs`(新規9件)、
   `tests/helpers/from-source.mjs`(async 対応)。
+
+### 10.62 第60次監査 (round 73) — 近い親戚:「読む → await → 丸ごと書き戻す」
+
+round 69 / 72 で潰したのは「確認 → await → 変更」。その親戚に
+**「レコードを読む → 長い await → まるごと書き戻す」**がある。await の最中に同じレコードが
+別経路で更新されると、**古いコピーで丸ごと上書き**され、その更新が消える(lost update)。
+
+要約はこの形に真正面から当たる。**LLM 呼び出しは秒単位**で、その間カードは画面に出ていて
+操作できるため、待っている間の星付け・既読・アーカイブ・メモ保存は**普通に起こる**。
+
+**実測**:
+
+| 操作 | 結果 |
+|---|---|
+| 要約待ちの間にカードへ星を付ける | 星の数が **1 → 0**(要約の書き戻しが消した) |
+| RESUMMARIZE 中に SAVE でメモを保存 | メモが**消滅**(保存された値が残らない) |
+
+どちらのハンドラも「自分が担当するのは summary だけ」なのに、**レコード全体を書き戻していた**。
+
+**修正**: 長い await の**直後に読み直し**、自分の担当フィールドだけを載せて書く。
+- `Bus.subscribe('event.tagged')` … `content.summary` のみ
+- `#detail-resummarize` … `content.summary` のみ
+- `VaultWriter.exportEvent` / `exportBatch` … `state.exported` / `exportedAt` のみ
+  (`ensureWriteAccess` はディレクトリ選択ダイアログを出しうるので**待機時間は原理的に無制限**)
+
+**同じハンドラで見つかった2つ目**: `#detail-resummarize` は `currentDetailId` を**await の後に**
+読んでいた。要約待ちの間に別カードを開かれると、**別のイベントを書き、そのモーダルを開き直す**。
+開始時に id を固定して解消。
+
+- 変更: `index.html`(4箇所の読み直し + id 固定)、`tests/browser-beta-flows.spec.mjs`(+2 spec)。
+- 再現テストを先に書いて赤(星 1→0 / メモ空)を確認してから修正した。
