@@ -50,7 +50,27 @@ describe('Summarizer budget persistence (modeled)', () => {
 describe('Summarizer budget wiring (index.html)', () => {
   it('persists the counter to IndexedDB after each summary', () => {
     expect(html).toContain("Store.putSetting('summary-budget',{key:dailyKey,count:dailyCount})");
-    expect(html).toContain('dailyCount++;await persist();return text.trim();');
+  });
+  it('reserves the budget slot BEFORE the vendor call, not after the response', () => {
+    // round 69: incrementing after the response let every concurrently-published item read
+    // the same dailyCount before any of them added to it — budget 1 produced 3 vendor calls,
+    // i.e. three times the spend the user asked for. The check and the increment must sit in
+    // one synchronous block, with the call after them.
+    const body = html.slice(html.indexOf('async function summarize(ev){'));
+    const fn = body.slice(0, body.indexOf('\n  }'));
+    const reserve = fn.indexOf('dailyCount++');
+    const call = fn.indexOf('await callAnthropic');
+    expect(reserve, 'summarize must reserve a slot').toBeGreaterThan(-1);
+    expect(call, 'summarize must call a provider').toBeGreaterThan(-1);
+    expect(reserve, 'the slot must be taken before the request goes out').toBeLessThan(call);
+    // And nothing may await between the budget check and the reservation, or the guard
+    // stops being atomic and the overrun comes straight back.
+    const check = fn.indexOf('dailyCount>=s.budget');
+    const between = fn.slice(check, reserve).replace(/^\s*\/\/.*$/gm, ''); // comments explain the rule
+    expect(between).not.toMatch(/\bawait\b/);
+  });
+  it('refunds the slot when the call fails, so an outage does not eat the day', () => {
+    expect(html).toContain('catch(err){dailyCount--;await persist();Bus.publish(\'summarizer.error\'');
   });
   it('loads the persisted counter and exposes load() for startup', () => {
     expect(html).toContain("const b=await Store.getSetting('summary-budget')");

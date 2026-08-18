@@ -112,7 +112,7 @@ GitHub リポジトリ Settings → Secrets and variables → Actions:
 |---|---|---|---|---|
 | 1 | 初回起動 → 5ステップオンボーディング | JA/EN選択 → SETTINGS反映 | CI | — |
 | 2 | RSS追加 → POLL | 取得・解析・重複排除・保存 | CI | — |
-| 3 | BYOK設定 → POLL → 要約自動生成 | カードに要約表示 | 一部CI | ☐ |
+| 3 | BYOK設定 → POLL → 要約自動生成 | カードに要約表示・日次予算を超えない | 一部CI | ☐ |
 | 4 | 検索バーに「rust」入力 | リアルタイム絞込、match%表示 | CI | — |
 | 5 | Vault選択 → VAULTボタン押下 → ノート生成 | `Vault/neus/<uuid>.md` + `YYYY-MM-DD.md` 確認 | CI | — |
 | 6 | OPML import(`tests/fixtures/sample.opml`) | 一括登録 | CI | — |
@@ -125,7 +125,9 @@ GitHub リポジトリ Settings → Secrets and variables → Actions:
 `browser-offline` / `browser-sw`、#11 は `browser-functional`。
 
 `一部CI` の内訳(アプリ側は全て CI、人が見るのは外側だけ):
-- **#3** … 「要約が無くてもカードが壊れない」までが CI。実ベンダ応答の確認だけが人手。
+- **#3** … 設定保存 → 予算管理 → プロバイダ分岐 → リクエスト組立 → 応答の取り出し →
+  カード反映まで CI(ベンダ応答だけを差し替えて実経路を走らせる)。人手は
+  **実ベンダが我々のリクエスト形を受け付けるか**だけ。
 - **#7 / #9** … `share_target` は method GET なので、bookmarklet も OS 共有シートも最終的には
   `/?share_url=…` を開くだけ。その受け口(URL抽出・トラッキング除去・`javascript:` 拒否・
   再読込での二重取込防止)は CI。人が見るのは「OS の共有シートに Neus が出るか」だけで、
