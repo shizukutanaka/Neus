@@ -10,6 +10,7 @@
 // so this can never be mistaken for "everything is green".
 
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 
 const NC = '\x1b[0m', B = '\x1b[1m', G = '\x1b[32m', Y = '\x1b[33m', R = '\x1b[31m', D = '\x1b[2m';
 
@@ -22,6 +23,25 @@ function run(cmd, { capture = true } = {}) {
   }
 }
 const num = (re, s, d = '?') => (s.match(re)?.[1] ?? d);
+
+// Which STEP 7 scenarios still want a person, read from DEPLOY.md's own table so this
+// command cannot disagree with the checklist it is summarising.
+function ownerScenarios() {
+  let step7;
+  try {
+    const deploy = readFileSync('DEPLOY.md', 'utf8');
+    step7 = deploy.slice(deploy.indexOf('## STEP 7'), deploy.indexOf('## STEP 8'));
+  } catch { return ['DEPLOY.md STEP 7 lists the scenarios that still need you.']; }
+  const rows = step7.split('\n')
+    .filter(l => /^\|\s*\d+[a-z]?\s*\|/.test(l) && /\|\s*(?:人手|一部CI)\s*\|/.test(l))
+    .map(l => {
+      const cells = l.split('|').map(c => c.trim());
+      const kind = cells.find(c => c === '人手' || c === '一部CI');
+      return `  #${cells[1]} ${cells[2]} — ${kind === '人手' ? 'fully manual' : 'app side automated; the outer edge is yours'}`;
+    });
+  if (!rows.length) return ['No STEP 7 scenario needs a person any more.'];
+  return ['Scenarios in DEPLOY.md STEP 7 that still want your eyes:', ...rows];
+}
 
 console.log(`\n${B}G10 release gates${NC} ${D}(npm run g10)${NC}\n`);
 
@@ -93,10 +113,12 @@ if (owner || fail) {
   console.log(`  ${Y}1. G10.07 subjective rating (>= 4/5)${NC}`);
   console.log(`     ${D}Every mechanical part is automated and green: the flows run, and a full`);
   console.log(`     navigation + search sweep raises no pageerror or console.error.`);
-  console.log(`     What remains is your judgement of whether it feels good enough to ship.`);
-  console.log(`     Scenarios needing a real device are listed in DEPLOY.md STEP 7:`);
-  console.log(`     RSS fetch (#2), BYOK summary (#3), Vault picker (#5), bookmarklet (#7),`);
-  console.log(`     PWA install (#8), Android share (#9).${NC}\n`);
+  console.log(`     What remains is your judgement of whether it feels good enough to ship.${NC}`);
+  // Read the scenario list out of DEPLOY.md instead of repeating it here. This text was
+  // already stale once — it still named #2 and #5 after both had been mechanized. A list
+  // that has to be hand-synced with another file will always drift; derive it instead.
+  for (const line of ownerScenarios()) console.log(`     ${D}${line}${NC}`);
+  console.log('');
   console.log(`  ${Y}2. ADR-0021 — PBKDF2 iterations (300k vs OWASP 600k)${NC}`);
   console.log(`     ${D}Not implemented on purpose. Raising the count derives a different key from`);
   console.log(`     the same passphrase, so every stored API key becomes undecryptable while the`);

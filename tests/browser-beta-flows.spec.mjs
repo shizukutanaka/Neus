@@ -924,3 +924,93 @@ test.describe('G10.07 — scenario 8: the installability criteria Chrome actuall
       expect.arrayContaining(['share_url', 'share_title', 'share_text']));
   });
 });
+
+// ---------------------------------------------------------------------------
+// round 71 — #7 の残り: **Neus が配る bookmarklet と、Neus が読む param 名の一致**
+//
+// round 68 で share target の受け口は固定したが、**送り出す側**は未検証だった。
+// bookmarklet は `Bookmarklet.generate()` が origin から組み立てる — つまり
+// `share_url` / `share_title` という param 名を**両側が独立に持っている**。
+// 片側だけ改名すれば、テストは全部緑のまま bookmarklet だけが黙って動かなくなる。
+// round 62 の BYOK プロバイダ結合と同じ形の暗黙の結合なので、同じように機械で見張る。
+//
+// なお `bookmarklet.js` はドキュメント用の写しで、実際に配られるのは in-app 生成物。
+// 写しが本体からずれるのは round 66 の OPML ミラーで見たとおりなので、それも突き合わせる。
+// ---------------------------------------------------------------------------
+
+test.describe('G10.07 — scenario 7: the bookmarklet Neus hands out matches what Neus reads', () => {
+  test('the generated bookmarklet points at this origin and carries both params', async ({ page }) => {
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+
+    await page.click('#btn-menu');   // SOURCES lives in the overflow menu at this viewport
+    await page.click('#btn-sources');
+    await page.click('#bookmarklet-btn');
+    const href = await page.getAttribute('.bookmarklet-link', 'href');
+
+    expect(href.startsWith('javascript:'), 'it must be a bookmarklet, not a link').toBe(true);
+    expect(href, 'it must target the origin the user is actually on').toContain(base);
+    expect(href).toContain('share_url=');
+    expect(href).toContain('share_title=');
+    expect(href, 'both values must be encoded, or a URL with & truncates the next param')
+      .toContain('encodeURIComponent');
+  });
+
+  test('running the bookmarklet body produces a URL the app ingests', async ({ page }) => {
+    // Extract the real generated code, run it against a pretend page, and feed the URL it
+    // builds straight into the app. This is the coupling: if either side renames a param,
+    // the article silently fails to arrive.
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+    await page.click('#btn-menu');   // SOURCES lives in the overflow menu at this viewport
+    await page.click('#btn-sources');
+    await page.click('#bookmarklet-btn');
+    const href = await page.getAttribute('.bookmarklet-link', 'href');
+
+    // Run the bookmarklet with window.open captured, exactly as a browser would.
+    const opened = await page.evaluate((code) => {
+      const realOpen = window.open;
+      let captured = null;
+      window.open = (u) => { captured = u; return null; };
+      const fake = { href: 'https://ex.test/article?utm_source=x', title: 'Bookmarked headline' };
+      try {
+        // The bookmarklet reads location.href and document.title; run its body with those
+        // shadowed rather than navigating away.
+        new Function('location', 'document', code.replace(/^javascript:/, ''))(
+          fake, { title: fake.title });
+      } finally { window.open = realOpen; }
+      return captured;
+    }, href);
+
+    expect(opened, 'the bookmarklet must open something').toBeTruthy();
+    const q = new URL(opened).searchParams;
+    expect(q.get('share_url')).toBe('https://ex.test/article?utm_source=x');
+    expect(q.get('share_title')).toBe('Bookmarked headline');
+
+    // Now the other half: hand that exact URL to the app.
+    await share(page, new URL(opened).search.slice(1));
+    const events = await sharedEvents(page);
+    expect(events, 'the bookmarklet output must be ingestible by ShareTarget').toHaveLength(1);
+    expect(events[0].title).toBe('Bookmarked headline');
+    expect(events[0].url, 'and normalization still applies to bookmarked URLs')
+      .toBe('https://ex.test/article');
+  });
+
+  test('the documentation copy of the bookmarklet has not drifted from the generator', async () => {
+    // bookmarklet.js is a copy for people installing by hand. A copy that disagrees with the
+    // real generator sends them a broken snippet — the round-66 OPML mirror lesson.
+    const { readFileSync } = await import('fs');
+    const doc = readFileSync(join(root, 'bookmarklet.js'), 'utf8');
+    const html = readFileSync(join(root, 'index.html'), 'utf8');
+    const gen = html.slice(html.indexOf('generate(){'), html.indexOf('showUI(){'));
+
+    for (const token of ['share_url=', 'share_title=', 'encodeURIComponent(location.href)',
+                         'encodeURIComponent(document.title)', "'_blank'"]) {
+      expect(gen, `generator must use ${token}`).toContain(token);
+      expect(doc, `the documented copy must use ${token} too`).toContain(token);
+    }
+    expect(doc, 'the placeholder must name this product').toContain('YOUR_NEUS_URL');
+  });
+});

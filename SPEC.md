@@ -2062,3 +2062,28 @@ display・scope が妥当 / `short_name` がランチャーに収まる長さ / 
 - 変更: `manifest.json`(SVG アイコンに固有寸法)、`tests/browser-beta-flows.spec.mjs`(+6 spec)、
   `DEPLOY.md` STEP 7 の #8 欄。
 - STEP 7 で「全体が人手」の行は**ゼロ**になった。残るのは4行の外側確認と、**主観評価**。
+
+### 10.60 第58次監査 (round 71) — 送り出す側と読む側の param 名が一致しているか
+
+round 68 で share target の**受け口**は固定したが、**送り出す側**は未検証だった。
+bookmarklet は `Bookmarklet.generate()` が origin から組み立てる。つまり
+`share_url` / `share_title` という param 名を**両側が独立に持っている**。片側だけ改名すれば、
+テストは全部緑のまま **bookmarklet だけが黙って動かなくなる**。round 62 の BYOK プロバイダ
+結合と同じ形の暗黙の結合。
+
+**やったこと**: 実際に SOURCES → BOOKMARKLET を押して生成された `javascript:` URL を取り出し、
+その**本体を偽の `location` / `document` で実行**して `window.open` の引数を捕まえ、
+**その URL をそのまま app に食わせる**。送り出しから取り込みまでが一本の経路として検証される。
+片側を改名すればここで落ちる。
+
+**`bookmarklet.js` の写しも突き合わせた**。これは手動インストール用のドキュメントで、実際に
+配られるのは in-app 生成物。写しが本体からずれると**手動で入れた人にだけ壊れたものが渡る** —
+round 66 の OPML ミラーと同じ構図なので、同じように機械で見張る(現時点でずれは無かった)。
+
+**`npm run g10` の陳腐化を直した**: owner 向けメッセージが「実端末が要るシナリオ: #2 / #3 /
+#5 / #7 / #8 / #9」と**手書きで**列挙していた。round 67–70 で #2 と #5 は機械化済みなので、
+この文言は既にずれていた。列挙をやめ、**`DEPLOY.md` STEP 7 の表から導出**するようにした
+(round 45 の「手で同期する数字は必ずまた壊れる」を、数字だけでなくリストにも適用)。
+
+- 変更: `tests/browser-beta-flows.spec.mjs`(+3 spec)、`scripts/g10.mjs`(導出化)。
+  実装コードの変更なし。
