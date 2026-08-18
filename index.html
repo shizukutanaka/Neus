@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-pPQNlrbFsU6SeuPEeMVYS8Sntwjv7O1jBFyEL1/jZ1A='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-ZXWdFdy+Ic3mTveEgA2DREYOjSln0F6zIWoHJXYvFOk='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2106,7 +2106,15 @@ const Bookmarklet={
 // ===== RSS POLLER =======================================================
 // エンゲージメント信号(Qiita いいね / Hatena ブックマーク数等)を控えめなスコアブーストに
 // 変換する共有ヘルパー。基準50・対数スケール・上限+25。信号0は50で他ソースと同等。
-function engagementScore(n){return 50+Math.min(25,Math.round(Math.log10((n||0)+1)*12));}
+function engagementScore(n){
+  // `(n||0)` は null/undefined/0 しか救えない。実測: 'abc' と {} は NaN、-1 は -Infinity、
+  // 負数は NaN(log10 の定義域外)になる。likes_count は Qiita API 由来 = 第三者が形を決める値で、
+  // Qiita 経路は Hatena 経路と違い `>0` ガードが無いまま engagementScore へ渡していた。
+  // 数値化できない・負の信号は「信号なし」と同義なので中立の 50 に倒す。
+  const v=Number(n);
+  if(!Number.isFinite(v)||v<0)return 50;
+  return 50+Math.min(25,Math.round(Math.log10(v+1)*12));
+}
 const RSSPoller=(()=>{
   // HTMLエンティティをデコード(タイトル等の &amp; &#39; 等)
   function decodeEntities(s){
@@ -2367,7 +2375,7 @@ Bus.subscribe('inbound.fetched',async({raw,source})=>{
     const autoTags=source.wordTerm?['word:'+source.wordTerm]:[];
     // ソース提供のコンテンツタグ(例 Qiita 記事タグ)を取り込む。小文字化・重複排除・上限8件。
     if(Array.isArray(raw.tags))for(const t of raw.tags){const tag=String(t).trim().toLowerCase();if(tag&&autoTags.length<8&&!autoTags.includes(tag))autoTags.push(tag);}
-    const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:typeof raw.score==='number'?raw.score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:link,hash};
+    const ev={id:uuid(),timestamp:Date.now(),publishedAt:raw.publishedAt,source:{id:source.id,type:source.type||'rss',name:source.name,url:source.url},content:{title:raw.title,snippet:raw.summary||'',summary:undefined,body:undefined},meta:{autoTags,userTags:[],score:Number.isFinite(raw.score)?raw.score:50,lang:undefined,author:raw.author||undefined},user:{},state:{read:false,starred:false,archived:false,exported:false},links:[],url:link,hash};
     Bus.publish('event.normalized',ev);
   }catch(err){console.error('[inbound.fetched]',err);Bus.publish('inbound.error',{source,error:'normalize'});}
 });

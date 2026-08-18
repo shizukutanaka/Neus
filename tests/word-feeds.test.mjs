@@ -333,10 +333,15 @@ describe('WORD_FEEDS source-drift guard (index.html)', () => {
   });
   it('Qiita parse derives an engagement score and the handler honors raw.score', () => {
     expect(html).toContain('score:engagementScore(it.likes_count)');
-    expect(html).toContain('score:typeof raw.score===\'number\'?raw.score:50');
+    // round 55: typeof let NaN through (typeof NaN === 'number'), so a malformed
+    // likes_count could persist as meta.score and emit `score: NaN` into Vault frontmatter.
+    expect(html).toContain('score:Number.isFinite(raw.score)?raw.score:50');
   });
   it('shares one engagementScore helper and parseFeed reads Hatena bookmark count', () => {
-    expect(html).toContain('function engagementScore(n){return 50+Math.min(25,Math.round(Math.log10((n||0)+1)*12));}');
+    // round 55: (n||0) only rescued null/undefined/0; 'abc'/{} gave NaN, -1 gave -Infinity.
+    expect(html).toContain('function engagementScore(n){');
+    expect(html).toContain('if(!Number.isFinite(v)||v<0)return 50;');
+    expect(html).toContain('return 50+Math.min(25,Math.round(Math.log10(v+1)*12));');
     expect(html).toContain("const bmc=Number(get('hatena\\\\:bookmarkcount'))||0;");
     expect(html).toContain('...(bmc>0?{score:engagementScore(bmc)}:{}),');
   });

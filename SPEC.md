@@ -1550,3 +1550,30 @@ round 50 で「人が見る日付はローカル暦日」という方針を決�
    期待するスロットを修正。
 
 - テストは 1592 → 1603 件(`tests/week-trend-buckets.test.mjs` 新設11件)。`TZ=Asia/Tokyo` でも確認。
+
+### 10.44 第42次監査 (round 55) — 検証しているように見えて検証していないガード
+
+**発見1**: `engagementScore(n)` のガードは `(n||0)` のみで、null/undefined/0 しか救えなかった。
+実測: `'abc'` → **NaN** / `{}` → **NaN** / `-1` → **-Infinity** / `-5` → **NaN**。
+`likes_count` は **Qiita REST API 由来**(第三者が形を決める)であり、しかも Hatena 経路は
+`bmc>0` でガードしているのに **Qiita 経路だけ無ガード**で渡していた。
+
+**発見2(本質)**: 下流のガードが**検証しているように見えて検証していなかった**。
+
+    score:typeof raw.score==='number'?raw.score:50
+
+`typeof NaN === 'number'` は **true** なので、NaN はこのガードを素通りして `meta.score` として
+**永続化**される。「型を見ているから安全」という見た目が、実際には何も弾いていなかった。
+
+**実害**: 保存された NaN は Vault 書き出しの YAML frontmatter に `score: NaN` として出力される。
+NaN は YAML の標準表記(`.nan`)ではないため、Obsidian / Dataview 等が frontmatter を読む際に
+壊れる。**第三者データが利用者の Vault のメタデータを壊せる経路**だった。
+
+**対策**: 数値化できない/負の信号は「信号なし」と同義なので中立の 50 に倒す。下流ガードは
+`Number.isFinite` に置換(`typeof` では NaN を弾けない)。18種の入力すべてで有限値 [50,75] に
+収まることを実測で確認。
+
+**文字列アンカーの追随**: `tests/word-feeds.test.mjs` が旧実装を1文字単位で固定していたため
+ミラーを同時更新した(AUDIT-BRIEF §1 の典型事故。本セッションで2度目)。
+
+- テストは 1603 → 1627 件(`tests/engagement-score.test.mjs` 新設20件 + 既存ミラー更新)。
