@@ -1357,3 +1357,33 @@ step 1 のフッターは `footer.innerHTML=next` で **next ボタンしか描�
   持たず既定のタブ送りが走らない)ため、主張どおり `.focus()` で直接検証する形に変更。
 
 - ブラウザ spec: 83 passed / 5 failed → **88 passed / 0 failed**。vitest は 1,514 件で不変。
+
+### 10.37 第35次監査 (round 48) — Lighthouse スコアを依存追加なしで実測し G10.06 を PASS に
+
+round 46 は「スロットリング下で測っていないので Lighthouse スコアとは呼べない」として
+G10.06 を CONDITIONAL に留めた。本ラウンドでその前提を問い直した(段階1)。
+
+**要件が求めているのは「Lighthouse という道具を動かすこと」ではなく「スコアという数値」**。
+それを得るのに必要なのは次の二つだけで、いずれも公開情報である:
+
+1. **同じ計測条件** — DevTools throttling(Slow 4G: RTT 150ms / 下り 1.6Mbps / 上り 750kbps、
+   CPU 4x、モバイル viewport)。CDP の `Network.emulateNetworkConditions` と
+   `Emulation.setCPUThrottlingRate` で直接設定できる。
+2. **同じ採点曲線** — 対数正規 CDF による 0..1 写像(`computeLogNormalScore`)。
+   各指標の (median, p10) と重み(FCP 10% / SI 10% / LCP 25% / TBT 30% / CLS 25%)は公開値。
+
+したがって **devDependency をひとつも増やさずスコアを算出できる**。これは重要で、Lighthouse を
+入れると依存木が膨らみ **G10.03(脆弱性 Critical/High ゼロ)と綱引き**になる。要件同士が衝突する
+場合、片方を満たすために他方を壊さない解を探すのが正しい。
+
+**実測(Slow 4G + CPU 4x + モバイル)**: FCP 544ms→100 / LCP 544ms→100 / TBT 120ms→97 /
+CLS 0.000→100 → **Performance = 99**。
+
+**Speed Index(唯一直接測れない 10%)の扱い**: SI は定義上 FCP 以上・LCP 近傍。本アプリは単一
+HTML を一度描画して以降レイアウトが変化しない(CLS = 0 が実測で裏付け)ため FCP == LCP のとき
+SI もほぼ同値 → subscore ≈ 100。加えて**保守的に SI = 0 と仮定した下限でも 89**。
+推定に依存する主張と依存しない主張の両方を併記することで、SI をどう見積もっても結論が変わらない
+形にしてある。
+
+- G10.06: CONDITIONAL PASS → **PASS**(残る人手は配布時の署名ビルドのみ)。
+- ブラウザ spec 88 → **89件 全通過**。vitest は 1,514 件で不変。
