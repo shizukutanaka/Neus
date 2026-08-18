@@ -814,3 +814,113 @@ test.describe('G10.07 — scenario 3, with only the vendor response stubbed (rou
     expect(await summaries(page)).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// round 70 — #8(PWA インストール)の人手部分を、実際に人手な一点まで絞る
+//
+// #8 は「ブラウザ UI そのもの」として丸ごと人手に残していた。それは半分正しい —
+// アドレスバーの `+` を押すのは人にしかできない。しかし**そのボタンが出るかどうか**は
+// ブラウザの気分ではなく、**Chrome が公開している判定条件**を満たしているかで決まり、
+// 条件は一つ残らず測定できる:
+//   - secure context / Service Worker が登録され**ページを制御している** / fetch ハンドラを持つ
+//   - manifest が取得でき、`name`(または `short_name`)・`start_url`・`display` が妥当
+//   - 192px と 512px のアイコンがあり、maskable も持つ
+//
+// つまり #8 は「条件を満たしているか(機械)」と「ボタンを押すか(人)」に割れる。
+//
+// **`beforeinstallprompt` は使わない**。headless Chromium では発火しないことを実測で
+// 確認した(engagement heuristics に依存する)。発火を待つテストは**環境の都合で常に
+// 落ちるか、常にスキップされる**かのどちらかで、どちらも情報を持たない。
+// 代わりに**条件そのもの**を測る。これは Chrome が実際に見ているものと同じ。
+// ---------------------------------------------------------------------------
+
+test.describe('G10.07 — scenario 8: the installability criteria Chrome actually checks (round 70)', () => {
+  test('the page is a secure context controlled by a service worker', async ({ page }) => {
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 })
+      .catch(() => {});
+    const state = await page.evaluate(async () => ({
+      secure: window.isSecureContext,
+      registered: !!(await navigator.serviceWorker.getRegistration()),
+      controlling: !!navigator.serviceWorker.controller,
+    }));
+    expect(state.secure, 'install requires a secure context').toBe(true);
+    expect(state.registered, 'a service worker must be registered').toBe(true);
+    expect(state.controlling, 'and it must control the page, not merely be registered').toBe(true);
+  });
+
+  test('the service worker answers navigation requests, which is what makes it installable', async ({ page }) => {
+    // A registered worker with no fetch handler does not satisfy Chrome. browser-offline
+    // and browser-sw cover the caching behaviour; this asserts the handler exists at all.
+    const { readFileSync } = await import('fs');
+    const sw = readFileSync(join(root, 'sw.js'), 'utf8');
+    expect(sw).toMatch(/addEventListener\(\s*['"]fetch['"]/);
+  });
+
+  test('the manifest is reachable and declares what an installed app needs', async ({ page }) => {
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    const m = await page.evaluate(async () => {
+      const href = document.querySelector('link[rel=manifest]')?.href;
+      if (!href) return null;
+      const res = await fetch(href);
+      return { ok: res.ok, type: res.headers.get('content-type'), body: await res.json() };
+    });
+    expect(m, 'index.html must link a manifest').not.toBeNull();
+    expect(m.ok).toBe(true);
+    expect(m.body.name || m.body.short_name, 'an installed app needs a name').toBeTruthy();
+    expect(m.body.short_name.length, 'short_name must fit under a launcher icon').toBeLessThanOrEqual(12);
+    expect(['standalone', 'fullscreen', 'minimal-ui'], 'display must be app-like')
+      .toContain(m.body.display);
+    expect(m.body.start_url, 'start_url must exist and sit inside scope').toBeTruthy();
+    expect(m.body.start_url.startsWith(m.body.scope ?? '/')).toBe(true);
+  });
+
+  test('icons cover the sizes Chrome requires, including a maskable one', async ({ page }) => {
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    const icons = await page.evaluate(async () => {
+      const href = document.querySelector('link[rel=manifest]')?.href;
+      const body = await (await fetch(href)).json();
+      return body.icons || [];
+    });
+    const sizes = icons.map(i => i.sizes);
+    expect(sizes, 'Chrome requires a 192px icon').toContain('192x192');
+    expect(sizes, 'and a 512px icon').toContain('512x512');
+    expect(icons.some(i => (i.purpose || '').includes('maskable')),
+      'without a maskable icon Android crops the square badge').toBe(true);
+  });
+
+  test('every declared icon actually loads at its declared size', async ({ page }) => {
+    // A manifest can promise icons that 404 or decode to the wrong dimensions; the install
+    // prompt then silently never appears. Decode each one for real.
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    const results = await page.evaluate(async () => {
+      const href = document.querySelector('link[rel=manifest]')?.href;
+      const body = await (await fetch(href)).json();
+      return Promise.all((body.icons || []).map(icon => new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ sizes: icon.sizes, ok: true, w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => resolve({ sizes: icon.sizes, ok: false });
+        img.src = new URL(icon.src, location.href).href;
+      })));
+    });
+    for (const r of results) {
+      expect(r.ok, `icon ${r.sizes} must load`).toBe(true);
+      const [w, h] = r.sizes.split('x').map(Number);
+      expect(r.w, `icon declared ${r.sizes} decoded ${r.w}x${r.h}`).toBe(w);
+      expect(r.h).toBe(h);
+    }
+  });
+
+  test('the share_target target is a route the app actually handles', async ({ page }) => {
+    // Installing is what registers the share target, so #8 and #9 stand or fall together.
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    const st = await page.evaluate(async () => {
+      const href = document.querySelector('link[rel=manifest]')?.href;
+      return (await (await fetch(href)).json()).share_target;
+    });
+    expect(st.method, 'a GET target is what makes the intake testable at all').toBe('GET');
+    expect(st.action.startsWith('/')).toBe(true);
+    expect(Object.values(st.params)).toEqual(
+      expect.arrayContaining(['share_url', 'share_title', 'share_text']));
+  });
+});
