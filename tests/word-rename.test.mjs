@@ -78,7 +78,10 @@ describe('rename wiring (index.html)', () => {
   it('saverename re-tags collected events when the normalized form changes', () => {
     expect(html).toContain("act==='saverename'");
     expect(html).toContain("const oldTag='word:'+oldNorm,newTag='word:'+word.normalized");
-    expect(html).toContain('tags[i]=newTag;await Store.putEvent(ev);FTSIndex.add(ev);');
+    // round 74: the loop re-reads each event before writing, so the snapshot taken at the
+    // top of the sweep cannot clobber a star or summary that landed while it ran.
+    expect(html).toContain('const fresh=await Store.getEvent(ev.id);');
+    expect(html).toContain('tags[i]=newTag;await Store.putEvent(fresh);FTSIndex.add(fresh);');
   });
   it('saverename guards against double-submit via btn.disabled', () => {
     expect(html).toContain('if(btn.disabled)return;');
@@ -123,7 +126,9 @@ describe('rename failure recovery (round 59)', () => {
   });
   it('the retag skips events already carrying the new tag (idempotent)', () => {
     // indexOf(oldTag) < 0 for an already-migrated event, so a re-run only fixes the rest.
-    expect(html).toContain("const tags=ev.meta?.autoTags||[];const i=tags.indexOf(oldTag);");
-    expect(html).toContain('if(i>=0){tags[i]=newTag;');
+    // round 74: the check now runs on the freshly-read copy, which is what keeps it honest —
+    // testing the stale snapshot would re-apply work another writer had already done.
+    expect(html).toContain("const tags=fresh.meta?.autoTags||[];const i=tags.indexOf(oldTag);");
+    expect(html).toContain('if(i<0)continue;');
   });
 });
