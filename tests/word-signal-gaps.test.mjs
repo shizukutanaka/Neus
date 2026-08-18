@@ -172,7 +172,9 @@ describe('signal-gap wiring (index.html)', () => {
   });
   it('records per-source errors on the word during collection', () => {
     // fetchFeed returns a typed error per source; _collectOne records it as errors[label].
-    expect(html).toContain("word.lastErrors=Object.keys(errors).length?errors:null");
+    // round 75: written onto the freshly-read record, then mirrored onto the caller's copy.
+    expect(html).toContain("fresh.lastErrors=Object.keys(errors).length?errors:null");
+    expect(html).toContain("word.lastErrors=fresh.lastErrors");
     expect(html).toContain("return{label,source,error:'network'}");
     expect(html).toContain("return{label,source,error:`http_${res.status}`}");
     expect(html).toContain("return{label,source,error:'parse'}");

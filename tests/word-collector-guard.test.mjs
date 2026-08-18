@@ -100,7 +100,10 @@ describe('collector guard wiring (index.html)', () => {
     expect(html).toContain("catch(e){console.warn('[WordCollector] initial collect failed:',e);}");
   });
   it('reports raw fetched count honestly (fetched, not collected)', () => {
-    expect(html).toContain('word.lastFetched=total');
+    // round 75: the collector re-reads the record before writing, so the count lands on the
+    // fresh copy (and is mirrored back onto the caller's copy for the immediate re-render).
+    expect(html).toContain('fresh.lastCollectedAt=Date.now();fresh.lastFetched=total;');
+    expect(html).toContain('word.lastFetched=fresh.lastFetched');
     expect(html).toContain('fetched ${total} item(s)');
     expect(html).not.toContain('collected ${total} item(s)');
   });
