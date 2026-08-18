@@ -5,7 +5,7 @@
 
 ## Context
 
-Lensy は P1 段階でシンプルな `Collector → Filter → Summarizer → Renderer` パイプライン設計で開始した。P3 で「情報のハブ」という位置付けに昇格し、入力 Adapter・Processor・出力 Adapter の組合せが動的に変化することが明確になった。
+Neus は P1 段階でシンプルな `Collector → Filter → Summarizer → Renderer` パイプライン設計で開始した。P3 で「情報のハブ」という位置付けに昇格し、入力 Adapter・Processor・出力 Adapter の組合せが動的に変化することが明確になった。
 
 ## Decision
 

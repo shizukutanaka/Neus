@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-/FAGbJpjwAy4QeX27nEvOujdjfqZgmwA8KbyFjXtrgE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-kjm+JrKkMDzChaA/nZ9NYxI6S0nKo/W6s6nXpY2qMhI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1645,8 +1645,14 @@ const VaultMatcher=(()=>{
 })();
 
 // ===== OPML =============================================================
+// XML attribute lookup is case-sensitive, but OPML files that have been round-tripped through
+// an HTML parser (cheerio / jsdom / BeautifulSoup in HTML mode, or anything served as
+// text/html) come back with ASCII-lowercased attribute names — `xmlUrl` becomes `xmlurl`.
+// Measured: such a file used to import zero sources and report "no sources in OPML".
+// Spec spelling is tried first, so conformant files never pay for the fallback scan.
+function opmlAttr(el,name){const v=el.getAttribute(name);if(v!=null)return v;const k=name.toLowerCase();for(const a of el.attributes)if(a.name.toLowerCase()===k)return a.value;return null;}
 const OPML={
-  parse(xml){const doc=new DOMParser().parseFromString(xml,'text/xml');if(doc.querySelector('parsererror'))throw new Error('opml parse error');return[...doc.querySelectorAll('outline[xmlUrl]')].map(o=>{const url=o.getAttribute('xmlUrl');let name=o.getAttribute('title')||o.getAttribute('text');if(!name){try{name=new URL(url).hostname;}catch{name=url;}}return url?{url,name}:null;}).filter(Boolean);},
+  parse(xml){const doc=new DOMParser().parseFromString(xml,'text/xml');if(doc.querySelector('parsererror'))throw new Error('opml parse error');return[...doc.querySelectorAll('outline')].map(o=>{const url=opmlAttr(o,'xmlUrl');if(!url)return null;let name=opmlAttr(o,'title')||opmlAttr(o,'text');if(!name){try{name=new URL(url).hostname;}catch{name=url;}}return{url,name};}).filter(Boolean);},
   build(sources){const items=sources.map(s=>`    <outline type="rss" text="${escapeAttr(s.name)}" title="${escapeAttr(s.name)}" xmlUrl="${escapeAttr(s.url)}"/>`).join('\n');return`<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head>\n    <title>Neus Sources</title>\n    <dateCreated>${new Date().toUTCString()}</dateCreated>\n  </head>\n  <body>\n${items}\n  </body>\n</opml>`;}
 };
 
