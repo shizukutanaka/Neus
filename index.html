@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Q+YIj9qpNMTklA9LNopjRY6nYJuK84Kps+XmC+m5lLA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-PEelPuMQGMuwwdCVSaP/4uyKiecH0idhCkjVv3lFAHs='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2380,10 +2380,16 @@ const WordCollector=(()=>{
   async function collectAll(){
     if(busy){toast(currentLang==='ja'?'収集中 — しばらくお待ちください':'collection in progress — please wait','err');return 0;}
     if(!NetworkMonitor.isOnline()){toast(currentLang==='ja'?'オフライン':'offline','err');return 0;}
-    const words=(await Store.listWords()).filter(w=>w.enabled!==false);
-    if(words.length===0)return 0;
-    busy=true;progress={done:0,total:words.length};
+    // 確認の直後に**同期で**予約する。`Store.listWords()` を先に await していた頃は、その隙に
+    // 2つ目の呼び出しが門を通れた(実測: 3語で収集が6回)。collectAll は POLL / COLLECT ALL の
+    // ほかに、オンライン復帰ハンドラ(await されない)と SW の定期同期からも呼ばれるため、
+    // 利用者の操作と無関係な重なりが普通に起きる。二重実行は登録語数 × ソース数の外部
+    // リクエストを丸ごと二重にする(第三者サービスへのレート制限・行儀の問題)。
+    busy=true;
     try{
+      const words=(await Store.listWords()).filter(w=>w.enabled!==false);
+      if(words.length===0)return 0;
+      progress={done:0,total:words.length};
       toast(currentLang==='ja'?`${words.length}単語を収集中...`:`collecting ${words.length} word(s)...`);
       let total=0;for(const w of words){try{total+=await _collectOne(w);}catch(e){console.warn('[WordCollector] error on',w.term,e);}progress.done++;}
       toast(currentLang==='ja'?`${total}件取得`:`fetched ${total} item(s)`,'ok');

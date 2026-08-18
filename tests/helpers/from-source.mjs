@@ -43,9 +43,11 @@ export const source = () => SOURCE;
  */
 export function extractFunction(name, indent = '') {
   const lines = SOURCE.split('\n');
-  const startsWith = `${indent}function ${name}(`;
-  const start = lines.findIndex(l => l.startsWith(startsWith));
-  if (start < 0) throw new Error(`extractFunction: not found: ${indent}function ${name}(`);
+  // `async function` counts too. Without this the helper silently could not reach any async
+  // declaration, which is most of the interesting ones — found while auditing collectAll.
+  const heads = [`${indent}function ${name}(`, `${indent}async function ${name}(`];
+  const start = lines.findIndex(l => heads.some(h => l.startsWith(h)));
+  if (start < 0) throw new Error(`extractFunction: not found: ${indent}[async ]function ${name}(`);
   // A one-line declaration is self-contained.
   const first = lines[start];
   const balanced = (l) => (l.match(/\{/g) || []).length === (l.match(/\}/g) || []).length;
