@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Sbo5VvfPKWnsmlWFK74n4zvlZpTxZMTquEqvRJcrn94='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-DO1nYtGMyDO1jfRME+cDJIc+iPKYYdTczEnwf0lSP/Q='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4668,13 +4668,25 @@ $('#restore-file').addEventListener('change',async(e)=>{
   if(dump.app!=='neus'||!Array.isArray(dump.events)){toast(currentLang==='ja'?'Neusのバックアップファイルではありません':'not a Neus backup','err');return;}
   // 退避前に全レコードの形を検証する。検証を後回しにすると既存データを消した後で
   // 不正なレコードに当たり、両方を失う(復元はロールバック不能)。
+  // 型まで検証する。`!ev.content` のような truthy 判定だけでは、文字列や配列が
+  // オブジェクトの代わりに入っていても通ってしまう。とりわけ `timestamp` は全ビューの
+  // 並び順・ダイジェストの期間・再浮上のスコアを支える値で、数値でないと比較が NaN になり
+  // 並びが不定になる。復元は既存データを消してから書き込むため、ここで通してしまうと
+  // 壊れたデータで上書きされた状態から戻せない(この検証が「消す前」にある理由そのもの)。
+  const isObj=(o)=>o!==null&&typeof o==='object'&&!Array.isArray(o);
   const validEvent=(ev)=>{
-    if(!ev||typeof ev.id!=='string'||!ev.content||!ev.source||!ev.state||!ev.meta)return false;
+    if(!isObj(ev)||typeof ev.id!=='string'||!ev.id)return false;
+    if(!isObj(ev.content)||!isObj(ev.source)||!isObj(ev.state)||!isObj(ev.meta))return false;
+    if(!Number.isFinite(ev.timestamp))return false;
+    if(ev.publishedAt!==undefined&&!Number.isFinite(ev.publishedAt))return false;
+    if(ev.content.title!==undefined&&typeof ev.content.title!=='string')return false;
     if(ev.url)ev.url=safeHref(ev.url);  // sanitize imported event URLs
     return true;
   };
   const validWord=(w)=>{
-    if(!w||typeof w.id!=='string'||typeof w.normalized!=='string')return false;
+    if(!isObj(w)||typeof w.id!=='string'||!w.id||typeof w.normalized!=='string')return false;
+    if(w.createdAt!==undefined&&!Number.isFinite(w.createdAt))return false;
+    if(w.wiki!==undefined&&!isObj(w.wiki))return false;
     if(w.wiki){if(w.wiki.url)w.wiki.url=safeHref(w.wiki.url);if(w.wiki.thumbnail)w.wiki.thumbnail=safeHref(w.wiki.thumbnail);}
     return true;
   };
