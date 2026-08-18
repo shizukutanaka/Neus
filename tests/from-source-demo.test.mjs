@@ -110,3 +110,98 @@ describe('why this approach is stronger than a mirror', () => {
     expect(localDateKey(new Date(2027, 11, 31))).toBe('2027-12-31');
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// 実装契約(contract)スイート — ミラーが古びても**実装そのもの**を独立に固定する
+//
+// ミラー方式の弱点は「ミラーが古いままでもアンカーが緩ければ緑になる」こと。ここでは実ソースを
+// 直接評価するので、ミラーの状態に関係なく実装の振る舞いが検証される。対象は**壊れると被害が
+// 大きい純粋関数**に絞る(重複排除・ReDoS ガード・検索演算子)。
+// なお round 60 時点で主要ミラー(tokenize / fsBigrams / jaccard / resurfaceWeight / capTitle)を
+// 実ソースと突き合わせた結果、**乖離は無かった**。本スイートはその状態を維持するための番人。
+// ---------------------------------------------------------------------------
+
+import { extractConst, extractFunction, evaluate } from './helpers/from-source.mjs';
+
+describe('real-source contract: CJK tokenization (dedup / tagging / vault matching)', () => {
+  const code = [extractConst('CJK_RE'), extractFunction('charKind'),
+                extractFunction('scriptRuns'), extractFunction('tokenize')].join('\n');
+  const { tokenize } = evaluate(code, ['tokenize']);
+
+  it('segments Japanese into content words', () => {
+    expect(tokenize('Rustの所有権とライフタイム入門')).toEqual(['rust', '所有権', 'ライフタイム', '入門']);
+  });
+  it('leaves English exactly as before', () => {
+    expect(tokenize('Hello World')).toEqual(['hello', 'world']);
+    expect(tokenize('hello, world!')).toEqual(['hello', 'world']);
+    expect(tokenize('a is ok')).toEqual(['is', 'ok']);
+  });
+  it('drops single-character fragments from a hyphenated word', () => {
+    // The hyphen is punctuation, so "e-mail" splits; the leading "e" is then removed by the
+    // pre-existing length>=2 filter. Asserted as measured rather than as assumed.
+    expect(tokenize('e-mail parsing')).toEqual(['mail', 'parsing']);
+  });
+});
+
+describe('real-source contract: fsBigrams + jaccard (near-duplicate detection)', () => {
+  const { fsBigrams, jaccard } = evaluate(
+    [extractFunction('fsBigrams'), extractFunction('jaccard')].join('\n'),
+    ['fsBigrams', 'jaccard']);
+
+  it('ignores whitespace when building bigrams', () => {
+    expect([...fsBigrams('a b c')].sort()).toEqual([...fsBigrams('abc')].sort());
+  });
+  it('returns nothing for input shorter than one bigram', () => {
+    expect(fsBigrams('').size).toBe(0);
+  });
+  it('jaccard is symmetric and bounded', () => {
+    const a = new Set(['x', 'y']), b = new Set(['y', 'z']);
+    expect(jaccard(a, b)).toBeCloseTo(1 / 3, 12);
+    expect(jaccard(a, b)).toBe(jaccard(b, a));
+    expect(jaccard(a, a)).toBe(1);
+  });
+  it('two empty sets score 0, never NaN', () => {
+    expect(jaccard(new Set(), new Set())).toBe(0);
+  });
+});
+
+describe('real-source contract: hasNestedQuantifier (ReDoS guard)', () => {
+  // Nested inside the KeywordRules IIFE, hence the two-space indent.
+  const { hasNestedQuantifier } = evaluate(
+    extractFunction('hasNestedQuantifier', '  '), ['hasNestedQuantifier']);
+
+  it('flags the catastrophic shapes', () => {
+    for (const p of ['(a+)+', '(a*)*', '^(\\w+\\s?)+$', '([a-z]+)*', '^(.*,)*$']) {
+      expect(hasNestedQuantifier(p), p).toBe(true);
+    }
+  });
+  it('allows realistic safe rules', () => {
+    for (const p of ['\\bAI\\b', '(abc)+', 'rust|golang', '(\\d{4})-(\\d{2})', '(cat|dog)s?']) {
+      expect(hasNestedQuantifier(p), p).toBe(false);
+    }
+  });
+});
+
+describe('real-source contract: search operators', () => {
+  const { parseSearchQuery, matchesSearchOps } = evaluate(
+    [extractFunction('parseSearchQuery'), extractFunction('matchesSearchOps')].join('\n'),
+    ['parseSearchQuery', 'matchesSearchOps']);
+
+  it('is a no-op without operators', () => {
+    expect(matchesSearchOps('anything', parseSearchQuery('plain words'))).toBe(true);
+  });
+  it('enforces a quoted phrase', () => {
+    const ops = parseSearchQuery('"情報検索"');
+    expect(matchesSearchOps('情報検索の入門', ops)).toBe(true);
+    expect(matchesSearchOps('検索情報のまとめ', ops)).toBe(false);
+  });
+  it('applies exclusion', () => {
+    const ops = parseSearchQuery('rust -crypto');
+    expect(matchesSearchOps('rust ownership', ops)).toBe(true);
+    expect(matchesSearchOps('rust for crypto', ops)).toBe(false);
+  });
+  it('an unclosed quote is not treated as an operator', () => {
+    expect(parseSearchQuery('"machine learn').phrases).toEqual([]);
+  });
+});
