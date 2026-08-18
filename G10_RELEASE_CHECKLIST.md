@@ -3,14 +3,14 @@
 `Plan.md` §10「完了定義 (DoD)」の G10 全7項目を、各リリースでこのテンプレートを複製して
 記録する。全項目 PASS で正式リリース(`CLAUDE.md`「リリース」ワークフロー / `DEPLOY.md` STEP 8)。
 
-対象バージョン: **v0.13.0**  /  最終計測: 2026-08-16(round 44)
+対象バージョン: **v0.13.0**  /  最終計測: 2026-08-16(round 46)
 
 | # | 項目 | 判定 | 実測値 / メモ |
 |---|------|------|------|
 | G10.01 | Linter 警告ゼロ(`npm run lint` / `npm run lint:html`) | **PASS** | `lint: OK` / HTML 静的検査 全項目 PASS |
-| G10.02 | 自動テスト全通過 + **モジュール網羅 100%** | **PASS** | **1,510 tests / 85 files 全通過**。index.html のトップレベルモジュール **21/21 がテストから参照**(`tests/install-promo.test.mjs` が固定) |
+| G10.02 | 自動テスト全通過 + **モジュール網羅 100%** | **PASS** | **1,514 tests / 86 files 全通過**(+ ブラウザ spec は別ランナー)。index.html のトップレベルモジュール **21/21 がテストから参照**(`tests/install-promo.test.mjs` が固定) |
 | G10.03 | 脆弱性スキャン(Critical/High ゼロ) | **PASS** | `npm audit --audit-level=high` → **found 0 vulnerabilities** |
-| G10.04 | クロスレビュー(独立判定2名) | **PASS** | 指示書 `docs/reviews/`(AUDIT-BRIEF + OPUS + SONNET)。監査ラウンド 6–44 を `SPEC.md` §10 に記録 |
+| G10.04 | クロスレビュー(独立判定2名) | **PASS** | 指示書 `docs/reviews/`(AUDIT-BRIEF + OPUS + SONNET)。監査ラウンド 6–46 を `SPEC.md` §10 に記録 |
 | G10.05 | ドキュメント最終確認(README / LICENSE / Schema / UX) | **PASS** | README/SPEC/CHANGELOG/ADR 同期済み。`tests/dict-no-dead-keys.test.mjs` が i18n の死にキー・片言語漏れを機械検査 |
 | G10.06 | PWA 署名ビルド + Lighthouse Performance 90+ | **CONDITIONAL PASS** | 実ブラウザ(Chromium)で Core Web Vitals を実測: **FCP 124ms / LCP 124ms / CLS 0.000 / TBT 0ms** — Lighthouse の good 閾値(1800/2500/0.1/200)に対し全て桁違いの余裕。`tests/browser-vitals.spec.mjs` で恒常監視。**ただし Lighthouse スコアそのものではない**(下記参照)。署名ビルドと throttled 実測は人間が実施 |
 | G10.07 | ベータ確認(主要フロー全動作・クラッシュゼロ・主観評価 ≥ 4/5) | **BLOCKED** | 人間による実機シナリオ確認が要る(`DEPLOY.md` STEP 7 のシナリオ表)。**代行不可** |
