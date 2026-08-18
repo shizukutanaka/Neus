@@ -16,19 +16,19 @@
   ],
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230a0d0e'/><circle cx='96' cy='96' r='80' fill='none' stroke='%2300C4CC' stroke-width='14'/><circle cx='96' cy='96' r='28' fill='%2300C4CC'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230a0d0e'/><circle cx='96' cy='96' r='80' fill='none' stroke='%2300C4CC' stroke-width='14'/><circle cx='96' cy='96' r='28' fill='%2300C4CC'/></svg>",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230a0d0e'/><circle cx='256' cy='256' r='200' fill='none' stroke='%2300C4CC' stroke-width='32'/><circle cx='256' cy='256' r='72' fill='%2300C4CC'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230a0d0e'/><circle cx='256' cy='256' r='200' fill='none' stroke='%2300C4CC' stroke-width='32'/><circle cx='256' cy='256' r='72' fill='%2300C4CC'/></svg>",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%2300C4CC'/><circle cx='256' cy='256' r='130' fill='none' stroke='%230a0d0e' stroke-width='26'/><circle cx='256' cy='256' r='46' fill='%230a0d0e'/></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'><rect width='512' height='512' fill='%2300C4CC'/><circle cx='256' cy='256' r='130' fill='none' stroke='%230a0d0e' stroke-width='26'/><circle cx='256' cy='256' r='46' fill='%230a0d0e'/></svg>",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "maskable"

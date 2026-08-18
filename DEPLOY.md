@@ -117,7 +117,7 @@ GitHub リポジトリ Settings → Secrets and variables → Actions:
 | 5 | Vault選択 → VAULTボタン押下 → ノート生成 | `Vault/neus/<uuid>.md` + `YYYY-MM-DD.md` 確認 | CI | — |
 | 6 | OPML import(`tests/fixtures/sample.opml`) | 一括登録 | CI | — |
 | 7 | BOOKMARKLET → 任意ページで起動 | Share Target経由でEvent作成 | 一部CI | ☐ |
-| 8 | PWAインストール(アドレスバー右の `+`) | スタンドアロン起動 | 人手 | ☐ |
+| 8 | PWAインストール(アドレスバー右の `+`) | スタンドアロン起動 | 一部CI | ☐ |
 | 10 | DevTools → Network → Offline → 再読込 | キャッシュ表示、POLL disabled | CI | — |
 | 11 | パスフレーズ設定 → リロード → Lock画面 → 解錠 | APIキー復号成功、要約動作 | CI | — |
 
@@ -134,6 +134,12 @@ GitHub リポジトリ Settings → Secrets and variables → Actions:
   これは実質 #8(インストール状態)の裏返し。
 - **#5 / #16v** … ディレクトリ選択ダイアログだけを差し替え、その先の `VaultWriter` は
   **実物のまま実 File System Access API**(OPFS 経由)で動かして検証している。
+- **#8** … Chrome が実際に見ている**インストール可能条件**(secure context / SW が登録され
+  ページを制御している / fetch ハンドラを持つ / manifest の name・start_url・display /
+  192px と 512px と maskable のアイコンが**宣言どおりの寸法で実際に読み込める**)は全て CI。
+  人手は「アドレスバーの `+` を押してスタンドアロン起動を見る」だけ。
+  `beforeinstallprompt` は headless では発火しないことを実測したので**使っていない** —
+  環境の都合で常に落ちるか常にスキップされるテストは、どちらも情報を持たないため。
 
 ### Android Chrome (PWA)
 
