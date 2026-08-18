@@ -94,16 +94,17 @@ GitHub リポジトリ Settings → Secrets and variables → Actions:
 
 未達項目があれば Issue 起票 → 修正 → 再計測。
 
-## STEP 7: ベータテスト(人手は5シナリオ+主観評価のみ・約10分)
+## STEP 7: ベータテスト(人が触るのは4シナリオ+主観評価・約5分)
 
 **先に `npx playwright test` を実行すること。** 下表の大半は
 `tests/browser-beta-flows.spec.mjs` ほかの browser spec が実 Chromium で毎回確認しており、
 「自動」列が `CI` の行は spec が通っていれば済む。**人手で再実行する必要はない。**
 
-人手が要るのは、実ディレクトリ選択・OS 統合・ブラウザ UI という**機械に代行できないもの**
-(#5 / #7 / #8 / #9 / #16v)と、**主観評価**だけ。PWAインストール環境(Chrome Desktop)+
-Android Chrome で実施する。件数は `tests/docs-no-frozen-counts.test.mjs` が下表と突き合わせる
-ので、行を足し引きすればテストが食い違いを教える。
+人が触るのは `一部CI` と `人手` の行だけ — いずれも**アプリのロジックではなく、その外側**
+(ベンダ応答・OS の共有シート・ブラウザのインストール UI)の確認。PWAインストール環境
+(Chrome Desktop)+ Android Chrome で実施する。件数は
+`tests/docs-no-frozen-counts.test.mjs` が下表と突き合わせるので、行を足し引きすれば
+テストが食い違いを教える。
 
 ### Desktop (Chrome 121+)
 
@@ -113,22 +114,30 @@ Android Chrome で実施する。件数は `tests/docs-no-frozen-counts.test.mjs
 | 2 | RSS追加 → POLL | 取得・解析・重複排除・保存 | CI | — |
 | 3 | BYOK設定 → POLL → 要約自動生成 | カードに要約表示 | 一部CI | ☐ |
 | 4 | 検索バーに「rust」入力 | リアルタイム絞込、match%表示 | CI | — |
-| 5 | Vault選択 → VAULTボタン押下 → ノート生成 | `Vault/neus/<uuid>.md` + `YYYY-MM-DD.md` 確認 | 人手 | ☐ |
+| 5 | Vault選択 → VAULTボタン押下 → ノート生成 | `Vault/neus/<uuid>.md` + `YYYY-MM-DD.md` 確認 | CI | — |
 | 6 | OPML import(`tests/fixtures/sample.opml`) | 一括登録 | CI | — |
-| 7 | BOOKMARKLET → 任意ページで起動 | Share Target経由でEvent作成 | 人手 | ☐ |
+| 7 | BOOKMARKLET → 任意ページで起動 | Share Target経由でEvent作成 | 一部CI | ☐ |
 | 8 | PWAインストール(アドレスバー右の `+`) | スタンドアロン起動 | 人手 | ☐ |
 | 10 | DevTools → Network → Offline → 再読込 | キャッシュ表示、POLL disabled | CI | — |
 | 11 | パスフレーズ設定 → リロード → Lock画面 → 解錠 | APIキー復号成功、要約動作 | CI | — |
 
-`自動 = CI` の根拠: #1/#2/#6 は `browser-beta-flows`、#4 は `browser-ui`、#10 は
-`browser-offline` / `browser-sw`、#11 は `browser-functional`。#3 は「要約が無くても
-カードが壊れない」までが CI、実ベンダ応答の確認だけが人手。
+`自動 = CI` の根拠: #1/#2/#5/#6/#16v は `browser-beta-flows`、#4 は `browser-ui`、#10 は
+`browser-offline` / `browser-sw`、#11 は `browser-functional`。
+
+`一部CI` の内訳(アプリ側は全て CI、人が見るのは外側だけ):
+- **#3** … 「要約が無くてもカードが壊れない」までが CI。実ベンダ応答の確認だけが人手。
+- **#7 / #9** … `share_target` は method GET なので、bookmarklet も OS 共有シートも最終的には
+  `/?share_url=…` を開くだけ。その受け口(URL抽出・トラッキング除去・`javascript:` 拒否・
+  再読込での二重取込防止)は CI。人が見るのは「OS の共有シートに Neus が出るか」だけで、
+  これは実質 #8(インストール状態)の裏返し。
+- **#5 / #16v** … ディレクトリ選択ダイアログだけを差し替え、その先の `VaultWriter` は
+  **実物のまま実 File System Access API**(OPFS 経由)で動かして検証している。
 
 ### Android Chrome (PWA)
 
 | # | シナリオ | 期待結果 | 自動 | OK |
 |---|---|---|---|---|
-| 9 | 別アプリ(ブラウザ) → 共有 → Neus を選択 | Share Target経由でEvent作成 | 人手 | ☐ |
+| 9 | 別アプリ(ブラウザ) → 共有 → Neus を選択 | Share Target経由でEvent作成 | 一部CI | ☐ |
 
 ### キーワードルール検証
 
@@ -144,7 +153,7 @@ Android Chrome で実施する。件数は `tests/docs-no-frozen-counts.test.mjs
 |---|---|---|---|---|
 | 15 | `j`/`k` | カード移動・ハイライト(端でクランプ) | CI | — |
 | 16 | `s`/`e`/`r` | スター/アーカイブ/既読が IndexedDB に反映 | CI | — |
-| 16v | `v` | Vault実行(実ディレクトリ書き込み) | 人手 | ☐ |
+| 16v | `v` | Vault実行(実ディレクトリへ書き込み・日次ノート追記) | CI | — |
 | 17 | `?` | ショートカット一覧モーダル | CI | — |
 | 18 | `g i`/`g s`/`g a` | INBOX/STARRED/ALL移動(prefix は800msで失効) | CI | — |
 

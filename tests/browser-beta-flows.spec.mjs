@@ -462,3 +462,198 @@ test.describe('G10.07 — scenarios recovered from the "needs a human" list (rou
     expect(await eventCount(page)).toBe(before);
   });
 });
+
+// ---------------------------------------------------------------------------
+// round 68 — #5 / #16v (Vault 書き出し)も、同じ問い直しで機械化できた
+//
+// round 67 は #5 を「File System Access API の実ディレクトリ選択が要る」として人手に残した。
+// これも一段細かく問うと二つに割れる:
+//   - **ディレクトリを選ぶダイアログ** … OS/ブラウザ UI。Neus の性質ではない。
+//   - **選ばれたディレクトリへの書き込み** … `getDirectoryHandle` / `getFileHandle` /
+//     `createWritable` を使う **VaultWriter そのもの**。これは全面的に Neus の性質。
+//
+// OPFS(`navigator.storage.getDirectory()`)は **FileSystemDirectoryHandle を返す**ので、
+// `showDirectoryPicker` だけを差し替えれば、その先の VaultWriter は**実物のまま実 API で**
+// 動く。#2 で proxy 応答だけを差し替えたのと同じ切り分け — 置き換えるのは
+// 「Neus の性質ではない部分」だけ。
+// ---------------------------------------------------------------------------
+
+// Replaces only the OS directory dialog. Everything the app does with the returned handle is
+// the real File System Access API against a real (origin-private) filesystem.
+async function stubDirectoryPicker(page, { abort = false } = {}) {
+  await page.addInitScript((shouldAbort) => {
+    window.showDirectoryPicker = async () => {
+      if (shouldAbort) {
+        const e = new Error('The user aborted a request.');
+        e.name = 'AbortError';
+        throw e;
+      }
+      return navigator.storage.getDirectory();
+    };
+  }, abort);
+}
+
+// Walk the origin-private filesystem the app just wrote into.
+const vaultTree = (page) => page.evaluate(async () => {
+  const out = [];
+  const walk = async (dir, prefix) => {
+    for await (const [name, handle] of dir.entries()) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (handle.kind === 'directory') await walk(handle, path);
+      else out.push({ path, text: await (await handle.getFile()).text() });
+    }
+  };
+  await walk(await navigator.storage.getDirectory(), '');
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+});
+
+test.describe('G10.07 — Vault export, with only the directory dialog stubbed (round 68)', () => {
+  test('scenarios 5 and 16v: v writes the note and appends today\'s daily note', async ({ page }) => {
+    await stubDirectoryPicker(page);
+    const problems = watchForCrashes(page);
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+    await seedEvents(page);
+
+    await page.keyboard.press('j');
+    await page.keyboard.press('v');
+    await page.waitForTimeout(2000);
+
+    const files = await vaultTree(page);
+    const note = files.find(f => /^neus\/[0-9a-f-]{8,}\.md$/.test(f.path));
+    expect(note, `expected neus/<uuid>.md, got:\n${files.map(f => f.path).join('\n')}`).toBeTruthy();
+    expect(note.text, 'the note must carry the article title').toMatch(/Rust ownership|WebGPU|線形代数/);
+
+    const today = new Date();
+    const key = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const daily = files.find(f => f.path === `${key}.md`);
+    expect(daily, `daily note must be filed under the LOCAL date ${key}`).toBeTruthy();
+    expect(daily.text).toContain('## Neus');
+    expect(daily.text, 'the daily note links back to the exported note').toContain('](neus/');
+
+    // The card's own state must record the export, which is what marks it in the UI.
+    const exported = await page.evaluate(() => new Promise(resolve => {
+      const req = indexedDB.open('neus-v1');
+      req.onsuccess = () => {
+        const tx = req.result.transaction(['events']).objectStore('events').getAll();
+        tx.onsuccess = () => resolve(tx.result.filter(e => e.state?.exported).length);
+        tx.onerror = () => resolve(-1);
+      };
+      req.onerror = () => resolve(-1);
+    }));
+    expect(exported, 'exactly the one card acted on must be marked exported').toBe(1);
+    expect(problems, `crashes during vault export:\n${problems.join('\n')}`).toEqual([]);
+  });
+
+  test('a second export appends to the same daily note instead of overwriting it', async ({ page }) => {
+    await stubDirectoryPicker(page);
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+    await seedEvents(page);
+
+    await page.keyboard.press('j');
+    await page.keyboard.press('v');
+    await page.waitForTimeout(1500);
+    await page.keyboard.press('j');
+    await page.keyboard.press('v');
+    await page.waitForTimeout(1500);
+
+    const files = await vaultTree(page);
+    const daily = files.find(f => /^\d{4}-\d{2}-\d{2}\.md$/.test(f.path));
+    const links = (daily.text.match(/\]\(neus\//g) || []).length;
+    expect(links, 'both exports must appear; the second must not clobber the first').toBe(2);
+    expect((daily.text.match(/## Neus/g) || []).length, 'the header is written once').toBe(1);
+    expect(files.filter(f => f.path.startsWith('neus/')).length).toBe(2);
+  });
+
+  test('declining the directory dialog writes nothing and does not crash', async ({ page }) => {
+    await stubDirectoryPicker(page, { abort: true });
+    const problems = watchForCrashes(page);
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(500);
+    await dismissOnboarding(page);
+    await seedEvents(page);
+
+    await page.keyboard.press('j');
+    await page.keyboard.press('v');
+    await page.waitForTimeout(1500);
+
+    expect(await vaultTree(page), 'an aborted pick must leave the disk untouched').toEqual([]);
+    // AbortError is the normal "user changed their mind" path, so it must not be logged as an error.
+    expect(problems, `aborting the picker must be silent:\n${problems.join('\n')}`).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// round 68 — #7 / #9 (Bookmarklet / Android 共有)も、app 側は丸ごと機械化できる
+//
+// この二つは「別ページ・実端末の OS 統合」として人手に残していた。しかし manifest の
+// `share_target` は **method GET** で、OS も bookmarklet も最終的には
+// `/?share_url=...&share_title=...` を開くだけ。つまり Neus 側の受け口は**ただの URL**で、
+// その URL を開けば `ShareTarget.handle` から `ingest` までの実装が丸ごと走る。
+//
+// 人手に残るのは「OS の共有シートに Neus が出ること」だけで、それは #8(PWA インストール)
+// の裏返し — アプリのロジックではなくインストール状態の話。
+// ---------------------------------------------------------------------------
+
+const sharedEvents = (page) => page.evaluate(() => new Promise(resolve => {
+  const req = indexedDB.open('neus-v1');
+  req.onsuccess = () => {
+    const tx = req.result.transaction(['events']).objectStore('events').getAll();
+    tx.onsuccess = () => resolve(tx.result.map(e => ({ title: e.content?.title, url: e.url })));
+    tx.onerror = () => resolve([]);
+  };
+  req.onerror = () => resolve([]);
+}));
+
+async function share(page, query) {
+  await page.goto(`${base}/index.html?${query}`, { waitUntil: 'load' });
+  await page.waitForTimeout(1200);
+  await dismissOnboarding(page);
+  await page.waitForTimeout(600);
+}
+
+test.describe('G10.07 — Share Target intake, the app half of #7 and #9 (round 68)', () => {
+  test('a shared url and title become an event', async ({ page }) => {
+    const problems = watchForCrashes(page);
+    await share(page, 'share_url=https%3A%2F%2Fex.test%2Farticle&share_title=Shared%20headline');
+    expect(await sharedEvents(page)).toEqual([
+      { title: 'Shared headline', url: 'https://ex.test/article' },
+    ]);
+    expect(problems, `crashes during share intake:\n${problems.join('\n')}`).toEqual([]);
+  });
+
+  test('a url embedded in share_text is extracted (how most Android apps share)', async ({ page }) => {
+    await share(page, 'share_text=look%20at%20https%3A%2F%2Fex.test%2Fembedded%20today');
+    const events = await sharedEvents(page);
+    expect(events).toHaveLength(1);
+    expect(events[0].url).toBe('https://ex.test/embedded');
+  });
+
+  test('tracking parameters are stripped on the way in', async ({ page }) => {
+    await share(page, 'share_url=https%3A%2F%2Fex.test%2Fp%3Futm_source%3Dtwitter%26id%3D1%23top&share_title=T');
+    expect((await sharedEvents(page))[0].url, 'the same article shared twice must dedup')
+      .toBe('https://ex.test/p?id=1');
+  });
+
+  test('a javascript: url is refused, not stored', async ({ page }) => {
+    await share(page, 'share_url=javascript%3Aalert(1)&share_title=evil');
+    expect(await sharedEvents(page), 'no event may be created from an unsafe scheme').toEqual([]);
+  });
+
+  test('shared content with no url at all creates nothing', async ({ page }) => {
+    await share(page, 'share_text=just%20a%20note%20with%20no%20link');
+    expect(await sharedEvents(page)).toEqual([]);
+  });
+
+  test('the query string is cleared so a reload does not re-ingest', async ({ page }) => {
+    await share(page, 'share_url=https%3A%2F%2Fex.test%2Fonce&share_title=Once');
+    expect(new URL(page.url()).search, 'history.replaceState must drop the share params').toBe('');
+
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForTimeout(1200);
+    expect(await sharedEvents(page), 'a reload must not duplicate the shared article').toHaveLength(1);
+  });
+});
