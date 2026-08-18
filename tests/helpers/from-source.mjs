@@ -59,11 +59,25 @@ export function extractFunction(name, indent = '') {
   return lines.slice(start, end + 1).join('\n');
 }
 
-/** Extract a `const NAME=...;` single-line declaration verbatim. */
+/**
+ * Extract a `const NAME=...` declaration verbatim, single- or multi-line.
+ * Multi-line arrow bodies are common (`const f=(x)=>{ ... };`), so a single-line-only
+ * matcher silently fails on them — a gap found by using this helper on normalizeSlugInput.
+ */
 export function extractConst(name) {
-  const m = SOURCE.match(new RegExp(`^\\s*const ${name}=.*$`, 'm'));
-  if (!m) throw new Error(`extractConst: not found: const ${name}=`);
-  return m[0].trim();
+  const lines = SOURCE.split('\n');
+  const start = lines.findIndex(l => new RegExp(`^\\s*const ${name}\\s*=`).test(l));
+  if (start < 0) throw new Error(`extractConst: not found: const ${name}=`);
+  const first = lines[start];
+  const balanced = (l) => (l.match(/\{/g) || []).length === (l.match(/\}/g) || []).length;
+  if (balanced(first) && first.trimEnd().endsWith(';')) return first.trim();
+  // Multi-line: run to the line closing at the declaration's own indent.
+  const indent = first.match(/^\s*/)[0];
+  const close = new RegExp(`^${indent}\\};?$`);
+  let end = start + 1;
+  while (end < lines.length && !close.test(lines[end])) end++;
+  if (end >= lines.length) throw new Error(`extractConst: no terminator for ${name}`);
+  return lines.slice(start, end + 1).join('\n');
 }
 
 /**

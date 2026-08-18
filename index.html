@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-Mmq0Dd+C5bj5cyl66OVlQz+Y4RSBmah58cQOSAu9zxM='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-/FAGbJpjwAy4QeX27nEvOujdjfqZgmwA8KbyFjXtrgE='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -2241,7 +2241,19 @@ const RSSPoller=(()=>{
 // トピックスラグ系ソース(Zenn/GitHub)が共有する前処理。プラットフォーム別の許可文字・
 // 連結規則(ハイフン有無等)はそれぞれの build() 内の .replace() に残す(正規表現自体は
 // 各プラットフォームの実際のスラグ規約に合わせて異なるため統合しない)。
-const normalizeSlugInput=(q)=>decodeURIComponent(q).trim().toLowerCase();
+// トピック型フィード(Zenn / GitHub)は素の語からスラッグを作るため、`_collectOne` が
+// `encodeURIComponent` した `q` をここで復号し直す(検索型フィードは符号化済みの `q` を
+// そのまま URL に載せるので、この往復は両方の用途を満たすために必要)。
+// `decodeURIComponent` は不正な % シーケンスで **URIError を投げる**。現状の唯一の呼び出し元は
+// 必ず符号化して渡すため実際には投げないが(`100% pure` → `100%25%20pure` → 復号可)、
+// それは**文書化されていない暗黙の前提**にすぎない。生の語を渡す呼び出しが将来1つ増えるだけで
+// 例外になり、しかも `fetchFeed` は `Promise.all` の中なので**その単語の収集全体が失敗**する
+// (Wikipedia の結果まで巻き添えで捨てられる)。前提に頼らず全域関数にしておく。
+const normalizeSlugInput=(q)=>{
+  const s=String(q??'');
+  let d;try{d=decodeURIComponent(s);}catch{d=s;}
+  return d.trim().toLowerCase();
+};
 const WORD_FEEDS={
   news:  {label:'Google News', build:(q,lang)=>{const hl=lang==='ja'?'ja':'en-US',gl=lang==='ja'?'JP':'US',ceid=lang==='ja'?'JP:ja':'US:en';return`https://news.google.com/rss/search?q=${q}&hl=${hl}&gl=${gl}&ceid=${ceid}`;}},
   reddit:{label:'Reddit',      build:(q)=>`https://www.reddit.com/search.rss?q=${q}&sort=new`},
