@@ -94,54 +94,67 @@ GitHub リポジトリ Settings → Secrets and variables → Actions:
 
 未達項目があれば Issue 起票 → 修正 → 再計測。
 
-## STEP 7: ベータテスト 11シナリオ(45分)
+## STEP 7: ベータテスト(人手は5シナリオ+主観評価のみ・約10分)
 
-PWAインストール環境(Chrome Desktop)+ Android Chrome で実施。
+**先に `npx playwright test` を実行すること。** 下表の大半は
+`tests/browser-beta-flows.spec.mjs` ほかの browser spec が実 Chromium で毎回確認しており、
+「自動」列が `CI` の行は spec が通っていれば済む。**人手で再実行する必要はない。**
+
+人手が要るのは、実ディレクトリ選択・OS 統合・ブラウザ UI という**機械に代行できないもの**
+(#5 / #7 / #8 / #9 / #16v)と、**主観評価**だけ。PWAインストール環境(Chrome Desktop)+
+Android Chrome で実施する。件数は `tests/docs-no-frozen-counts.test.mjs` が下表と突き合わせる
+ので、行を足し引きすればテストが食い違いを教える。
 
 ### Desktop (Chrome 121+)
 
-| # | シナリオ | 期待結果 | OK |
-|---|---|---|---|
-| 1 | 初回起動 → 5ステップオンボーディング | JA/EN選択 → SETTINGS反映 | ☐ |
-| 2 | RSS追加 (`https://news.ycombinator.com/rss`) → POLL | HN記事30件取得 | ☐ |
-| 3 | BYOK設定(Anthropic Claude Haiku) → POLL → 要約自動生成 | カードに要約表示 | ☐ |
-| 4 | 検索バーに「rust」入力 | リアルタイム絞込、match%表示 | ☐ |
-| 5 | Vault選択 → VAULTボタン押下 → ノート生成 | `Vault/neus/<uuid>.md` + `YYYY-MM-DD.md` 確認 | ☐ |
-| 6 | OPML import(`tests/fixtures/sample.opml`) | 一括登録 | ☐ |
-| 7 | BOOKMARKLET → 任意ページで起動 | Share Target経由でEvent作成 | ☐ |
-| 8 | PWAインストール(アドレスバー右の `+`) | スタンドアロン起動 | ☐ |
-| 10 | DevTools → Network → Offline → 再読込 | キャッシュ表示、POLL disabled | ☐ |
-| 11 | パスフレーズ設定 → リロード → Lock画面 → 解錠 | APIキー復号成功、要約動作 | ☐ |
+| # | シナリオ | 期待結果 | 自動 | OK |
+|---|---|---|---|---|
+| 1 | 初回起動 → 5ステップオンボーディング | JA/EN選択 → SETTINGS反映 | CI | — |
+| 2 | RSS追加 → POLL | 取得・解析・重複排除・保存 | CI | — |
+| 3 | BYOK設定 → POLL → 要約自動生成 | カードに要約表示 | 一部CI | ☐ |
+| 4 | 検索バーに「rust」入力 | リアルタイム絞込、match%表示 | CI | — |
+| 5 | Vault選択 → VAULTボタン押下 → ノート生成 | `Vault/neus/<uuid>.md` + `YYYY-MM-DD.md` 確認 | 人手 | ☐ |
+| 6 | OPML import(`tests/fixtures/sample.opml`) | 一括登録 | CI | — |
+| 7 | BOOKMARKLET → 任意ページで起動 | Share Target経由でEvent作成 | 人手 | ☐ |
+| 8 | PWAインストール(アドレスバー右の `+`) | スタンドアロン起動 | 人手 | ☐ |
+| 10 | DevTools → Network → Offline → 再読込 | キャッシュ表示、POLL disabled | CI | — |
+| 11 | パスフレーズ設定 → リロード → Lock画面 → 解錠 | APIキー復号成功、要約動作 | CI | — |
+
+`自動 = CI` の根拠: #1/#2/#6 は `browser-beta-flows`、#4 は `browser-ui`、#10 は
+`browser-offline` / `browser-sw`、#11 は `browser-functional`。#3 は「要約が無くても
+カードが壊れない」までが CI、実ベンダ応答の確認だけが人手。
 
 ### Android Chrome (PWA)
 
-| # | シナリオ | 期待結果 | OK |
-|---|---|---|---|
-| 9 | 別アプリ(ブラウザ) → 共有 → Neus を選択 | Share Target経由でEvent作成 | ☐ |
+| # | シナリオ | 期待結果 | 自動 | OK |
+|---|---|---|---|---|
+| 9 | 別アプリ(ブラウザ) → 共有 → Neus を選択 | Share Target経由でEvent作成 | 人手 | ☐ |
 
 ### キーワードルール検証
 
-| # | シナリオ | 期待結果 | OK |
-|---|---|---|---|
-| 12 | KEYWORDS → WATCH に「rust」追加 → POLL | rust含むEventが score+30 | ☐ |
-| 13 | KEYWORDS → BLOCK に「crypto」(action: delete) → POLL | crypto含むEventが保存されない | ☐ |
-| 14 | KEYWORDS → REAPPLY TO ALL | 既存Eventにも適用 | ☐ |
+| # | シナリオ | 期待結果 | 自動 | OK |
+|---|---|---|---|---|
+| 12 | KEYWORDS → WATCH に「rust」追加 → POLL | rust含むEventが score+30 | CI | — |
+| 13 | KEYWORDS → BLOCK に「crypto」(action: delete) → POLL | crypto含むEventが保存されない | CI | — |
+| 14 | KEYWORDS → REAPPLY TO ALL | 既存Eventにも適用 | CI | — |
 
 ### キーボードショートカット検証
 
-| # | キー | 期待動作 | OK |
-|---|---|---|---|
-| 15 | `j`/`k` | カード移動・ハイライト | ☐ |
-| 16 | `s`/`e`/`r`/`v` | スター/アーカイブ/既読/Vault実行 | ☐ |
-| 17 | `?` | ショートカット一覧モーダル | ☐ |
-| 18 | `g i`/`g s`/`g a` | INBOX/STARRED/ALL移動 | ☐ |
+| # | キー | 期待動作 | 自動 | OK |
+|---|---|---|---|---|
+| 15 | `j`/`k` | カード移動・ハイライト(端でクランプ) | CI | — |
+| 16 | `s`/`e`/`r` | スター/アーカイブ/既読が IndexedDB に反映 | CI | — |
+| 16v | `v` | Vault実行(実ディレクトリ書き込み) | 人手 | ☐ |
+| 17 | `?` | ショートカット一覧モーダル | CI | — |
+| 18 | `g i`/`g s`/`g a` | INBOX/STARRED/ALL移動(prefix は800msで失効) | CI | — |
 
 ### バックアップ検証
 
-| # | シナリオ | 期待結果 | OK |
-|---|---|---|---|
-| 19 | STATS → EXPORT JSON | `neus-backup-YYYY-MM-DD.json` 保存 | ☐ |
-| 20 | DevTools → IndexedDB全削除 → IMPORT JSON | 全データ復元 | ☐ |
+| # | シナリオ | 期待結果 | 自動 | OK |
+|---|---|---|---|---|
+| 19 | STATS → EXPORT JSON | `neus-backup-YYYY-MM-DD.json` 保存 | CI | — |
+| 20 | DevTools → IndexedDB全削除 → IMPORT JSON | 全データ復元(確認ダイアログ経由) | CI | — |
+| 20b | 他アプリのJSON / 壊れたJSON を IMPORT | 消す前に拒否、既存データ保持 | CI | — |
 
 ## STEP 8: リリースタグ(手動・2分)
 

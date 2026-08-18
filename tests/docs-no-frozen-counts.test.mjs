@@ -56,3 +56,31 @@ describe('living docs do not freeze counts that must be hand-synced', () => {
     expect(/\d{1,3},\d{3}/.test(changelog) || /\d{3,4}\s*件/.test(changelog)).toBe(true);
   });
 });
+
+describe('DEPLOY STEP 7 states its own manual workload without hand-syncing it (round 67)', () => {
+  // round 67 cut the owner's manual beta pass from 12 scenarios to 4 by mechanizing the rest.
+  // The headline sentence names that number, which is exactly the kind of figure round 45
+  // showed will rot. Rather than dropping a genuinely useful number, make it self-checking:
+  // it has to agree with the tables directly below it, or this test fails.
+  const deploy = readFileSync(join(root, 'DEPLOY.md'), 'utf8');
+  const step7 = deploy.slice(deploy.indexOf('## STEP 7'), deploy.indexOf('## STEP 8'));
+
+  it('has a STEP 7 section with per-scenario automation status', () => {
+    expect(step7.length).toBeGreaterThan(500);
+    expect(step7).toContain('| 自動 | OK |');
+  });
+
+  it('the claimed manual-scenario count equals the rows actually marked 人手', () => {
+    const manualRows = (step7.match(/\|\s*人手\s*\|/g) || []).length;
+    const claimed = step7.match(/人手は(\d+)シナリオ/);
+    expect(claimed, 'the header must state the manual workload').not.toBeNull();
+    expect(manualRows, 'header count must match the tables below it').toBe(Number(claimed[1]));
+  });
+
+  it('every scenario row declares an automation status, so none is silently unowned', () => {
+    const rows = step7.split('\n').filter(l => /^\|\s*\d+[a-z]?\s*\|/.test(l));
+    expect(rows.length, 'scenario rows found').toBeGreaterThan(10);
+    const undeclared = rows.filter(r => !/\|\s*(CI|一部CI|人手)\s*\|/.test(r));
+    expect(undeclared, `rows with no 自動 column:\n${undeclared.join('\n')}`).toEqual([]);
+  });
+});
