@@ -1289,3 +1289,35 @@ ADR-0007 の再検討を伴うため **要 ADR** とし、本ラウンドでは�
 「日付つき記録は対象外」であること自体もテストで固定した。
 
 - テストは 1510 → 1514 件。index.html から死にCSS 2行を削除。
+
+### 10.35 第33次監査 (round 46) — G10.06 を「測れる範囲」まで前進させる
+
+G10.06「Lighthouse Performance 90+」は round 44 で BLOCKED としたが、**本当に測れないのか**を
+問い直した(段階1)。Lighthouse 本体は環境に無く、追加すれば devDependency が増えて
+G10.03(脆弱性ゼロ)と綱引きになる。しかし**要件の意図**(利用者にとって速いか)は、
+依存を増やさずとも実ブラウザで直接測れる。
+
+Lighthouse Performance の重みは概ね **TBT 30% / LCP 25% / CLS 25% / FCP 10% / SI 10%**。
+`tests/browser-vitals.spec.mjs` を新設し、そのうち **90%を占める4指標**を Chromium で実測する。
+閾値は web.dev の "good" 境界をそのまま使い、甘い自作基準を作らない。
+
+| 指標 | 実測 | good 閾値 |
+|---|---|---|
+| FCP | 124 ms | ≤ 1800 ms |
+| LCP | 124 ms | ≤ 2500 ms |
+| CLS | 0.000 | ≤ 0.1 |
+| TBT | 0 ms | ≤ 200 ms |
+
+**限界を明示した上で CONDITIONAL PASS**: これは Lighthouse スコアそのものではない。
+Lighthouse は Slow 4G 相当のネットワーク絞りと 4x CPU スロットリング下で測るが、本実測は
+localhost・スロットリング無し。よって「90+ を達成した」とは主張せず、主張するのは
+**「スコアの大半を占める指標が good 閾値に対し桁違いの余裕を持つ」**ところまで。
+署名ビルドと throttled 実測は引き続き人間が実施(`DEPLOY.md` STEP 6)。
+
+**環境の落とし穴**: `@playwright/test` が期待する Chromium ビルド(1223)と、この環境に
+プリインストールされたビルド(1194)が食い違う。`playwright.config.mjs` は既に
+`executablePath` の候補探索でこれを吸収していた — 新規 spec もその設定に乗せることで、
+`playwright install` を走らせずに実行できる。
+
+- G10.07 は引き続き BLOCKED(主観評価が要件そのもので代行不可)。
+- ブラウザ spec 3件を追加(vitest の件数には含まれない別ランナー)。
