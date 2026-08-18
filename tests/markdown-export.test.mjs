@@ -13,7 +13,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 // Mirror of yamlScalar in index.html.
-const yamlScalar = (s) => '"' + String(s ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n') + '"';
+// round 55b: \r and C0 control characters must also be escaped. YAML treats \r as a line
+// break, and a raw NUL is illegal anywhere in a YAML stream, so a conforming parser rejects
+// the whole document. Tab (0x09) is legal inside a double-quoted scalar and stays raw.
+const yamlScalar = (s) => '"' + String(s ?? '')
+  .replace(/\\/g, '\\\\')
+  .replace(/"/g, '\\"')
+  .replace(/\n/g, '\\n')
+  .replace(/\r/g, '\\r')
+  .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, c => '\\x' + c.charCodeAt(0).toString(16).padStart(2, '0'))
+  + '"';
 
 // Mirror of the frontmatter line construction in MarkdownExporter.toMarkdown.
 function frontmatter(ev) {
@@ -113,5 +122,49 @@ describe('export/storage robustness wiring (index.html)', () => {
     expect(html).toContain('if(addingWord)return;');
     expect(html).toContain('addingWord=true;');
     expect(html).toContain('finally{addingWord=false;}');
+  });
+});
+
+
+describe('yamlScalar — control characters from feed text (round 55b)', () => {
+  // source.name / tags / title all flow through here and all come from feeds.
+  const raw = (out) => /[\r\n]/.test(out) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(out);
+
+  it('escapes a carriage return, which YAML also treats as a line break', () => {
+    const out = yamlScalar('title\rinjected: true');
+    expect(out).toContain('\\r');
+    expect(raw(out), 'no raw break may remain').toBe(false);
+  });
+
+  it('escapes CRLF without leaving a stray CR', () => {
+    expect(raw(yamlScalar('a\r\nb'))).toBe(false);
+  });
+
+  it('escapes NUL, which is illegal anywhere in a YAML stream', () => {
+    // A conforming parser must reject the entire document, so one bad feed title would
+    // make the whole note unreadable to Obsidian/Dataview.
+    const out = yamlScalar('a\u0000b');
+    expect(out).toContain('\\x00');
+    expect(raw(out)).toBe(false);
+  });
+
+  it('escapes other C0 controls and DEL', () => {
+    expect(yamlScalar('a\u0007b')).toContain('\\x07');
+    expect(yamlScalar('a\u007fb')).toContain('\\x7f');
+  });
+
+  it('leaves tab alone — it is legal in a double-quoted scalar', () => {
+    expect(yamlScalar('a\tb')).toBe('"a\tb"');
+  });
+
+  it('still escapes the original cases', () => {
+    expect(yamlScalar('say "hi"')).toBe('"say \\"hi\\""');
+    expect(yamlScalar('C:\\p')).toBe('"C:\\\\p"');
+    expect(yamlScalar('a\nb')).toBe('"a\\nb"');
+  });
+
+  it('the frontmatter block keeps exactly its own delimiters', () => {
+    const fm = ['---', `source: ${yamlScalar('Evil\rinjected: pwned')}`, 'score: 50', '---'].join('\n');
+    expect(fm.split('\n')).toHaveLength(4);
   });
 });

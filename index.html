@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-ZXWdFdy+Ic3mTveEgA2DREYOjSln0F6zIWoHJXYvFOk='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-bOZ1aum536kAAgwsEJPjBvqGVQY+JnwkbpKb/w/2hXw='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1136,7 +1136,19 @@ const escapeAttr=escapeHtml;
 const safeHref=(url)=>{try{const p=new URL(url||'').protocol;return(p==='https:'||p==='http:')?url:'#';}catch{return'#';}};
 // YAML スカラーを二重引用符で安全に包む。フィードのタイトル/ソース名に含まれる `:` や改行が
 // frontmatter を壊す/キー注入するのを防ぐ。MarkdownExporter と WordExporter で共有。
-const yamlScalar=(s)=>'"'+String(s??'').replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\n/g,'\\n')+'"';
+// YAML の二重引用符スカラーへ安全に埋め込む。`\` `"` `\n` に加えて **`\r` と制御文字**も
+// 逃がす必要がある: YAML は `\r` も改行として扱うため生のまま入るとスカラーが行をまたぎ、
+// NUL などの C0 制御文字は YAML ストリームに生で置くこと自体が不正で、準拠パーサは
+// 文書全体を拒否する。ここへ流れるのは source.name / tags / title といった**フィード由来の
+// 文字列**なので、壊れたフィード1件で利用者の Vault ノートの frontmatter が読めなくなる。
+// タブ(0x09)は二重引用符スカラー内で合法なのでそのまま通す。
+const yamlScalar=(s)=>'"'+String(s??'')
+  .replace(/\\/g,'\\\\')
+  .replace(/"/g,'\\"')
+  .replace(/\n/g,'\\n')
+  .replace(/\r/g,'\\r')
+  .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,c=>'\\x'+c.charCodeAt(0).toString(16).padStart(2,'0'))
+  +'"';
 // Markdown link builder. Escapes [ and ] in the title so they don't break CommonMark link
 // syntax. Wraps the URL in <> so parentheses in URLs (e.g. Wikipedia disambiguation pages)
 // are handled correctly. Falls back to bold text when the URL is absent or unsafe.
