@@ -1947,3 +1947,46 @@ scenario 15 だけが落ちた。原因は `fetchAll` が**ソースを1件ず�
 - 変更: `tests/browser-beta-flows.spec.mjs`(+10 spec)、`tests/docs-no-frozen-counts.test.mjs`
   (+3)、`DEPLOY.md` STEP 7、`G10_RELEASE_CHECKLIST.md` G10.07。実装コードの変更なし。
 - STEP 7 の人手作業: 12 シナリオ → **5 シナリオ + 主観評価**(目安 45分 → 約10分)。
+
+### 10.57 第55次監査 (round 68) — 「人手」の粒度をもう一段下げる
+
+round 67 で人手に残した5件を見直すと、**シナリオ全体が人手なのではなく、端の一点だけが
+人手**というものが混じっていた。同じ問い(「その部分は Neus の性質か」)をもう一段当てる。
+
+**#5 / #16v — Vault 書き出し**
+
+「File System Access API の実ディレクトリ選択が要る」と書いていたが、分けると:
+
+- ディレクトリを選ぶ**ダイアログ** … OS/ブラウザ UI。Neus の性質ではない。
+- 選ばれたディレクトリへの**書き込み** … `getDirectoryHandle` / `getFileHandle` /
+  `createWritable` を使う `VaultWriter` そのもの。全面的に Neus の性質。
+
+OPFS(`navigator.storage.getDirectory()`)は**同じ `FileSystemDirectoryHandle` を返す**ので、
+`showDirectoryPicker` だけを差し替えれば、その先は**実物の VaultWriter が実 File System
+Access API で実ファイルシステムに書く**。#2 で proxy 応答だけを差し替えたのと同じ切り分け。
+固定した性質: `neus/<uuid>.md` の生成 / **ローカル日付**の日次ノート追記 / 2回目の書き出しが
+日次ノートを**上書きせず追記**しヘッダは1回だけ / ダイアログ中止時に**1バイトも書かない**
+かつ AbortError をエラーとして記録しない。
+
+**#7 / #9 — Bookmarklet / Android 共有**
+
+`manifest.json` の `share_target` は **method GET**。つまり OS の共有シートも bookmarklet も、
+最終的には `/?share_url=…&share_title=…` を開くだけで、Neus 側の受け口は**ただの URL**。
+その URL を開けば `ShareTarget.handle` → `ingest` の実装が丸ごと走る。固定した性質:
+url+title の取込 / **share_text に埋め込まれた URL の抽出**(Android の多くのアプリはこの形)/
+トラッキングパラメータ除去 / `javascript:` の拒否 / URL を含まない共有で何も作らないこと /
+`history.replaceState` でクエリが消えるため**再読込しても二重取込しない**こと。
+
+人手に残るのは「OS の共有シートに Neus が出るか」だけで、これは実質 #8(インストール状態)
+の裏返し。
+
+**結果**: STEP 7 で人が触るのは **#3 / #7 / #8 / #9 の4行**だけになり、しかもその4行とも
+**アプリのロジックではなく外側**(ベンダ応答・OS 共有シート・ブラウザのインストール UI)の
+確認に縮んだ。目安 約10分 → 約5分。
+
+**台帳側の直し**: STEP 7 の「自動」列に `一部CI` が増えたため、人手件数のガードを
+「`人手` の行数」から「**`人手` + `一部CI` の行数**」に変えた。`人手` だけを数えると
+利用者に求める作業を過少申告することになる(#3/#7/#9 は人が見る行なのに 0 と数えてしまう)。
+
+- 変更: `tests/browser-beta-flows.spec.mjs`(+9 spec)、`tests/docs-no-frozen-counts.test.mjs`
+  (ガードの数え方)、`DEPLOY.md` STEP 7、`G10_RELEASE_CHECKLIST.md`。実装コードの変更なし。

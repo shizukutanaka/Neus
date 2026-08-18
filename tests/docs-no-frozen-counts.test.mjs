@@ -70,11 +70,13 @@ describe('DEPLOY STEP 7 states its own manual workload without hand-syncing it (
     expect(step7).toContain('| 自動 | OK |');
   });
 
-  it('the claimed manual-scenario count equals the rows actually marked 人手', () => {
-    const manualRows = (step7.match(/\|\s*人手\s*\|/g) || []).length;
-    const claimed = step7.match(/人手は(\d+)シナリオ/);
+  it('the claimed count equals the rows that actually still need a person', () => {
+    // Counts both 人手 (nothing automated) and 一部CI (app side automated, outer edge still
+    // needs eyes). Counting only 人手 would understate what STEP 7 asks of the owner.
+    const needsPerson = (step7.match(/\|\s*(?:人手|一部CI)\s*\|/g) || []).length;
+    const claimed = step7.match(/人が触るのは(\d+)シナリオ/);
     expect(claimed, 'the header must state the manual workload').not.toBeNull();
-    expect(manualRows, 'header count must match the tables below it').toBe(Number(claimed[1]));
+    expect(needsPerson, 'header count must match the tables below it').toBe(Number(claimed[1]));
   });
 
   it('every scenario row declares an automation status, so none is silently unowned', () => {
