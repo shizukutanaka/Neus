@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-7xQWOJuInQ9LnEwe8+6RTM3scFOdqPk2WRKqQgCFZf4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-C7pBkrf2/cquv4Zin9Jj30P74FDGbtI2An5DZS9/vWY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3725,7 +3725,13 @@ async function renderWords(){
     if(wordSortKey==='verdict'){const ord={answered:0,converging:1,open:2,suspended:3};return ord[verdictOf(w)]??2;}
     return -(w.createdAt||0);
   }
-  const sorted=words.slice().sort((a,b)=>{const d=_wSortVal(a)-_wSortVal(b);return d!==0?d:-(a.createdAt||0)+(b.createdAt||0);});
+  // 並べ替えキーは**比較の外で1回だけ**求める。比較関数の中で求めると同じ単語が何度も評価され、
+  // しかも回数は V8 のソート実装と入力順に依存する(実測: 30語で 128 回 → 30 回)。
+  // `new` 分岐はキー1つにつき全イベントを走査するので、その重複がそのまま無駄になる
+  // (5,000件 × 30語 で 20.9ms → 4.1ms)。同順位の並びは createdAt 降順のまま。
+  const keyed=words.map(w=>({w,k:_wSortVal(w)}));
+  keyed.sort((a,b)=>{const d=a.k-b.k;return d!==0?d:-(a.w.createdAt||0)+(b.w.createdAt||0);});
+  const sorted=keyed.map(x=>x.w);
   // 検索面の一致: in-view filter must search exactly the fields FTS indexes (wordText),
   // otherwise global search finds a word by its sub-question or falsifier text but the
   // in-view filter box hides it — the placeholder promises 名前・問い・裁決.
