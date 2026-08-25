@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-3YUf4VcxtkDbgn13CUcgRyRZ9K02TUalvi71n0fy7NA='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-viw4RVBOxEnasY5HVnLtOp8wlrFokoIJcC/7prNlJa0='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -3337,19 +3337,31 @@ const WordExporter={
     }
     return parts.join('\n');
   },
+  // 書き出し系は gather(全イベント走査)やダイアログ(クリップボード権限・ディレクトリ選択)を
+  // 挟むため、手元の `word` は書き終える頃には古くなりうる。ここが担当するのは `reviewedAt`
+  // だけなので、書く直前に読み直してそれだけを載せる(round 73-75 と同じ手当て)。
+  // 収集結果と違い `reviewedAt` は**既存レコードへの注記**なので、走査中に削除されていたら
+  // **書かない** — `_collectOne` が手元のコピーで再作成するのとは逆の選択で、利用者が消した
+  // ものを注記のためだけに蘇らせない。
+  async markReviewed(word){
+    const fresh=await Store.getWord(word.id);
+    if(!fresh)return;
+    fresh.reviewedAt=word.reviewedAt=Date.now();   // 呼び出し元の手元のコピーも合わせる
+    await Store.putWord(fresh);
+  },
   async copyMd(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     try{await navigator.clipboard.writeText(this.toDossier(word,events,others));toast(currentLang==='ja'?'コピーしました':'copied','ok');}
     catch{toast(currentLang==='ja'?'クリップボードへのアクセスが拒否されました':'clipboard denied','err');return;}
-    word.reviewedAt=Date.now();await Store.putWord(word);
+    await this.markReviewed(word);
   },
   async downloadMd(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     downloadFile(`neus-word-${wordSlug(word.term)}.md`,this.toDossier(word,events,others),'text/markdown');
     toast(currentLang==='ja'?'Markdownを書き出し':'markdown exported','ok');
-    word.reviewedAt=Date.now();await Store.putWord(word);
+    await this.markReviewed(word);
   },
   // 完全な構造化レコード(機械可読・再取込/バックアップ用)。MDドシエと同じ探究状態を漏れなく含む。
   toWordJson(word,events,others=[]){
@@ -3385,13 +3397,13 @@ const WordExporter={
     const others=await this.othersOf(word);
     downloadFile(`neus-word-${wordSlug(word.term)}.json`,JSON.stringify(this.toWordJson(word,events,others),null,2),'application/json');
     toast(currentLang==='ja'?'JSONを書き出し':'json exported','ok');
-    word.reviewedAt=Date.now();await Store.putWord(word);
+    await this.markReviewed(word);
   },
   async toVault(word){
     const events=await this.gather(word);
     const others=await this.othersOf(word);
     const ok=await VaultWriter.exportWordDossier(word,this.toDossier(word,events,others));
-    if(ok){toast(currentLang==='ja'?'Vaultへ書き出し':'written to vault','ok');word.reviewedAt=Date.now();await Store.putWord(word);}
+    if(ok){toast(currentLang==='ja'?'Vaultへ書き出し':'written to vault','ok');await this.markReviewed(word);}
   },
   // 全watchwordを1つのMarkdownにまとめて出力(アウトプット一括)
   async downloadAllMd(){
@@ -3404,7 +3416,10 @@ const WordExporter={
     }
     downloadFile(`neus-words-${localDateKey()}.md`,docs.join('\n\n'),'text/markdown');
     toast(currentLang==='ja'?`${words.length}単語を書き出し`:`exported ${words.length} word(s)`,'ok');
-    const now=Date.now();for(const w of words){w.reviewedAt=now;await Store.putWord(w);}
+    // `words` は入口のスナップショット。上の gather ループは全単語 × 全イベント走査なので
+    // 大きな Vault では長く、その間の編集を書き潰さないよう1件ずつ読み直す。
+    const now=Date.now();
+    for(const w of words){const fresh=await Store.getWord(w.id);if(!fresh)continue;fresh.reviewedAt=w.reviewedAt=now;await Store.putWord(fresh);}
   },
   // ドシエJSONを取込: 単語を復元し、付随アイテムも重複排除しつつ取り込む(往復可能)。
   async importJson(file){
@@ -3989,8 +4004,12 @@ async function handleWordAction(e){
     const sv=$('#view').scrollTop;
     btn.disabled=true;btn.textContent=currentLang==='ja'?'取得中...':'fetching...';
     const wiki=await WordCollector.fetchWiki(word);
-    if(wiki)word.wiki={...wiki,fetchedAt:Date.now()};
-    await Store.putWord(word);await renderView();$('#view').scrollTop=sv;return;
+    // Wikipedia への往復を挟むので、手元の word は古くなりうる。担当は `wiki` だけ。
+    // 取得中に削除されていたら書かない(注記のために蘇生させない)。
+    const fresh=await Store.getWord(word.id);
+    if(!fresh){await renderView();return;}
+    if(wiki)fresh.wiki=word.wiki={...wiki,fetchedAt:Date.now()};
+    await Store.putWord(fresh);await renderView();$('#view').scrollTop=sv;return;
   }
   if(act==='filter'){
     currentView='all';

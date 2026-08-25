@@ -71,11 +71,13 @@ export function extractConst(name) {
   const start = lines.findIndex(l => new RegExp(`^\\s*const ${name}\\s*=`).test(l));
   if (start < 0) throw new Error(`extractConst: not found: const ${name}=`);
   const first = lines[start];
-  const balanced = (l) => (l.match(/\{/g) || []).length === (l.match(/\}/g) || []).length;
+  const balanced = (l) => (l.match(/[{[]/g) || []).length === (l.match(/[}\]]/g) || []).length;
   if (balanced(first) && first.trimEnd().endsWith(';')) return first.trim();
-  // Multi-line: run to the line closing at the declaration's own indent.
+  // Multi-line: run to the line closing at the declaration's own indent. Array literals
+  // terminate with `]` — matching only `}` silently failed on every `const X=[`, which is
+  // how the shared lookup tables are written (found while reaching for VERDICT_DEFS).
   const indent = first.match(/^\s*/)[0];
-  const close = new RegExp(`^${indent}\\};?$`);
+  const close = new RegExp(`^${indent}[}\\]];?$`);
   let end = start + 1;
   while (end < lines.length && !close.test(lines[end])) end++;
   if (end >= lines.length) throw new Error(`extractConst: no terminator for ${name}`);
