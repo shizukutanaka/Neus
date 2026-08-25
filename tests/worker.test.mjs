@@ -336,19 +336,61 @@ describe('JSON_CONTENT_RE — /json content-type validation', () => {
 describe('readCapped — streaming size enforcement', () => {
   const MAX_SIZE = 5 * 1024 * 1024;
 
-  // Mirror of readCapped from _worker.js
+  // Mirror of readCapped from _worker.js.
+  //
+  // round 83: this block was named "streaming size enforcement" while the implementation it
+  // mirrored buffered the entire body with arrayBuffer() and only then measured it. Every
+  // assertion here looked at the RETURN VALUE, which is identical either way, so the name was
+  // never checked by anything. Measured on a 40MB chunked body with no Content-Length:
+  // the old shape pulled all 40MB before rejecting; reading incrementally stops at 5.1MB.
+  // A Worker isolate is capped at 128MB, so a large enough body ended the isolate instead of
+  // returning 413 — the limit is needed for what we READ, not only for what we relay.
+  // The bytes-pulled test below is the one that would have caught it.
   async function readCapped(res) {
     const cl = res.headers.get('content-length');
     if (cl && Number(cl) > MAX_SIZE) return null;
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength > MAX_SIZE) return null;
-    return buf;
+    if (!res.body) {
+      const b = await res.arrayBuffer();
+      return b.byteLength > MAX_SIZE ? null : b;
+    }
+    const reader = res.body.getReader();
+    const parts = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_SIZE) {
+        await reader.cancel().catch(() => {});
+        return null;
+      }
+      parts.push(value);
+    }
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const p of parts) { out.set(p, offset); offset += p.byteLength; }
+    return out.buffer;
   }
 
   function makeRes(body, contentLength = null) {
     const headers = new Headers();
     if (contentLength !== null) headers.set('content-length', String(contentLength));
     return new Response(body, { headers });
+  }
+
+  /** A chunked body with no Content-Length that reports how much was actually pulled. */
+  function countingBody(totalBytes, chunkBytes = 64 * 1024) {
+    const chunk = new Uint8Array(chunkBytes);
+    const chunks = Math.ceil(totalBytes / chunkBytes);
+    let sent = 0;
+    const stream = new ReadableStream({
+      pull(c) {
+        if (sent >= chunks) return c.close();
+        sent++;
+        c.enqueue(chunk.slice());
+      },
+    });
+    return { stream, pulled: () => sent * chunkBytes, chunkBytes };
   }
 
   it('returns buffer for a small body without Content-Length', async () => {
@@ -375,6 +417,44 @@ describe('readCapped — streaming size enforcement', () => {
     const res = makeRes(exact.buffer);
     expect(await readCapped(res)).not.toBeNull();
   });
+
+  it('stops PULLING once past the cap, instead of draining the whole body', async () => {
+    // The assertion the four above were missing. They check the return value, which is null
+    // either way; this checks how much was read to get there. Without it, "streaming" is
+    // just a word in the describe block.
+    const body = countingBody(40 * 1024 * 1024);
+    const res = new Response(body.stream, { headers: new Headers() });
+
+    expect(await readCapped(res), 'an oversized body is still rejected').toBeNull();
+    expect(body.pulled(),
+      `pulled ${(body.pulled() / 1048576).toFixed(1)}MB to reject a body over a 5MB cap`)
+      .toBeLessThanOrEqual(MAX_SIZE + body.chunkBytes);
+  });
+
+  it('still reads a legitimate body to the end', async () => {
+    // The cap must not truncate a feed that is merely large-ish.
+    const size = MAX_SIZE - 1024;
+    const body = countingBody(size);
+    const res = new Response(body.stream, { headers: new Headers() });
+    const buf = await readCapped(res);
+    expect(buf).not.toBeNull();
+    expect(buf.byteLength).toBe(body.pulled());
+  });
+
+  it('reassembles multi-chunk content in order', async () => {
+    // Concatenating the chunks by hand is new code; a body that arrives in pieces must come
+    // back byte-identical rather than merely the right length.
+    const text = 'abcdefghij'.repeat(3000);
+    const bytes = new TextEncoder().encode(text);
+    const stream = new ReadableStream({
+      start(c) {
+        for (let i = 0; i < bytes.length; i += 997) c.enqueue(bytes.slice(i, i + 997));
+        c.close();
+      },
+    });
+    const buf = await readCapped(new Response(stream, { headers: new Headers() }));
+    expect(new TextDecoder().decode(new Uint8Array(buf))).toBe(text);
+  });
 });
 
 describe('Worker _worker.js source invariants', () => {
@@ -383,10 +463,17 @@ describe('Worker _worker.js source invariants', () => {
     src = readFileSync(join(__dirname, '..', '_worker.js'), 'utf8');
   });
 
-  it('readCapped helper enforces streaming size even without Content-Length', () => {
+  it('readCapped reads incrementally and gives up the rest once past the cap', () => {
+    // round 83: this used to require `const buf = await res.arrayBuffer()` — it pinned the
+    // very shape that made the cap useless for memory. Pin the property instead.
     expect(src).toContain('async function readCapped(res)');
-    expect(src).toContain('const buf = await res.arrayBuffer()');
-    expect(src).toContain('if (buf.byteLength > MAX_SIZE) return null');
+    expect(src, 'it must read in pieces, not buffer the whole body first')
+      .toContain('const reader = res.body.getReader();');
+    expect(src, 'and release the remainder rather than draining it')
+      .toContain('await reader.cancel().catch(() => {});');
+    expect(src).toContain('if (total > MAX_SIZE)');
+    expect(src, 'a body-less response still needs the old path')
+      .toContain('if (!res.body)');
   });
   it('SSRF guard matches IPv4-mapped IPv6 in WHATWG hex-normalized form', () => {
     // WHATWG URL normalizes [::ffff:127.0.0.1] → [::ffff:7f00:1], so match hex.
