@@ -82,7 +82,8 @@ describe('StorageGuard debounce wiring (index.html)', () => {
   });
   it('still exposes check() directly for the startup call', () => {
     // round 80: scheduleCheck is exported too, so the write-failure path can run the guard.
-    expect(html).toContain('return{check,requestPersist,scheduleCheck};');
+    // round 82: isPersisted is exported too, so STATS can report data durability.
+    expect(html).toContain('return{check,requestPersist,scheduleCheck,isPersisted};');
     expect(html).toContain('await StorageGuard.check();');
   });
 });
