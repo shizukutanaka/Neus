@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-5Z5Bnz7R28QBNTQd/j/cKiEx/xE9lzPCquWlF3HtFI8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-x4MphCMCzLNowQv6foQJitcXSFFopnj0wsFw9pWf2/k='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1304,6 +1304,13 @@ const Bus=(()=>{
 })();
 
 // ===== INDEXEDDB STORE ==================================================
+// 作り直しで直りうる失敗か。破損・版の不整合はデータを捨てれば進める。一方、保存領域そのものが
+// 使えない場合(プライベートウィンドウ / サイトデータのブロック / 権限拒否)は捨てても直らないので、
+// **消してよいか訊いてはいけない**。判定できないものは安全側 = 破壊しない側に倒す。
+function isRecreatable(err){
+  const name=err&&err.name||'';
+  return name==='VersionError'||name==='InvalidStateError'||name==='DataError'||name==='ConstraintError'||name==='AbortError';
+}
 const Store=(()=>{
   let db=null;
   function open(){return new Promise((resolve,reject)=>{
@@ -1314,7 +1321,31 @@ const Store=(()=>{
       if(!d.objectStoreNames.contains('settings'))d.createObjectStore('settings',{keyPath:'key'});
       if(!d.objectStoreNames.contains('words'))d.createObjectStore('words',{keyPath:'id'});
     };
-    req.onsuccess=()=>{db=req.result;resolve();};req.onerror=()=>reject(req.error);
+    req.onsuccess=()=>{
+      db=req.result;
+      // 別タブが新しい版へ上げようとしたら、こちらは接続を手放す。これをしないと相手は
+      // `blocked` のまま進めず、**古いタブを開いたままの利用者が新しいタブで永久に待つ**。
+      // 問題を報告するのではなく、起きないようにする方を採る。
+      db.onversionchange=()=>{
+        try{db.close();}catch{}
+        db=null;
+        toast(currentLang==='ja'
+          ?'別のタブが Neus を更新しました — このタブを再読み込みしてください'
+          :'another tab updated Neus — reload this tab','err');
+      };
+      resolve();
+    };
+    req.onerror=()=>reject(req.error);
+    // `blocked` は success/error のどちらでもない**第3の終わり方**で、拾わないと Promise が
+    // 永久に未解決のままになる。実測: 画面は空のまま、通知もモーダルも出ず、原因も分からない。
+    // ここでは reject しない — 相手のタブが閉じれば open は続行するので、待ちは残したまま
+    // 理由だけ伝える。上の onversionchange がある版同士なら、そもそもここへは来ない。
+    req.onblocked=()=>{
+      console.warn('[Store.open] blocked by another connection');
+      toast(currentLang==='ja'
+        ?'別のタブで Neus が開いています — そのタブを閉じると続行します'
+        :'Neus is open in another tab — close it to continue','err');
+    };
   });}
   const tx=(s,m='readonly')=>db.transaction(s,m);
   const r2p=(req)=>new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
@@ -1323,7 +1354,21 @@ const Store=(()=>{
       try{await open();}
       catch(err){
         console.error('[Store.init] open failed:',err);
-        // DB破損可能性: ユーザーに確認後、削除して再生成
+        // 原因を分けずに「削除して作り直すか」と訊いてはいけない。ストレージ自体が使えない
+        // (プライベートウィンドウ、サイトデータのブロック、権限拒否)ときは**削除しても
+        // 直らない**ことを実測で確認している — 再度 open して同じ失敗になる。それでも訊けば、
+        // 利用者は**何の役にも立たない全データ消去に同意させられる**。後で設定を戻したときに
+        // 戻ってくるはずだったデータが、そのとき既に無い。
+        // 破壊的な手当ては、それが効きうる原因(破損・版の不整合)に限る。
+        if(!isRecreatable(err)){
+          toast(currentLang==='ja'
+            ?'この端末の保存領域を使えません — プライベートウィンドウやサイトデータのブロックを確認してください'
+            :'storage is unavailable on this device — check private browsing or blocked site data','err');
+          // 具体的な説明を出した以上、上流の総称メッセージで**上書きさせない**。
+          // 通知は1つしか出せないので、後から出た方が勝つ = 役に立たない方が残る。
+          err.explained=true;
+          throw err;
+        }
         const msg=currentLang==='ja'?'データベースの初期化に失敗しました。データを削除して再生成しますか?':'Database initialization failed. Delete and recreate? (your data will be lost)';
         if(await confirmAsync(msg,{danger:true})){
           await new Promise((res,rej)=>{const req=indexedDB.deleteDatabase(CONFIG.dbName);req.onsuccess=res;req.onerror=rej;req.onblocked=res;});
@@ -5415,7 +5460,12 @@ const Perf=(()=>{const e={};return{mark:(n)=>{e[n]=performance.now();},measure:(
       window.__neus={Store,FTSIndex,Crypto,KeywordRules,Bus,TagLearner,InterestProfile,RSSPoller,InstallPromo,Dedup:{sha256,jaccard,tokenize},normalizeUrl,escapeHtml};
       window.dispatchEvent(new Event('neus:test-ready'));
     }
-  }catch(err){console.error('[Neus] init fail',err);toast((currentLang==='ja'?'初期化に失敗しました: ':'init failed: ')+err.message,'err');}
+  }catch(err){
+    console.error('[Neus] init fail',err);
+    // 原因を特定できた箇所が既に説明済みなら、それを総称メッセージで潰さない
+    // (`err.message` を貼っただけの文言は、利用者が次に何をすべきかを何も語らない)。
+    if(!err?.explained)toast((currentLang==='ja'?'初期化に失敗しました: ':'init failed: ')+err.message,'err');
+  }
 })();
 </script>
 </body>
