@@ -81,7 +81,8 @@ describe('StorageGuard debounce wiring (index.html)', () => {
     expect(html).toContain('finally{checkRunning=false;if(checkPending){checkPending=false;scheduleCheck();}}');
   });
   it('still exposes check() directly for the startup call', () => {
-    expect(html).toContain('return{check,requestPersist};');
+    // round 80: scheduleCheck is exported too, so the write-failure path can run the guard.
+    expect(html).toContain('return{check,requestPersist,scheduleCheck};');
     expect(html).toContain('await StorageGuard.check();');
   });
 });

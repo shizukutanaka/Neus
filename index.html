@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-C7pBkrf2/cquv4Zin9Jj30P74FDGbtI2An5DZS9/vWY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-5Z5Bnz7R28QBNTQd/j/cKiEx/xE9lzPCquWlF3HtFI8='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -784,6 +784,7 @@ const CONFIG = Object.freeze({
   // 「不明」として扱う。理由は sanePublishedAt のコメント参照。
   publishedAtMaxSkewMs:60*60*1000,
   storageQuotaThreshold:0.85,
+  storageWarnCooldownMs:60*1000,   // 保存失敗の通知は1分に1回まで(1回のPOLLで数十件失敗しうる)
   storageCheckDebounceMs:2000,
   // RESURFACE: 放置と見なす下限、重みのピーク、一度に提示する件数。
   // 多すぎると「また溜まった山」になり再浮上の意味を失うため少数に絞る。
@@ -1759,7 +1760,10 @@ const StorageGuard=(()=>{
     },CONFIG.storageCheckDebounceMs);
   }
   Bus.subscribe('event.stored',()=>scheduleCheck());
-  return{check,requestPersist};
+  // 失敗時にも点検する必要がある。従来は成功(`event.stored`)にしか繋がっておらず、
+  // **書き込みが全滅している間は安全網そのものが一度も走らない**という逆立ちした状態だった。
+  Bus.subscribe('storage.write-failed',()=>scheduleCheck());
+  return{check,requestPersist,scheduleCheck};
 })();
 
 // ===== UX HELPERS (confirm async + undo) ================================
@@ -2470,6 +2474,25 @@ function notifyWatchMatch(ev,matched){
   try{new Notification(`Neus — ${notifyRule.pattern}`,{body:ev.content.title||'',tag:'neus-watch'});}catch{}
 }
 
+// 端末の保存領域に起因する失敗かどうか。Chromium/Safari/Firefox で名前が揃っていないため
+// 名前と文言の両方を見る(取りこぼすと「静かに消える」側に倒れるので、広めに取る)。
+function isStorageError(err){
+  if(!err)return false;
+  const name=err.name||'';
+  return name==='QuotaExceededError'||name==='UnknownError'||/quota|storage|disk/i.test(err.message||'');
+}
+// 1回のPOLLで数十件が同時に失敗しうるので、通知は1バーストにつき1回に畳む。
+// 通知しないより悪いのは、通知で画面を埋めて他の情報を隠すこと。
+let storageWarnAt=0;
+Bus.subscribe('storage.write-failed',()=>{
+  const now=Date.now();
+  if(now-storageWarnAt<CONFIG.storageWarnCooldownMs)return;
+  storageWarnAt=now;
+  toast(currentLang==='ja'
+    ?'保存できませんでした — 端末の空き容量を確認し、不要な記事をVaultへ書き出してください'
+    :'could not save — free up device storage, then export or clear old events','err');
+});
+
 Bus.subscribe('event.normalized',(ev)=>withHashGate(ev.hash,async()=>{
   try{
     const existing=await Store.findByHash(ev.hash);
@@ -2497,7 +2520,16 @@ Bus.subscribe('event.normalized',(ev)=>withHashGate(ev.hash,async()=>{
     if(skip){Bus.publish('event.blocked',{ev,reason:'keyword-rule',patterns:matched.block.map(r=>r.pattern)});return;}
     notifyWatchMatch(ev,matched);
     await Store.putEvent(ev);FTSIndex.add(ev);Bus.publish('event.stored',ev);
-  }catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}
+  }catch(err){
+    console.error('[Dedup] pipeline error:',err);
+    // 書き込み失敗は「取り込み失敗」と意味が違う。前者は**利用者の端末側**の問題で、
+    // 黙らせると「N件取得」と表示しながら1件も保存されない状態が続く
+    // (実測: 6件取得の表示に対し保存2件、利用者向けの通知はゼロで console だけ)。
+    // ソース健全性の指標にもしてはいけない — SourceFailTracker が正常なフィードを
+    // 自動無効化してしまう。
+    if(isStorageError(err))Bus.publish('storage.write-failed',{err});
+    else Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});
+  }
 }));
 
 Bus.subscribe('inbound.error',({source,error})=>{console.warn(`[RSS] ${source.name}: ${error}`);});
