@@ -84,7 +84,9 @@ describe('sort wiring (index.html)', () => {
     expect(html).toContain("wordSortKey==='verdict'");
   });
   it('applies createdAt tiebreaker when primary sort values tie', () => {
-    expect(html).toContain('const d=_wSortVal(a)-_wSortVal(b);return d!==0?d:-(a.createdAt||0)+(b.createdAt||0);');
+    // round 79: the key is precomputed, so the comparator reads `k` instead of calling
+    // _wSortVal per comparison. The tiebreak itself is unchanged — newest-created first.
+    expect(html).toContain('const d=a.k-b.k;return d!==0?d:-(a.w.createdAt||0)+(b.w.createdAt||0);');
   });
 });
 
