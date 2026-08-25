@@ -175,7 +175,9 @@ describe('WORDS view UX improvements (index.html)', () => {
     expect(html).toContain('WordExporter.downloadAllMd()');
   });
   it('downloadAllMd marks all words as reviewed after export', () => {
-    expect(html).toContain('const now=Date.now();for(const w of words){w.reviewedAt=now;await Store.putWord(w);}');
+    // round 76: the tail loop re-reads each word before writing, so the entry snapshot cannot
+    // clobber a question or verdict saved during the (potentially long) bulk export.
+    expect(html).toContain('for(const w of words){const fresh=await Store.getWord(w.id);if(!fresh)continue;fresh.reviewedAt=w.reviewedAt=now;await Store.putWord(fresh);}');
   });
   it('addq clears the input value before re-render', () => {
     expect(html).toContain("if(input)input.value='';await Store.putWord(word);FTSIndex.addWord(word);await renderView();");
