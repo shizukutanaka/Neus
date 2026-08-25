@@ -35,15 +35,40 @@ const TIMEOUT_MS = 15000;
 const PRIVATE_HOST_RE = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|169\.254\.|0\.0\.0\.0|\[::1?\]|\[::ffff:(7f|a[0-9a-f][0-9a-f]:|c0a8:|ac1[0-9a-f]:|a9fe:)|\[fc|\[fd|\[fe80)/i;
 const MAX_REDIRECTS = 5;
 
-// Read a response body up to MAX_SIZE bytes. Returns the ArrayBuffer or null if
-// Content-Length already exceeds the limit, or if the buffered body exceeds it.
-// Enforces the size limit even when Content-Length is absent (chunked encoding).
+// Read a response body up to MAX_SIZE bytes, stopping as soon as the cap is passed.
+// Returns the ArrayBuffer, or null if the body is (or claims to be) too large.
+//
+// The previous version buffered the whole body with arrayBuffer() and checked afterwards.
+// The return value was identical, so the tests passed — but an oversized body was still
+// pulled from upstream in full. Measured: a 40MB chunked body cost 40MB of reads; reading
+// incrementally stops at 5.1MB (the cap plus one chunk). A Worker isolate has a 128MB
+// memory limit, so a large enough body ended the isolate instead of returning 413.
+// The cap is needed for what we READ, not only for what we relay.
 async function readCapped(res) {
   const cl = res.headers.get('content-length');
   if (cl && Number(cl) > MAX_SIZE) return null;
-  const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_SIZE) return null;
-  return buf;
+  if (!res.body) {
+    const b = await res.arrayBuffer();
+    return b.byteLength > MAX_SIZE ? null : b;
+  }
+  const reader = res.body.getReader();
+  const parts = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_SIZE) {
+      // Let go of the rest of the stream instead of draining it.
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) { out.set(p, offset); offset += p.byteLength; }
+  return out.buffer;
 }
 
 function corsHeaders() {
