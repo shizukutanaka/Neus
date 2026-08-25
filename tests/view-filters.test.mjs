@@ -128,7 +128,11 @@ describe('event.normalized pipeline error handling (index.html)', () => {
     expect(slice).toContain('Store.findByHash(ev.hash)');
   });
   it('catches errors and publishes inbound.error for user visibility', () => {
-    expect(html).toContain("catch(err){console.error('[Dedup] pipeline error:',err);Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});}");
+    // round 80: a failed WRITE is no longer reported as an ingest error. Counting it as one
+    // let SourceFailTracker auto-disable healthy feeds just because the disk was full.
+    expect(html).toContain("console.error('[Dedup] pipeline error:',err);");
+    expect(html).toContain("if(isStorageError(err))Bus.publish('storage.write-failed',{err});");
+    expect(html).toContain("else Bus.publish('inbound.error',{source:ev.source,error:'pipeline'});");
   });
 });
 
