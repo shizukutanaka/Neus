@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-x4MphCMCzLNowQv6foQJitcXSFFopnj0wsFw9pWf2/k='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-32Y49uDMwujE4VTYsMEi5ee5uv6fNp2hf0OQzK+nJSY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -915,6 +915,10 @@ const DICT={
     'stats.interest.like':'好み(自動学習)',
     'stats.interest.dislike':'除外(自動学習)',
     'stats.storage':'ストレージ',
+    'stats.durability':'データの保持',
+    'stats.durability.persistent':'永続化済み — 自動削除されません',
+    'stats.durability.evictable':'未永続化 — 容量逼迫時に削除されうる(インストールすると改善します)',
+    'stats.durability.unknown':'このブラウザでは判定できません',
     'stats.words':'単語',
 
     'filter.clear':'クリア',
@@ -1029,6 +1033,10 @@ const DICT={
     'stats.interest.like':'Liked (auto-learned)',
     'stats.interest.dislike':'Filtered (auto-learned)',
     'stats.storage':'Storage',
+    'stats.durability':'Data retention',
+    'stats.durability.persistent':'persistent — will not be evicted',
+    'stats.durability.evictable':'not persistent — may be evicted under storage pressure (installing helps)',
+    'stats.durability.unknown':'this browser cannot report it',
     'stats.words':'Words',
 
     'filter.clear':'clear',
@@ -1808,7 +1816,14 @@ const StorageGuard=(()=>{
   // 失敗時にも点検する必要がある。従来は成功(`event.stored`)にしか繋がっておらず、
   // **書き込みが全滅している間は安全網そのものが一度も走らない**という逆立ちした状態だった。
   Bus.subscribe('storage.write-failed',()=>scheduleCheck());
-  return{check,requestPersist,scheduleCheck};
+  // 端末に保存されているだけでは「残る」保証にならない。永続化が許可されていなければ、
+  // ブラウザは容量逼迫時に**このオリジンのデータを丸ごと退避(削除)しうる**。
+  // ローカルファーストを謳う以上、その状態は利用者に見えていなければならない。
+  async function isPersisted(){
+    if(!navigator.storage?.persisted)return null;   // 判定不能(古いブラウザ)
+    try{return await navigator.storage.persisted();}catch{return null;}
+  }
+  return{check,requestPersist,scheduleCheck,isPersisted};
 })();
 
 // ===== UX HELPERS (confirm async + undo) ================================
@@ -4844,6 +4859,12 @@ async function openStatsModal(){
   const ipNeg=InterestProfile.topWords('neg',6);
   let usage='-',quota='-';
   if(navigator.storage?.estimate){const e=await navigator.storage.estimate();usage=(e.usage/1024/1024).toFixed(1)+'MB';quota=(e.quota/1024/1024/1024).toFixed(1)+'GB';}
+  // 「残る保証があるか」は容量と同じくらい重要な事実なので、同じ場所で伝える。
+  // 許可されていないときは**次にできること**(インストール)まで書く — 状態だけ告げても動けない。
+  const persisted=await StorageGuard.isPersisted();
+  const persistLabel=persisted===true?t('stats.durability.persistent')
+    :persisted===false?t('stats.durability.evictable')
+    :t('stats.durability.unknown');
   $('#stats-body').innerHTML=`
     <div class="stats-row"><span class="label">${t('stats.events.total')}</span><span class="val">${fmtNum(counts.total)}</span></div>
     <div class="stats-row"><span class="label">${t('stats.events.unread')}</span><span class="val">${fmtNum(counts.unread)}</span></div>
@@ -4858,7 +4879,8 @@ async function openStatsModal(){
     <div class="stats-row"><span class="label">${t('stats.interest')}</span><span class="val">${ip.vocab} ${t('stats.interest.words')}</span></div>
     ${ipPos.length>0?`<div class="stats-row"><span class="label">${t('stats.interest.like')}</span><span class="val" style="color:var(--warn);font-size:11px;text-align:right;">${ipPos.map(escapeHtml).join(', ')}</span></div>`:''}
     ${ipNeg.length>0?`<div class="stats-row"><span class="label">${t('stats.interest.dislike')}</span><span class="val" style="color:var(--err);font-size:11px;text-align:right;">${ipNeg.map(escapeHtml).join(', ')}</span></div>`:''}
-    <div class="stats-row"><span class="label">${t('stats.storage')}</span><span class="val">${usage} / ${quota}</span></div>`;
+    <div class="stats-row"><span class="label">${t('stats.storage')}</span><span class="val">${usage} / ${quota}</span></div>
+    <div class="stats-row"><span class="label">${t('stats.durability')}</span><span class="val" style="${persisted===true?'':'color:var(--warn);'}font-size:11px;text-align:right;">${persistLabel}</span></div>`;
   $('#modal-stats').classList.add('show');
 }
 $('#btn-stats').addEventListener('click',openStatsModal);
