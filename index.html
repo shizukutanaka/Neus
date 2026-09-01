@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-AATWOfFjThbRCKraAk3ItKN0kkHzTw5fMnYIH5bYljU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-TD4lUWh6kWqNizt98Xx2OSTUBZGmsvEqI9l1MVRcffI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -812,6 +812,7 @@ const DICT={
     'btn.add':'追加','btn.close':'閉じる','btn.save':'保存',
     'btn.import-opml':'OPML取込','btn.export-opml':'OPML出力',
     'btn.bookmarklet':'ブックマークレット','btn.select-vault':'Vault選択',
+    'vault.unsupported':'このブラウザは File System Access API に非対応のため Vault を使えません(Chrome / Edge で利用できます)',
     'btn.rescan':'再スキャン','btn.disconnect':'切断','btn.export-all':'スター済みを一括書出',
     'lbl.src-url':'RSS / Atom URL','search.placeholder':'検索... "完全一致" -除外 が使えます',
     'empty.inbox':'INBOXは空','empty.hint':'ソースを追加してPOLLを実行',
@@ -930,6 +931,7 @@ const DICT={
     'btn.add':'ADD','btn.close':'CLOSE','btn.save':'SAVE',
     'btn.import-opml':'IMPORT OPML','btn.export-opml':'EXPORT OPML',
     'btn.bookmarklet':'BOOKMARKLET','btn.select-vault':'SELECT VAULT',
+    'vault.unsupported':'Vault needs the File System Access API, which this browser does not have (available in Chrome / Edge)',
     'btn.rescan':'RESCAN','btn.disconnect':'DISCONNECT','btn.export-all':'EXPORT ALL STARRED',
     'lbl.src-url':'RSS / Atom URL','search.placeholder':'search... use "exact phrase" and -exclude',
     'empty.inbox':'inbox is empty','empty.hint':'add sources and trigger POLL',
@@ -1489,6 +1491,20 @@ async function getApiKey(){
 }
 
 // ===== VAULT WRITER =====================================================
+// Vault は File System Access API に依存する。Chromium 系のみが実装しており、
+// Firefox / Safari には無い。従来は `ensureWriteAccess` の中で判定していたため、
+// **押した後に**「非対応」と分かる作りだった — 使えないと分かる前に押させていたことになる。
+// 起動時に一度判定し、押す前に理由を見せる(機能は消さない。Chromium では従来どおり)。
+//
+// 伝え方は場所によって変える。理由の根拠は「その環境で本当に読めるか」:
+//   - Vault モーダル … ボタンは `disabled`。理由は**同じモーダル内の本文テキスト**
+//     (`#vault-status`)に出るので、ホバーできない環境でも読める。
+//   - カード詳細の VAULT … **要素ごと出さない**。ここには理由を書ける本文が無く、
+//     `disabled` + `title` にすると**影響を受ける当の環境で理由が読めない**
+//     (`title` はホバー前提で、iOS Safari では表示されない = 非対応ブラウザそのもの)。
+//     理由の無い死んだボタンは、押せてエラーが出る方より悪い。機能の存在は
+//     ヘッダの VAULT ボタン → モーダルの本文で説明されるので、発見経路は残る。
+const VAULT_SUPPORTED='showDirectoryPicker'in window;
 const VaultWriter=(()=>{
   async function ensureWriteAccess(){
     const h=await Store.getSetting('vault-handle');
@@ -4476,7 +4492,7 @@ async function openDetailModal(ev){
     <h4>${t('detail.note')}</h4><textarea id="user-note" placeholder="${escapeAttr(t('detail.note.ph'))}">${escapeHtml(ev.user?.note||'')}</textarea>
     <div class="row">
       <button id="detail-close" type="button">${t('btn.close')}</button>
-      <button id="detail-vault" type="button">${t('detail.vault')}</button>
+      ${VAULT_SUPPORTED?`<button id="detail-vault" type="button">${t('detail.vault')}</button>`:''}
       <button id="detail-resummarize" type="button">${t('detail.resummarize')}</button>
       <button id="detail-copy" type="button">${t('detail.copy')}</button>
       <button id="detail-save" class="primary" type="button">${t('btn.save')}</button>
@@ -4534,7 +4550,21 @@ $('#opml-export').addEventListener('click',async()=>{try{const list=await Store.
 $('#bookmarklet-btn').addEventListener('click',()=>Bookmarklet.showUI());
 
 // ===== VAULT MODAL ======================================================
-function updateVaultStatus(){const s=VaultMatcher.stats();$('#vault-status').innerHTML=s.name?`vault: <span class="accent">${escapeHtml(s.name)}</span> · ${s.files} markdown files`:(currentLang==='ja'?'vault: 未選択':'vault: not selected');$('#btn-vault').classList.toggle('on',!!s.name);}
+function updateVaultStatus(){
+  const s=VaultMatcher.stats();
+  // 非対応ブラウザでは、状態行に「未選択」ではなく**選べない理由**を出す。
+  // 「未選択」は「選べば使える」と読めてしまい、押しても失敗するだけの案内になる。
+  if(!VAULT_SUPPORTED){
+    $('#vault-status').textContent=t('vault.unsupported');
+    for(const id of ['#vault-select','#vault-rescan','#vault-export-all','#vault-clear']){
+      const b=$(id);if(b){b.disabled=true;b.title=t('vault.unsupported');}
+    }
+    $('#btn-vault').classList.remove('on');
+    return;
+  }
+  $('#vault-status').innerHTML=s.name?`vault: <span class="accent">${escapeHtml(s.name)}</span> · ${s.files} markdown files`:(currentLang==='ja'?'vault: 未選択':'vault: not selected');
+  $('#btn-vault').classList.toggle('on',!!s.name);
+}
 $('#btn-vault').addEventListener('click',()=>{updateVaultStatus();$('#modal-vault').classList.add('show');});
 $('#vault-cancel').addEventListener('click',()=>$('#modal-vault').classList.remove('show'));
 $('#vault-select').addEventListener('click',async()=>{const name=await VaultMatcher.selectVault();if(name)toast(`vault: ${name}`,'ok');updateVaultStatus();});
