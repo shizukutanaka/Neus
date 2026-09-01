@@ -73,15 +73,27 @@ export function extractConst(name) {
   const first = lines[start];
   const balanced = (l) => (l.match(/[{[]/g) || []).length === (l.match(/[}\]]/g) || []).length;
   if (balanced(first) && first.trimEnd().endsWith(';')) return first.trim();
-  // Multi-line: run to the line closing at the declaration's own indent. Array literals
-  // terminate with `]` — matching only `}` silently failed on every `const X=[`, which is
-  // how the shared lookup tables are written (found while reaching for VERDICT_DEFS).
-  const indent = first.match(/^\s*/)[0];
-  const close = new RegExp(`^${indent}[}\\]];?$`);
-  let end = start + 1;
-  while (end < lines.length && !close.test(lines[end])) end++;
-  if (end >= lines.length) throw new Error(`extractConst: no terminator for ${name}`);
-  return lines.slice(start, end + 1).join('\n');
+  // Multi-line. Finding the end by matching a closing bracket at the declaration's own indent
+  // worked for `const X={...};` and `const X=[...];` but silently OVER-captured a multi-line
+  // expression chain, which ends on a line like `  +'"';` with no bracket of its own. Asking
+  // for yamlScalar returned 23 lines and swallowed mdEsc and its neighbours whole. Over-capturing
+  // is worse than failing: the extra declarations still evaluate, so a test can pass or fail for
+  // reasons that have nothing to do with the function under test.
+  //
+  // Counting brackets is not an option here — this very file's targets contain regex literals
+  // like /\[/ (the round-60 note explains why that approach was abandoned).
+  //
+  // So ask the parser. Grow the snippet line by line and stop at the first line that BOTH ends
+  // the statement (a trailing `;`) and leaves the accumulated text syntactically valid. The
+  // `;` requirement matters on its own: `const yamlScalar=(s)=>'"'+String(s??'')` parses fine
+  // by itself, so validity alone would stop on line one with a different function.
+  const parses = (code) => { try { new Function(code); return true; } catch { return false; } };
+  for (let end = start + 1; end < lines.length; end++) {
+    if (!/;\s*$/.test(lines[end])) continue;
+    const snippet = lines.slice(start, end + 1).join('\n');
+    if (parses(snippet)) return snippet;
+  }
+  throw new Error(`extractConst: no terminator for ${name}`);
 }
 
 /**

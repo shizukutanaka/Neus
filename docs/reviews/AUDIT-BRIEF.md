@@ -70,6 +70,10 @@ UI は i18n で JA/EN 両対応。
 
 ## 3. 現状の長所/短所(着手前に `docs/FEATURE-AUDIT.md` を必読)
 
+> **製品レベルの総括は `docs/reviews/SOCRATIC-AUDIT.md`**(round 87)。長所・短所・改善点を
+> ソクラテス問答形式(問い → 実測 → 反問 → 判定)で、改善点にはマスク5段階の分類と
+> **決定権者**(機械 / 要ADR / owner)を付して整理してある。本節は着手時の要点のみ。
+
 **長所(§3「確認済み」— 直す対象にしない)**: XSS 補間衛生の徹底 / 復元アトミック性 /
 Worker SSRF 多層防御 / FTSIndex 整合性 / StorageGuard「Vault 復元可能物だけ削除」/
 SourceFailTracker 健全リセット + 内部エラー除外 / periodicsync 単一委譲 / VaultMatcher
