@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-32Y49uDMwujE4VTYsMEi5ee5uv6fNp2hf0OQzK+nJSY='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-AATWOfFjThbRCKraAk3ItKN0kkHzTw5fMnYIH5bYljU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4911,6 +4911,21 @@ $('#stats-backup').addEventListener('click',async()=>{
   }catch(err){console.error('[stats-backup]',err);toast(currentLang==='ja'?'エクスポート失敗':'export failed','err');}
 });
 
+// 復元されるキーワードルールの形を検証する。`matchRule` が触るのは `pattern` / `mode` /
+// `case` で、`pattern` が文字列でないと非regexモードで throw する。部分的に取り込むと
+// 「どれが壊れているか分からない状態」になるので、round 81 と同じく**丸ごと拒否**する。
+function validKeywordRules(kr){
+  if(kr===undefined||kr===null)return true;                       // 未設定は正常
+  if(typeof kr!=='object'||Array.isArray(kr))return false;
+  const validRule=(r)=>r!==null&&typeof r==='object'&&!Array.isArray(r)&&typeof r.pattern==='string';
+  for(const key of ['watch','block']){
+    const list=kr[key];
+    if(list===undefined)continue;
+    if(!Array.isArray(list))return false;
+    if(!list.every(validRule))return false;
+  }
+  return true;
+}
 $('#stats-restore').addEventListener('click',()=>$('#restore-file').click());
 $('#restore-file').addEventListener('change',async(e)=>{
   const file=e.target.files?.[0];if(!file)return;
@@ -4936,7 +4951,10 @@ $('#restore-file').addEventListener('change',async(e)=>{
     return true;
   };
   const validWord=(w)=>{
-    if(!isObj(w)||typeof w.id!=='string'||!w.id||typeof w.normalized!=='string')return false;
+    // `term` は `wordSlug(word.term)`(Vault/JSON書き出し)と
+    // `(word.term||'').trim()`(収集クエリ)で参照されるため、文字列でないと**その単語の
+    // 収集と書き出しが恒久的に throw する**。id/normalized だけ見ていて term が抜けていた。
+    if(!isObj(w)||typeof w.id!=='string'||!w.id||typeof w.normalized!=='string'||typeof w.term!=='string')return false;
     if(w.createdAt!==undefined&&!Number.isFinite(w.createdAt))return false;
     if(w.wiki!==undefined&&!isObj(w.wiki))return false;
     if(w.wiki){if(w.wiki.url)w.wiki.url=safeHref(w.wiki.url);if(w.wiki.thumbnail)w.wiki.thumbnail=safeHref(w.wiki.thumbnail);}
@@ -4948,6 +4966,14 @@ $('#restore-file').addEventListener('change',async(e)=>{
   // Atomic restore in a single IDB transaction: if any write fails, IDB rolls back the
   // clears too, so existing data is preserved (the rollback-impossible problem is solved).
   const RESTORE_SETTINGS_KEYS=new Set(['byok','lang','keyword-rules','onboarding-done','interest-profile','auto-sync']);
+  // `keyword-rules` だけは**全取り込みイベントで評価される**設定なので、他の設定と同列に
+  // 素通しにできない。`matchRule` は `!rule.pattern` を弾くが、真値の非文字列(例 `123`)は
+  // 通過して `p.toLowerCase()` で throw する。ルール1件が壊れているだけで**取り込み全体が
+  // 恒久的に停止**し、しかも pipeline エラーは console 止まりなので画面には「N件取得」と
+  // 出たまま何も増えない。イベントと単語は round 65 で既に検証済み。ここが残っていた。
+  if(dump.settings&&'keyword-rules'in dump.settings&&!validKeywordRules(dump.settings['keyword-rules'])){
+    toast(currentLang==='ja'?'バックアップのキーワードルールが不正です':'backup has malformed keyword rules','err');return;
+  }
   const settingsEntries=Object.entries(dump.settings||{}).filter(([k])=>RESTORE_SETTINGS_KEYS.has(k));
   try{
     await Store.replaceAll({events:dump.events,sources:dump.sources||[],words:dump.words||[],settings:settingsEntries});
