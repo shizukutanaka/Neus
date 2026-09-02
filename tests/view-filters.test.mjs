@@ -205,7 +205,7 @@ describe('atomic restore (index.html)', () => {
   // (validation only guards malformed records, not write failures).
   // Fix: Store.replaceAll clears + repopulates in ONE IDB transaction; IDB auto-aborts
   // (rolls back the clears) on any write error, so existing data survives a failed restore.
-  it('exposes an atomic Store.replaceAll over all three stores in one transaction', () => {
+  it('declares replaceAll as one transaction over all stores (shape only — atomicity itself is proved in browser-restore-atomicity.spec)', () => {
     expect(html).toContain("const t=db.transaction(['events','sources','words','settings'],'readwrite');");
     expect(html).toContain('t.onabort=()=>reject(t.error||new Error(\'restore_aborted\'));');
   });

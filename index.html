@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-TD4lUWh6kWqNizt98Xx2OSTUBZGmsvEqI9l1MVRcffI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-5pW+XzCumubZN8eKOwY1hsl7I3O6OMY19/x9yuSybP4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -1439,10 +1439,20 @@ const Store=(()=>{
         t.oncomplete=()=>resolve();
         t.onerror=()=>reject(t.error);
         t.onabort=()=>reject(t.error||new Error('restore_aborted'));
-        const ev=t.objectStore('events');ev.clear();for(const r of events)ev.put(r);
-        const sr=t.objectStore('sources');sr.clear();for(const r of sources)sr.put(r);
-        const wd=t.objectStore('words');wd.clear();for(const r of words)wd.put(r);
-        const st=t.objectStore('settings');for(const[k,v]of settings)st.put({key:k,value:v});
+        // IndexedDB は**非同期の** request error(容量超過など)なら tx を abort して巻き戻すが、
+        // `put()` が**同期で**投げた例外(キーを評価できない / clone できない)は違う。例外は
+        // executor から抜けて Promise は reject されるのに、**既に発行した `clear()` と put は
+        // そのまま commit される**。実測: 3件の既存データが「復元に失敗(既存データは保持)」の
+        // 表示とともに1件に置き換わった。約束を言葉だけにしないため、同期例外も abort に変える。
+        try{
+          const ev=t.objectStore('events');ev.clear();for(const r of events)ev.put(r);
+          const sr=t.objectStore('sources');sr.clear();for(const r of sources)sr.put(r);
+          const wd=t.objectStore('words');wd.clear();for(const r of words)wd.put(r);
+          const st=t.objectStore('settings');for(const[k,v]of settings)st.put({key:k,value:v});
+        }catch(err){
+          try{t.abort();}catch{}
+          reject(err);
+        }
       });
     },
   };
@@ -4990,7 +5000,15 @@ $('#restore-file').addEventListener('change',async(e)=>{
     if(w.wiki){if(w.wiki.url)w.wiki.url=safeHref(w.wiki.url);if(w.wiki.thumbnail)w.wiki.thumbnail=safeHref(w.wiki.thumbnail);}
     return true;
   };
+  // sources だけ検証が無かった。`keyPath:'id'` の store へ id の無いレコードを `put` すると
+  // **同期で** DataError になり、events を消した後に投げる — 検証はデータを消す前に、全 store で。
+  const validSource=(src)=>{
+    if(!isObj(src)||typeof src.id!=='string'||!src.id||typeof src.url!=='string')return false;
+    src.url=safeHref(src.url);
+    return true;
+  };
   if(!dump.events.every(validEvent)){toast(currentLang==='ja'?'バックアップのイベントデータが不正です':'backup has malformed events','err');return;}
+  if(Array.isArray(dump.sources)&&!dump.sources.every(validSource)){toast(currentLang==='ja'?'バックアップのソースデータが不正です':'backup has malformed sources','err');return;}
   if(Array.isArray(dump.words)&&!dump.words.every(validWord)){toast(currentLang==='ja'?'バックアップの単語データが不正です':'backup has malformed words','err');return;}
   if(!await confirmAsync(t('backup.confirm')))return;
   // Atomic restore in a single IDB transaction: if any write fails, IDB rolls back the

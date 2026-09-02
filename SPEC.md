@@ -2665,6 +2665,58 @@ Firefox / Safari では Vault(File System Access API)が**押した後に**失�
   i18n 1キー×2言語)、`tests/browser-vault-unsupported.spec.mjs`(新規8件)、
   `docs/reviews/SOCRATIC-AUDIT.md`(新規)、`AUDIT-BRIEF.md`(ポインタ)。
 
+### 10.77 第75次監査 (round 88) — 「原子的」と名乗るテストが原子性を見ていなかった、そして本当に原子的でなかった
+
+SOCRATIC-AUDIT 改善点 3-2「検査器に見えない性質を減らす」の実行。**タイトルが挙動を主張し、
+本文の `expect` が全てソース文字列しか見ていない**テストを機械的に洗い出した: **14件**。
+
+| 分類 | 件数 | 判定 |
+|---|---|---|
+| 「ソースに現れない」型の否定的不変条件(`never assigns …` / `never derived from input`) | 8 | **正当**。構造的主張には構造的検査が適切 |
+| 挙動は別テストで実証済み、ここは配線アンカー | 4 | 概ね正当。タイトルが本文以上を約束しないよう文言を是正 |
+| **実行時の性質を主張し、文字列では原理的に証明できない** | **2** | 要対応 |
+
+最重要は `exposes an atomic Store.replaceAll …`。検査していたのは「4 store を跨ぐ transaction の
+文字列がある」「`onabort` がある」= **原子性の形**であって原子性ではない。利用者向け文言
+「復元に失敗しました(**既存データは保持されています**)」がこの性質に乗っている。
+
+**測ったら、原子的でなかった。** 最初の spec は偽の error イベントで失敗を模したが、それは
+`t.onerror` を発火させるだけでエンジン側の abort を起こさず、**「緑なのに何も証明していない」**
+状態だった(round 83 と同型)。実物の失敗に切り替えた実測:
+
+| | |
+|---|---|
+| `put()` が**同期で**投げる(clone 不能 / キー評価不能)| Promise は reject → アプリは「既存データは保持」と表示 |
+| しかし tx は **abort されず auto-commit** | 既に発行された `clear()` + 1件目の put が確定 |
+| 結果 | **既存3件が消え、backup の1件目だけが残る** |
+
+IndexedDB の契約が abort するのは**非同期の** request error(容量超過など)だけで、executor 内の
+同期例外は tx に何も伝えない。
+
+**到達可能か** — 到達可能。復元は events と words を検証するが **sources は検証していなかった**。
+`keyPath:'id'` の store へ id の無いソースを `put` すると同期で DataError になり、それは
+**events を消した後**に投げる。手で編集した / 一部壊れた backup JSON にソースが1件でも混じって
+いれば、**全データが消えて「保持されています」と告げられる**。
+
+**修正は2段**:
+1. `replaceAll` は executor 本体を try/catch で包み、同期例外を **`t.abort()`** に変える
+   — 約束を言葉だけにしない。
+2. 復元は sources も**消す前に**検証する(`validSource`)。検証が無かった store は sources だけ。
+
+**spec の失敗注入は偽イベントではなく、実際に人が持ちうる JSON ファイル**(id の無いソース)で行う。
+**旧実装での確認(4件中2件が落ちる)**: 「既存データが残る」= **実際にデータが消えて落ちる**、
+および形アンカー。残り2件は**両側で通る片方向ガード**で、そう設計している —
+toast テストは「拒否」でも「保持を報告」でも真実なのでどちらも許し(嘘は「復元完了」だけ)、
+制御群は**壊れていない backup が実際に置き換わる**ことを見て、原子性テストが
+「何も起きない」を緑にしていないことを担保する。片方向であることをテスト本文に明記した。
+
+**あわせて**: `normalizeUrl` の「例外を飲み込む」主張を実物の関数で実証(不正 URL 5種・非文字列4種で
+throw しない)。文言を是正した3件: `atomic` → `shape only`、`swallows its own errors` →
+`the catch-all is still in place`、retag `(idempotent)` → `— shape; inline handler`。
+
+- 変更: `index.html`(`replaceAll` の abort / `validSource`)、`tests/browser-restore-atomicity.spec.mjs`
+  (新規4件)、`tests/normalize-url.test.mjs`(+7)、タイトル是正3ファイル。
+
 **この系統のまとめ(round 69→76)**: 「確認 → await → 変更」2件、「読む → await → 書き戻す」
 11箇所。いずれも**関数単体の正しさを見ている限り見えない**種類で、「同時に何が走りうるか」を
 問うて初めて出た。特に `reapplyAll` は、**応答性のための yield が欠陥の到達可能性そのもの**
