@@ -1,14 +1,36 @@
 // Neus — Crypto (AES-GCM + PBKDF2) round-trip tests
+//
+// round 97: these parameters used to be hard-coded here as 300000 and 12. They matched, but
+// nothing held them together — and ADR-0021 exists precisely to change the iteration count
+// (300k -> OWASP's 600k). Had it been accepted, `CONFIG.pbkdf2Iterations` would have moved
+// while this file kept exercising the old value, and every test would have stayed green while
+// testing a parameter the product no longer used. The most consequential path in the app, and
+// its tests could have drifted off it silently — the round-94 hazard, sitting on the API key.
+//
+// The parameters are now read out of index.html, so changing CONFIG changes what is tested.
+// The algorithm itself still has to be adapted (the real encrypt() fetches the salt from
+// IndexedDB, which is not available here), so the anchors below pin the choices that the
+// adaptation cannot verify: which config keys are used, and that no literal is used instead.
 import { describe, it, expect } from 'vitest';
 import { webcrypto } from 'crypto';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 // jsdom env では crypto.subtle が limited — Node webcrypto を直接使用
 const crypto = webcrypto;
 
-const PBKDF2_ITERATIONS = 300000;
-const IV_LEN = 12;
+const html = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+const configNumber = (key) => {
+  const m = html.match(new RegExp(`${key}\\s*:\\s*(\\d+)`));
+  if (!m) throw new Error(`crypto test: CONFIG.${key} not found in index.html`);
+  return Number(m[1]);
+};
 
-// ===== Crypto helpers mirrored from index.html =====
+const PBKDF2_ITERATIONS = configNumber('pbkdf2Iterations');
+const IV_LEN = configNumber('ivLen');
+
+// ===== Crypto helpers adapted from index.html (parameters read from it) =====
 
 async function deriveKey(passphrase, salt) {
   const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey']);
@@ -114,3 +136,36 @@ describe('Crypto — IV uniqueness', () => {
 
 // beforeEach hoist
 import { beforeEach } from 'vitest';
+
+describe('the adaptation cannot drift from the real algorithm (round 97)', () => {
+  it('takes its parameters from the same place the app does', () => {
+    expect(PBKDF2_ITERATIONS, 'read out of CONFIG, not typed here').toBeGreaterThan(0);
+    expect(IV_LEN).toBeGreaterThan(0);
+    expect(html).toContain(`pbkdf2Iterations:${PBKDF2_ITERATIONS}`);
+    expect(html).toContain(`ivLen:${IV_LEN}`);
+  });
+
+  it('the real deriveKey reads the config value rather than a literal', () => {
+    // If someone inlines the number, the link this file depends on is quietly cut.
+    const at = html.indexOf('async function deriveKey(passphrase,salt){');
+    expect(at, 'deriveKey must still exist').toBeGreaterThan(-1);
+    const fn = html.slice(at, at + 400);
+    expect(fn, 'iterations must come from CONFIG').toContain('iterations:CONFIG.pbkdf2Iterations');
+    expect(fn, 'a hard-coded count here would decouple the tests silently')
+      .not.toMatch(/iterations:\s*\d/);
+  });
+
+  it('the real encrypt uses the same IV length key', () => {
+    const at = html.indexOf('async function encrypt(text,passphrase){');
+    const fn = html.slice(at, at + 500);
+    expect(fn).toContain('new Uint8Array(CONFIG.ivLen)');
+    expect(fn, 'the IV must be prefixed at the same offset the tests assume')
+      .toContain('combined.set(new Uint8Array(ct),CONFIG.ivLen)');
+  });
+
+  it('the algorithm choices this file assumes are the ones in use', () => {
+    expect(html).toContain("name:'PBKDF2'");
+    expect(html).toContain("hash:'SHA-256'");
+    expect(html).toContain("{name:'AES-GCM',length:256}");
+  });
+});
