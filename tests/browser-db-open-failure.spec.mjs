@@ -101,65 +101,36 @@ test.describe('another tab holds the database open', () => {
   // their titles claimed runtime behaviour ("yields so the block resolves itself", "the open
   // still completes"). Both properties turned out to be measurable, so they are measured.
 
-  test('the holding tab yields, and the other connection actually gets through', async ({ page }) => {
-    // The fix for a blocked open is not the message, it is not being blocked: the connection
-    // holder releases on versionchange. Proved against real IndexedDB, with the control below
-    // showing what the same sequence does when nobody yields.
+  // round 96: the version of this test written in round 89 did not test the app at all.
+  // It opened its own database inside page.evaluate, installed its own onversionchange, and
+  // watched IndexedDB behave — a fact about the platform, dressed as a fact about Neus.
+  // Deleting db.onversionchange from index.html left it green. Now the app's own connection
+  // is the one put under pressure, and the assertion is on what the app does about it.
+  test("the app's own connection yields, and it says so", async ({ page }) => {
+    await page.addInitScript(recordToasts);
     await page.goto(`${base}/index.html`, { waitUntil: 'load' });
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(2500);   // the app now holds a connection to neus-v1
 
-    const r = await page.evaluate(async () => {
-      const NAME = 'vc-' + Math.random();
-      const holder = await new Promise(res => {
-        const q = indexedDB.open(NAME, 1);
-        q.onupgradeneeded = () => q.result.createObjectStore('s');
-        q.onsuccess = () => res(q.result);
-      });
-      // Exactly what index.html installs on its own connection.
-      let yielded = false;
-      holder.onversionchange = () => { yielded = true; try { holder.close(); } catch { /* already closed */ } };
+    // Another tab wanting a newer version of the very database the app has open.
+    await page.evaluate(() => new Promise(res => {
+      const q = indexedDB.open('neus-v1', 99);
+      q.onblocked = () => {};
+      q.onupgradeneeded = () => {};
+      q.onsuccess = () => { try { q.result.close(); } catch { /* already closed */ } res(); };
+      q.onerror = () => res();
+      setTimeout(res, 4000);
+    }));
+    await page.waitForTimeout(500);
 
-      const upgrade = await new Promise(res => {
-        const q = indexedDB.open(NAME, 2);
-        let blocked = false;
-        q.onblocked = () => { blocked = true; };
-        q.onsuccess = () => res({ completed: true, blocked });
-        q.onerror = () => res({ completed: false, blocked });
-        setTimeout(() => res({ completed: false, timedOut: true, blocked }), 4000);
-      });
-      return { yielded, upgrade };
-    });
-
-    expect(r.yielded, 'versionchange must reach the holder').toBe(true);
-    expect(r.upgrade.completed, 'and the upgrade must then complete on its own').toBe(true);
-    expect(r.upgrade.blocked, 'yielding promptly means it is never blocked at all').toBe(false);
+    const seen = await toasts(page);
+    expect(seen.some(t => /reload this tab|再読み込み/.test(t)),
+      `the app must notice its connection was taken and say so:\n${seen.join('\n')}`).toBe(true);
   });
 
-  test('control: without yielding, that same upgrade never completes', async ({ page }) => {
-    // Guards the test above from passing for the wrong reason. If upgrades completed anyway,
-    // onversionchange would be decoration and the previous assertion would prove nothing.
-    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
-    await page.waitForTimeout(800);
-
-    const r = await page.evaluate(async () => {
-      const NAME = 'vc-none-' + Math.random();
-      await new Promise(res => {
-        const q = indexedDB.open(NAME, 1);
-        q.onupgradeneeded = () => q.result.createObjectStore('s');
-        q.onsuccess = () => res(q.result);   // held open, deliberately no onversionchange
-      });
-      return await new Promise(res => {
-        const q = indexedDB.open(NAME, 2);
-        let blocked = false;
-        q.onblocked = () => { blocked = true; };
-        q.onsuccess = () => res({ completed: true, blocked });
-        setTimeout(() => res({ completed: false, blocked }), 2500);
-      });
-    });
-
-    expect(r.blocked, 'the upgrade must report itself blocked').toBe(true);
-    expect(r.completed, 'and must still be waiting — this is what the app avoids').toBe(false);
-  });
+  // Deliberately NOT asserted above: that the upgrade completes. Measured both ways, it
+  // completes whether or not index.html installs the handler, so it is evidence about
+  // Chromium, not about this app. Asserting it would have looked like proof and been none —
+  // which is exactly how the round-89 version passed while proving nothing.
 
   test('a blocked open that later clears still boots the app', async ({ page }) => {
     // onblocked deliberately does not reject: if the other tab closes, the open completes and
