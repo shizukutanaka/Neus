@@ -2,6 +2,7 @@
 // Coverage target: ≥ 80% (goal.md §2.3)
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { loadFunctions, evaluate, extractFunction, extractConst } from './helpers/from-source.mjs';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -9,46 +10,34 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
-// ===== Extract testable pure functions from index.html =====
-// Pure functions are copied here to avoid DOM dependency.
-// In production they live inside index.html's ES module.
+// ===== The real functions, pulled out of index.html =====
+//
+// round 94: these used to be hand-copied mirrors, and the header claimed they were the
+// production functions. `tokenize` had not been one since round 37, when the real one gained
+// CJK script-boundary segmentation. The copy still did the old whitespace-only split:
+//
+//   tokenize('Rustの所有権とライフタイム入門')
+//     mirror -> ["rustの所有権とライフタイム入門"]        one undifferentiated token
+//     real   -> ["rust","所有権","ライフタイム","入門"]
+//
+// Every test here stayed green for 56 rounds because they compared the copy against itself,
+// using English input where the two happen to agree. Exactly the hazard round 66 found in the
+// OPML mirror, and the reason `tests/helpers/from-source.mjs` exists.
+//
+// So the copies are gone. These bindings are evaluated out of index.html, which means a change
+// to the implementation changes what these tests exercise.
 
-// normalizeUrl
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url);
-    u.hash = '';
-    ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','fbclid','gclid']
-      .forEach(p => u.searchParams.delete(p));
-    return u.toString();
-  } catch { return url; }
-}
-
-// jaccard similarity
-function jaccard(A, B) {
-  if (A.size === 0 && B.size === 0) return 0;
-  let i = 0; for (const x of A) if (B.has(x)) i++;
-  return (A.size + B.size - i) ? i / (A.size + B.size - i) : 0;
-}
-
-// tokenize
-function tokenize(text) {
-  if (!text) return [];
-  return text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length >= 2 && w.length <= 30);
-}
+const { normalizeUrl, jaccard } = loadFunctions(['normalizeUrl', 'jaccard']);
+const { tokenize } = evaluate(
+  [extractConst('CJK_RE'), extractFunction('charKind'),
+   extractFunction('scriptRuns'), extractFunction('tokenize')].join('\n'), ['tokenize']);
 
 // escapeHtml
 const HE = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 const escapeHtml = (s) => String(s).replace(/[&<>"']/g, c => HE[c]);
 
-// ngrams (FTS)
-function ngrams(text, n = 2) {
-  const t = (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
-  const grams = new Set();
-  if (t.length < n) { if (t) grams.add(t); return grams; }
-  for (let i = 0; i <= t.length - n; i++) grams.add(t.slice(i, i + n));
-  return grams;
-}
+// ngrams is nested inside the FTSIndex IIFE, hence the indent, and reads CONFIG.ftsGram.
+const { ngrams } = evaluate(extractFunction('ngrams', '  '), ['ngrams'], { CONFIG: { ftsGram: 2 } });
 
 // FTSIndex (in-memory, synchronous for testing)
 function buildFTSIndex() {
