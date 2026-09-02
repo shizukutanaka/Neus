@@ -124,7 +124,7 @@ describe('rename failure recovery (round 59)', () => {
     expect(retagAt).toBeGreaterThan(-1);
     expect(saveAt).toBeGreaterThan(retagAt);
   });
-  it('the retag skips events already carrying the new tag (idempotent)', () => {
+  it('the retag skips events already carrying the new tag — shape; the handler is inline and cannot be extracted', () => {
     // indexOf(oldTag) < 0 for an already-migrated event, so a re-run only fixes the rest.
     // round 74: the check now runs on the freshly-read copy, which is what keeps it honest —
     // testing the stale snapshot would re-apply work another writer had already done.

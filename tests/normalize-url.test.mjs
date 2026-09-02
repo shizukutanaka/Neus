@@ -10,6 +10,7 @@
 // よって台帳を実測に合わせて訂正し、実挙動をテストで固定する。
 
 import { describe, it, expect } from 'vitest';
+import { loadFunctions } from './helpers/from-source.mjs';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -84,8 +85,30 @@ describe('wiring', () => {
   it('the tracker list is the one under test', () => {
     expect(html).toContain("['utm_source','utm_medium','utm_campaign','utm_term','utm_content','fbclid','gclid']");
   });
-  it('normalizeUrl swallows its own errors, so callers cannot be broken by a bad URL', () => {
+  it('the catch-all is still in place (the behaviour is proved above against the real function)', () => {
     expect(html).toContain('function normalizeUrl(url){');
     expect(html).toContain('catch{return url;}');
+  });
+});
+
+
+describe('normalizeUrl — the real function, not a mirror (round 88)', () => {
+  // The source-string test above only shows a `catch{return url;}` exists. This runs the
+  // actual function and shows what that catch does for inputs a feed can really produce.
+  const { normalizeUrl } = loadFunctions(['normalizeUrl']);
+
+  it.each([
+    ['not a url'], [''], ['javascript:alert(1)'], ['//no-scheme'], ['http://'],
+  ])('returns %j unchanged instead of throwing', (input) => {
+    expect(() => normalizeUrl(input)).not.toThrow();
+    expect(normalizeUrl(input)).toBe(input);
+  });
+
+  it('tolerates non-string input the way a malformed feed item would supply it', () => {
+    for (const v of [null, undefined, 42, {}]) expect(() => normalizeUrl(v)).not.toThrow();
+  });
+
+  it('still strips tracking parameters and fragments from a good URL', () => {
+    expect(normalizeUrl('https://ex.test/a?utm_source=x&id=1#top')).toBe('https://ex.test/a?id=1');
   });
 });
