@@ -157,7 +157,7 @@ test.describe('when the device cannot store anything, the app says so', () => {
 });
 
 test.describe('the wiring that makes the above possible', () => {
-  test('the storage guard runs on failure, not only on success', async () => {
+  test('the storage guard is subscribed to failure as well as success (shape)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     expect(html).toContain("Bus.subscribe('event.stored',()=>scheduleCheck());");
@@ -165,7 +165,7 @@ test.describe('the wiring that makes the above possible', () => {
       .toContain("Bus.subscribe('storage.write-failed',()=>scheduleCheck());");
   });
 
-  test('storage errors are told apart from ingest errors', async () => {
+  test('storage errors are routed to a different topic than ingest errors (shape)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     expect(html).toContain("if(isStorageError(err))Bus.publish('storage.write-failed',{err});");

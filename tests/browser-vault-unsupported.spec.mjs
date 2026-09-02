@@ -89,7 +89,7 @@ test.describe('a browser without the File System Access API', () => {
       .toMatch(/File System Access API/);
   });
 
-  test('the per-card VAULT button is not rendered at all', async () => {
+  test('the per-card VAULT button is not emitted into the template (shape)', async () => {
     // Deliberately different from the modal. The modal can carry the reason in its own body
     // text next to the greyed-out buttons; the card detail row cannot, so a disabled button
     // there would be a dead control with no readable explanation — worse than the original
@@ -118,7 +118,7 @@ test.describe('a browser that does have the API', () => {
 });
 
 test.describe('the wiring', () => {
-  test('the capability is decided once, not inside the click path', async () => {
+  test('the capability is decided once at module scope, not inside the click path (shape)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     expect(html).toContain("const VAULT_SUPPORTED='showDirectoryPicker'in window;");
@@ -126,7 +126,7 @@ test.describe('the wiring', () => {
       .toContain("if(!('showDirectoryPicker'in window))");
   });
 
-  test('the reason exists in both languages', async () => {
+  test('the reason exists in both languages (shape)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     expect(html.split("'vault.unsupported'").length - 1,

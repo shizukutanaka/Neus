@@ -97,23 +97,112 @@ test.describe('another tab holds the database open', () => {
     expect(msg, 'and it must say what to do about it').toMatch(/close|閉じる/);
   });
 
-  test('the holding tab yields so the block resolves itself', async () => {
-    // Reporting the problem is the fallback. Not having it is the fix: a tab that owns the
-    // connection closes it when another tab needs a newer version.
+  // round 89: these two were shape-only — they read index.html and matched strings while
+  // their titles claimed runtime behaviour ("yields so the block resolves itself", "the open
+  // still completes"). Both properties turned out to be measurable, so they are measured.
+
+  test('the holding tab yields, and the other connection actually gets through', async ({ page }) => {
+    // The fix for a blocked open is not the message, it is not being blocked: the connection
+    // holder releases on versionchange. Proved against real IndexedDB, with the control below
+    // showing what the same sequence does when nobody yields.
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(800);
+
+    const r = await page.evaluate(async () => {
+      const NAME = 'vc-' + Math.random();
+      const holder = await new Promise(res => {
+        const q = indexedDB.open(NAME, 1);
+        q.onupgradeneeded = () => q.result.createObjectStore('s');
+        q.onsuccess = () => res(q.result);
+      });
+      // Exactly what index.html installs on its own connection.
+      let yielded = false;
+      holder.onversionchange = () => { yielded = true; try { holder.close(); } catch { /* already closed */ } };
+
+      const upgrade = await new Promise(res => {
+        const q = indexedDB.open(NAME, 2);
+        let blocked = false;
+        q.onblocked = () => { blocked = true; };
+        q.onsuccess = () => res({ completed: true, blocked });
+        q.onerror = () => res({ completed: false, blocked });
+        setTimeout(() => res({ completed: false, timedOut: true, blocked }), 4000);
+      });
+      return { yielded, upgrade };
+    });
+
+    expect(r.yielded, 'versionchange must reach the holder').toBe(true);
+    expect(r.upgrade.completed, 'and the upgrade must then complete on its own').toBe(true);
+    expect(r.upgrade.blocked, 'yielding promptly means it is never blocked at all').toBe(false);
+  });
+
+  test('control: without yielding, that same upgrade never completes', async ({ page }) => {
+    // Guards the test above from passing for the wrong reason. If upgrades completed anyway,
+    // onversionchange would be decoration and the previous assertion would prove nothing.
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(800);
+
+    const r = await page.evaluate(async () => {
+      const NAME = 'vc-none-' + Math.random();
+      await new Promise(res => {
+        const q = indexedDB.open(NAME, 1);
+        q.onupgradeneeded = () => q.result.createObjectStore('s');
+        q.onsuccess = () => res(q.result);   // held open, deliberately no onversionchange
+      });
+      return await new Promise(res => {
+        const q = indexedDB.open(NAME, 2);
+        let blocked = false;
+        q.onblocked = () => { blocked = true; };
+        q.onsuccess = () => res({ completed: true, blocked });
+        setTimeout(() => res({ completed: false, blocked }), 2500);
+      });
+    });
+
+    expect(r.blocked, 'the upgrade must report itself blocked').toBe(true);
+    expect(r.completed, 'and must still be waiting — this is what the app avoids').toBe(false);
+  });
+
+  test('a blocked open that later clears still boots the app', async ({ page }) => {
+    // onblocked deliberately does not reject: if the other tab closes, the open completes and
+    // the app must carry on. Simulated faithfully — the real request is left alone and only an
+    // extra `blocked` event is delivered first, which is the true sequence.
+    await page.addInitScript(recordToasts);
+    await page.addInitScript(() => {
+      const real = indexedDB.open.bind(indexedDB);
+      let first = true;
+      indexedDB.open = function (...a) {
+        const req = real(...a);
+        if (first) {
+          first = false;
+          queueMicrotask(() => { try { req.dispatchEvent(new Event('blocked')); } catch { /* settled */ } });
+        }
+        return req;
+      };
+    });
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(2500);
+
+    const booted = await page.evaluate(() => ({
+      nav: document.querySelectorAll('.nav button').length,
+      // The empty-state only renders once the store opened and a view was drawn.
+      view: (document.querySelector('#view')?.innerText || '').trim().length,
+    }));
+    expect(booted.nav, 'the shell is static and proves nothing on its own').toBeGreaterThan(0);
+    expect(booted.view, 'a rejected open would leave this empty forever — as it did before round 81')
+      .toBeGreaterThan(0);
+
+    const seen = await toasts(page);
+    expect(seen.some(t => /another tab|別のタブ/.test(t)), 'and the wait was still explained').toBe(true);
+  });
+
+  test('the wiring behind the two behaviours above (shape)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     expect(html).toContain('db.onversionchange=()=>{');
     expect(html, 'it must actually release the connection').toMatch(/db\.onversionchange=\(\)=>\{\s*try\{db\.close\(\);\}catch\{\}/);
     expect(html, 'and tell that tab it now needs reloading').toMatch(/reload this tab|再読み込み/);
-  });
-
-  test('blocked does not reject — the open still completes if the other tab closes', async () => {
-    const { readFileSync } = await import('fs');
-    const html = readFileSync(join(root, 'index.html'), 'utf8');
     const at = html.indexOf('req.onblocked=()=>{');
     expect(at, 'onblocked must be handled at all').toBeGreaterThan(-1);
-    const handler = html.slice(at, at + 400);
-    expect(handler, 'rejecting here would give up on a wait that can still succeed')
+    expect(html.slice(at, at + 400), 'rejecting would give up on a wait that can still succeed')
       .not.toContain('reject(');
   });
 });
@@ -157,19 +246,35 @@ test.describe('storage is unavailable on this device', () => {
       .toMatch(/private browsing|site data|プライベート|サイトデータ/);
   });
 
-  test('a recreatable failure still offers the repair', async () => {
-    // The destructive path must not be removed, only aimed. A corrupt or mis-versioned
-    // database is exactly the case where discarding it is the way forward.
-    const { readFileSync } = await import('fs');
-    const html = readFileSync(join(root, 'index.html'), 'utf8');
-    expect(html).toContain('function isRecreatable(err){');
-    expect(html).toContain("name==='VersionError'");
-    expect(html).toContain('if(!isRecreatable(err)){');
-    expect(html, 'the delete-and-recreate branch must still exist for those cases')
-      .toContain('indexedDB.deleteDatabase(CONFIG.dbName)');
+  test('a recreatable failure DOES still offer the repair', async ({ page }) => {
+    // The mirror of the test above, and measured the same way. Aiming the destructive path
+    // is only safe if it still fires where discarding really is the way forward; otherwise
+    // this round would have quietly removed a repair instead of narrowing it.
+    await page.addInitScript(recordToasts);
+    await page.addInitScript(() => {
+      const real = indexedDB.open.bind(indexedDB);
+      indexedDB.open = function (...a) {
+        const req = real(...a);
+        queueMicrotask(() => {
+          try {
+            const e = new DOMException('requested version is less than existing', 'VersionError');
+            Object.defineProperty(req, 'error', { value: e, configurable: true });
+            req.dispatchEvent(new Event('error', { bubbles: true }));
+          } catch { /* already settled */ }
+        });
+        return req;
+      };
+    });
+    await page.goto(`${base}/index.html`, { waitUntil: 'load' });
+    await page.waitForTimeout(2500);
+
+    await expect(page.locator('#modal-confirm'),
+      'a mis-versioned database is exactly when deleting helps').toHaveClass(/show/);
+    const msg = await page.locator('#confirm-msg').innerText();
+    expect(msg, 'and the offer must say what it costs').toMatch(/delete|削除/);
   });
 
-  test('an unknown failure is treated as not-recreatable', async () => {
+  test('the allow-list is an allow-list, so an unknown failure is not recreatable (shape)', async () => {
     // Guessing wrong in this direction only costs a repair option; guessing wrong the other
     // way destroys someone's data. The default must be the non-destructive one.
     const { readFileSync } = await import('fs');
