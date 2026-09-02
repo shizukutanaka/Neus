@@ -2717,6 +2717,37 @@ throw しない)。文言を是正した3件: `atomic` → `shape only`、`swall
 - 変更: `index.html`(`replaceAll` の abort / `validSource`)、`tests/browser-restore-atomicity.spec.mjs`
   (新規4件)、`tests/normalize-url.test.mjs`(+7)、タイトル是正3ファイル。
 
+### 10.78 第76次監査 (round 89) — 同じ問いを browser spec に当てる
+
+round 88 の掃討は **unit テスト**(`tests/*.test.mjs`)だけを見ていた。**実行時の挙動を最も
+声高に主張するのは browser spec の方**なので、同じ問いを当てた:
+「`page` を受け取らず、`index.html` を読んで文字列だけを検査している test はどれか」。
+
+**15件**。うち2件は既に `shape` / `source` と名乗っていた(round 57 / 88)。残る **13件が
+無標**で、タイトルは実行時の挙動を約束していた。
+
+**測れるものは測る**。3件を実測へ移した:
+
+| 主張 | 旧 | 新(実測) |
+|---|---|---|
+| `the holding tab yields so the block resolves itself` | `db.onversionchange` の文字列 | 実 IndexedDB で保持側に `onversionchange`→`close()` を付け、**別接続の upgrade が実際に完了**することを確認。**制御群**として「譲らない場合は blocked のまま完了しない」も測る |
+| `blocked does not reject — the open still completes` | `onblocked` に `reject(` が無いこと | 実リクエストに `blocked` を1回だけ配送して**その後 success させ**、アプリが**実際に起動する**(本文が描画される)ことを確認 |
+| `a recreatable failure still offers the repair` | `isRecreatable` の文字列 | `VersionError` を注入し、**確認モーダルが実際に出る**ことを確認 |
+
+最後のものは round 81 の対になる。破壊的経路を**狭めた**とき、狭めすぎて**修復手段を消して
+いない**ことを測る必要がある — 「出ないこと」だけ測って「出ること」を測らなければ、
+静かに機能を失っても緑のままになる。
+
+**測れないものは名乗りを直す**。残る10件は i18n キーの存在・購読の配線・テンプレート出力など
+**構造的主張**で、構造的検査が正しい。タイトルに `(shape)` を付け、本文以上を約束しないようにした。
+掃討後、**無標のソースのみ browser test はゼロ**。
+
+**制御群を置く理由**: 「譲らない場合は完了しない」を測らなければ、`onversionchange` が
+飾りでも上の主張は通ってしまう。round 88 の「壊れていない backup は実際に置き換わる」と同じ役割。
+
+- 変更: `tests/browser-db-open-failure.spec.mjs`(3件を実測化 + 制御群1件)、
+  browser spec 9件のタイトル是正。**実装コードの変更なし**。
+
 **この系統のまとめ(round 69→76)**: 「確認 → await → 変更」2件、「読む → await → 書き戻す」
 11箇所。いずれも**関数単体の正しさを見ている限り見えない**種類で、「同時に何が走りうるか」を
 問うて初めて出た。特に `reapplyAll` は、**応答性のための yield が欠陥の到達可能性そのもの**

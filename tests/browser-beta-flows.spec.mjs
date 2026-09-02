@@ -998,7 +998,7 @@ test.describe('G10.07 — scenario 7: the bookmarklet Neus hands out matches wha
       .toBe('https://ex.test/article');
   });
 
-  test('the documentation copy of the bookmarklet has not drifted from the generator', async () => {
+  test('the documentation copy of the bookmarklet matches the generator (shape)', async () => {
     // bookmarklet.js is a copy for people installing by hand. A copy that disagrees with the
     // real generator sends them a broken snippet — the round-66 OPML mirror lesson.
     const { readFileSync } = await import('fs');

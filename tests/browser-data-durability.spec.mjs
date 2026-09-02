@@ -124,7 +124,7 @@ test.describe('STATS reports whether the data will actually be kept', () => {
 });
 
 test.describe('the wiring', () => {
-  test('the guard reports persistence and distinguishes "unknown" from "no"', async () => {
+  test('the guard is wired to report persistence and to keep "unknown" apart from "no" (shape — the three outcomes are proved above)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     expect(html).toContain('async function isPersisted(){');
@@ -133,7 +133,7 @@ test.describe('the wiring', () => {
     expect(html).toContain('scheduleCheck,isPersisted};');
   });
 
-  test('all three durability strings exist in both languages', async () => {
+  test('all three durability strings exist in both languages (shape)', async () => {
     const { readFileSync } = await import('fs');
     const html = readFileSync(join(root, 'index.html'), 'utf8');
     for (const key of ['stats.durability', 'stats.durability.persistent',

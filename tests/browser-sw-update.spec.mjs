@@ -119,7 +119,7 @@ test.describe('a deployed update actually reaches the reader', () => {
     await context.setOffline(false);
   });
 
-  test('the shell strategy is still revalidating, not cache-first', async () => {
+  test('the shell strategy is still revalidating, not cache-first (shape)', async () => {
     // The property above rests entirely on this. Reverting to cache-first would pin every
     // reader to whatever build they first saw, silently and permanently.
     const { readFileSync } = await import('fs');
