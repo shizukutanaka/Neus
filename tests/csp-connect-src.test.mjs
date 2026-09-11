@@ -39,3 +39,42 @@ describe('CSP connect-src covers BYOK provider endpoints', () => {
     for (const o of origins) expect(allowed, `meta CSP connect-src missing ${o}`).toContain(o);
   });
 });
+
+// round 98: the two tests above check a lower bound only (every required origin is present).
+// Nothing checked the upper bound. A stray origin added next to the real ones — a debugging
+// leftover, a copy-paste from another project, a compromised build step — passed both tests
+// above, because "contains the required set" says nothing about what else is there. connect-src
+// is the one browser-enforced mechanism for CLAUDE.md invariant #1 (zero personal data leaves the
+// device except to origins the user explicitly chose); an unbounded allowlist is a hole in the
+// invariant itself, not just in test coverage of it.
+//
+// Confirmed red against the gap: with a rogue origin appended to connect-src in both files, the
+// two describe blocks above stayed green (1830/1830) because every required origin was still
+// present. Only an exact-set comparison catches an addition.
+//
+// The expected set is exactly: 'self', every BYOK origin, and the workers.dev wildcard for the
+// user-deployed RSS/JSON proxy (CONFIG.proxy, round-tripped through /rss and /json — the one
+// entry that is legitimately a wildcard, since each owner deploys their own subdomain and the
+// literal value in CONFIG.proxy is a placeholder, not the real host). Nothing else has a reason
+// to be there.
+describe('CSP connect-src is exactly this set — nothing more (round 98)', () => {
+  const expected = new Set(["'self'", ...byokOrigins(), 'https://*.workers.dev']);
+
+  function assertExactSet(text, label) {
+    const actual = new Set(connectSrcOf(text));
+    const extra = [...actual].filter(o => !expected.has(o));
+    const missing = [...expected].filter(o => !actual.has(o));
+    expect(extra, `${label} connect-src has origins the app never declared: ${extra.join(', ')}`).toEqual([]);
+    expect(missing, `${label} connect-src is missing declared origins: ${missing.join(', ')}`).toEqual([]);
+  }
+
+  it('_headers connect-src has no extra and no missing origins', () => {
+    assertExactSet(headers, '_headers');
+  });
+
+  it('index.html meta CSP connect-src has no extra and no missing origins', () => {
+    const metaLine = html.split('\n').find(l => l.includes('http-equiv') && l.includes('Content-Security-Policy'));
+    expect(metaLine, 'meta CSP not found in index.html').toBeTruthy();
+    assertExactSet(metaLine, 'meta CSP');
+  });
+});
