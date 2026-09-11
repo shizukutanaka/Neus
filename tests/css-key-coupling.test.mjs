@@ -77,15 +77,78 @@ describe('provenance tier classes name real TIER_DEFS keys', () => {
   });
 });
 
+// round 100: the key list this test walked was itself incomplete, and had been since round 77.
+// `/^ {2}([a-zA-Z]\w*)\s*:/gm` only catches a key that is the FIRST thing on its own line at
+// exactly 2-space indent. CONFIG packs several keys per line where it fits
+// (`dbName: 'neus-v1', dbVersion: 2, maxViewItems: 50,`) and puts an explanatory comment on the
+// line above others (`// RESURFACE: ...` then `resurfaceAfterMs:..., resurfacePeakMs:...,
+// resurfaceMax:5,`) — every key not in first position on its line was silently never extracted,
+// hence never checked. 12 of the 37 real top-level keys were invisible to "every CONFIG key is
+// referenced": dbVersion, maxViewItems, tagSuggestMax, interestMinDf, interestBoostMax,
+// interestDecay, dedupWindowMs, dedupCompareMax, ftsScoreMin, vaultMatchMax, resurfacePeakMs,
+// resurfaceMax — among them dedupWindowMs/dedupCompareMax (round 28's dedup window cap) and
+// the interest-scoring bounds, not edge cases.
+//
+// Confirmed reachable: removed the one call site reading CONFIG.resurfaceMax
+// (`pickResurface`'s default parameter), replacing it with a bare literal — genuinely dead
+// config, exactly what this test exists to catch. The test stayed green, because resurfaceMax
+// was never on its list to begin with.
+//
+// The round-77 comment above said the deletion audit "found zero" dead keys and CSS classes.
+// The CSS-class side was real (verified by trying a naive scan and finding runtime-composed
+// names it missed, documented above). The CONFIG side was never actually a complete scan.
+function configKeys(block) {
+  // Depth/string/comment-aware scan: keep only characters written at depth 1 (directly inside
+  // CONFIG's outer braces), blanking everything inside strings, line comments, and nested
+  // structures (byokDefaults' provider entries, presetSources' array of objects,
+  // syncIntervals' string-keyed map) — so a plain `identifier:` search over what remains can
+  // only find real top-level keys, regardless of how many share a line or follow a comment.
+  let depth = 0, inStr = false, out = '';
+  for (let i = 0; i < block.length; i++) {
+    const c = block[i], c2 = block[i + 1];
+    if (inStr) {
+      if (c === '\\') { out += '  '; i++; continue; }
+      out += ' ';
+      if (c === inStr) inStr = false;
+      continue;
+    }
+    if (c === '/' && c2 === '/') {
+      while (i < block.length && block[i] !== '\n') { out += ' '; i++; }
+      out += '\n';
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') { inStr = c; out += ' '; continue; }
+    if (c === '{' || c === '[') { depth++; out += (depth === 1 ? c : ' '); continue; }
+    if (c === '}' || c === ']') { out += (depth === 1 ? c : ' '); depth--; continue; }
+    out += (depth === 1 ? c : ' ');
+  }
+  return [...out.matchAll(/([a-zA-Z]\w*)\s*:/g)].map(m => m[1]);
+}
+
 describe('the deletion audit that prompted this file', () => {
   // Recorded so the next person does not repeat the search and reach the wrong conclusion.
   it('every CONFIG key is referenced somewhere outside the block', () => {
     const at = html.indexOf('const CONFIG = Object.freeze({');
-    const block = html.slice(at, html.indexOf('\n});', at));
+    const openBrace = html.indexOf('{', at);
+    const closeBrace = html.indexOf('\n});', at) + 1; // include the closing brace itself
+    const block = html.slice(openBrace, closeBrace);
     const rest = html.slice(0, at) + html.slice(html.indexOf('\n});', at));
-    const keys = [...block.matchAll(/^ {2}([a-zA-Z]\w*)\s*:/gm)].map(m => m[1]);
-    expect(keys.length).toBeGreaterThan(15);
+    const keys = configKeys(block);
+    expect(keys.length).toBeGreaterThan(30); // round 77 found 25 by only checking line-leaders
     const unused = keys.filter(k => !rest.includes(`CONFIG.${k}`));
     expect(unused, `CONFIG keys nothing reads: ${unused.join(', ')}`).toEqual([]);
+  });
+
+  it('the key scan itself sees keys the old line-anchored regex missed (guards the guard)', () => {
+    // If this ever regresses to missing these, the test above silently narrows again.
+    const at = html.indexOf('const CONFIG = Object.freeze({');
+    const openBrace = html.indexOf('{', at);
+    const closeBrace = html.indexOf('\n});', at) + 1;
+    const keys = configKeys(html.slice(openBrace, closeBrace));
+    for (const k of ['dbVersion', 'maxViewItems', 'tagSuggestMax', 'interestMinDf',
+      'interestBoostMax', 'interestDecay', 'dedupWindowMs', 'dedupCompareMax', 'ftsScoreMin',
+      'vaultMatchMax', 'resurfacePeakMs', 'resurfaceMax']) {
+      expect(keys, `${k} missing from the scan again`).toContain(k);
+    }
   });
 });
