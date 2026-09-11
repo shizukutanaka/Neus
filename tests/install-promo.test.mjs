@@ -84,14 +84,41 @@ describe('module test coverage (the measurable replacement for % coverage)', () 
   // G10.02 asked for "coverage >= 80%", but `vitest run --coverage` measures 0/0 because the
   // app lives in an inline module vitest cannot import. This asserts the intent instead:
   // no top-level module may exist without at least one test that exercises or anchors it.
-  const modules = [...new Set([...html.matchAll(/^const ([A-Z][A-Za-z]+)=\(\(\)=>\{/gm)].map(m => m[1]))];
+  //
+  // round 101: two gaps found by the same question rounds 98-100 asked elsewhere in this
+  // suite ("does the extraction actually see everything it claims to?"), both in this file:
+  //
+  // 1. The module regex matched only the IIFE style (`const X=(()=>{`). Five real
+  //    namespace modules with methods are written as plain object literals instead —
+  //    `OPML`, `ShareTarget`, `Bookmarklet`, `MarkdownExporter`, `WordExporter` — and were
+  //    invisible to it, so nothing added to "at least one test" for them. Confirmed
+  //    reachable: injected a new object-literal module (name chosen so it appears nowhere
+  //    in any test file, including this comment — the first attempt named it in this very
+  //    docstring, which made the reference-scan below "pass" by finding the name in its own
+  //    explanation instead of in a real test) with a method exercised by nothing. The check
+  //    below stayed green, because the module was never on its list to begin with.
+  // 2. Fixing (1) surfaced a second gap: the reference scan below read only `.test.mjs`
+  //    files, not `.spec.mjs` browser specs. `Bookmarklet` is real, is tested — but only in
+  //    tests/browser-beta-flows.spec.mjs (it drives a clipboard write, more naturally a
+  //    browser spec than a unit test) — so broadening (1) alone would have made this file
+  //    accuse a tested module of having no test.
+  //
+  // Both are fixed together: the regex now matches either declaration form, and the
+  // reference scan reads both test suites.
+  const modules = [...new Set([...html.matchAll(/^const ([A-Z][A-Za-z]+)=(?:\(\(\)=>\{|\{)/gm)].map(m => m[1]))];
   const testSource = readdirSync(__dirname)
-    .filter(f => f.endsWith('.test.mjs'))
+    .filter(f => f.endsWith('.test.mjs') || f.endsWith('.spec.mjs'))
     .map(f => readFileSync(join(__dirname, f), 'utf8'))
     .join('\n');
 
   it('finds the expected set of top-level modules', () => {
-    expect(modules.length).toBeGreaterThanOrEqual(20);
+    expect(modules.length).toBeGreaterThanOrEqual(27); // was >=20 while object-literal modules were invisible
+  });
+
+  it('the scan sees the object-literal modules the old IIFE-only regex missed (guards the guard)', () => {
+    for (const m of ['OPML', 'ShareTarget', 'Bookmarklet', 'MarkdownExporter', 'WordExporter']) {
+      expect(modules, `${m} missing from the scan again`).toContain(m);
+    }
   });
 
   it('every top-level module is referenced by at least one test', () => {
