@@ -92,3 +92,60 @@ describe('BYOK provider coupling', () => {
     }
   });
 });
+
+// round 99: the checks above hold three couplings — byokDefaults <-> select options,
+// byokDefaults <-> connect-src, and the two selects against each other. A fourth coupling is
+// what actually makes a provider work: the dispatch chain in the summarizer,
+// `s.provider==='x' ? callX() : ...`, which was pinned only for four historical providers
+// (tests/byok-providers.test.mjs, written when qwen/gemma/glm/ollama shipped) as fixed literal
+// strings — not derived from byokDefaults, so it says nothing about a provider added later.
+//
+// Confirmed reachable: a fully-wired 8th provider (byokDefaults entry, both selects, connect-src
+// origin — everything the checks above require) but with no dispatch branch left the full suite
+// at 1832/1832. Nothing catches it, because nothing derives "every declared provider" and checks
+// it against the dispatch chain — every existing check either starts from the chain's own
+// hard-coded names or never looks at the chain at all. The user selects it, saves a key, and the
+// first summarization throws `unknown_provider` — caught, logged as a summarizer.error event,
+// silently returns null. This is the same failure class round 47 found in onboarding step 1,
+// one hop further down the same chain of dereferences.
+function dispatchPairs() {
+  const at = html.indexOf("if(s.provider==='anthropic')");
+  expect(at, 'provider dispatch chain found').toBeGreaterThan(-1);
+  const end = html.indexOf('unknown_provider', at);
+  expect(end, "dispatch chain's unknown_provider fallback found").toBeGreaterThan(-1);
+  const chain = html.slice(at, end);
+  return [...chain.matchAll(/s\.provider==='([a-z0-9]+)'\)text=await (\w+)\(/g)].map(m => [m[1], m[2]]);
+}
+
+describe('BYOK dispatch chain coupling (round 99)', () => {
+  const keys = byokKeys();
+  const pairs = dispatchPairs();
+  const dispatched = pairs.map(([k]) => k);
+
+  it('every byokDefaults provider has a dispatch branch', () => {
+    const missing = keys.filter(k => !dispatched.includes(k));
+    expect(missing, `providers with no dispatch branch — selecting them throws unknown_provider: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('the dispatch chain has no branch for a provider byokDefaults does not declare', () => {
+    const extra = dispatched.filter(k => !keys.includes(k));
+    expect(extra, `dispatch branches with no byokDefaults entry: ${extra.join(', ')}`).toEqual([]);
+  });
+
+  it('every dispatch branch calls a function that is actually defined', () => {
+    for (const [provider, fn] of pairs) {
+      expect(html, `${provider} dispatches to ${fn}, which is never defined`).toContain(`async function ${fn}(`);
+    }
+  });
+
+  it('every byokDefaults provider is reachable from at least one select', () => {
+    // The reverse of "every option has a default" (checked above): a provider nobody can select
+    // is dead config rather than a crash, but it is the same coupling and costs nothing extra
+    // to hold here too.
+    const a = optionsOf('ob-provider') || [];
+    const b = optionsOf('set-byok-provider') || [];
+    const reachable = new Set([...a, ...b]);
+    const unreachable = keys.filter(k => !reachable.has(k));
+    expect(unreachable, `byokDefaults providers offered nowhere in the UI: ${unreachable.join(', ')}`).toEqual([]);
+  });
+});
