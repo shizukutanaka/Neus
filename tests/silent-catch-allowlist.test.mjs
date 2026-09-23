@@ -28,6 +28,23 @@
 // その役目は初回実行で早速果たされた: 手で数えた 11件は index.html だけを見ており、
 // **sw.js の1件を見落としていた**。ガードがそれを名指しで落とした — 人の目視より機械の
 // 網羅が要る、という本テストの存在理由そのものである。
+//
+// round 102: rounds 98–101 kept finding guards whose scan covered only part of what they
+// guard, so the same question was put to this one. It did too. The detector recognised a
+// single shape, the statement `catch{}` with a body that is literally empty, in two of the
+// three shipped scripts. Three ways to swallow an error were invisible to it:
+//
+//   - a body holding only a comment      catch{/* skip malformed item */}      1 site
+//   - a promise handler that takes no     .catch(()=>null) / .catch(() => {})  5 sites
+//     argument, so it cannot report
+//   - anything in _worker.js, which was   reader.cancel().catch(() => {})      1 site
+//     never scanned
+//
+// That is 7 sites the guard never saw, against the 12 it did. Confirmed: with one of each
+// injected, the old guard stayed at 5/5 passed. Each of the 7 real ones was read, and all
+// are sound (fail-closed, best-effort teardown, or an offline fallback), so this round
+// changes no product code. What changed is that "nothing swallows an error without a stated
+// reason" is now checked for every shape the code actually uses.
 
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -57,32 +74,69 @@ const ALLOWED = new Map([
   // hand and missed the service worker's own. Same fail-closed shape: if reading prefs or
   // showing the notification throws, nothing is shown, which is the safe direction.
   ["'neus-wake'", 'fail-closed in the service worker: a failure here means no wake notification, never an unconsented one'],
+  // round 102: the seven sites the old detector could not see.
+  ['skip malformed item', 'tolerant feed parsing: one malformed <item> must not cost the reader the rest of the feed'],
+  ['serviceWorker.ready', 'raced against a timeout; with no service worker the answer is "unsupported", which is fail-closed'],
+  ["'periodic-background-sync'", 'a permission query that fails is treated as denied, so nothing is registered without consent'],
+  ['hashGates.set(hash,chained)', 'cleanup branch only; the same promise is returned to the caller, so the rejection still reaches it'],
+  ['res.clone()); return res;', 'service-worker offline fallback: a failed network fetch serves the cached copy, which is the purpose of the cache'],
+  ['reader.cancel()', 'best-effort release of a stream already over the size cap; the request is refused either way (round 83)'],
 ]);
 
-/** Find `catch (…) { }` blocks with an empty body, and the `try` statement they guard. */
-function emptyCatches(src) {
+const lineOf = (src, i) => src.slice(0, i).split('\n').length;
+const squash = (s) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * Statement form: `catch (…) { }` whose body holds nothing but whitespace and comments.
+ * A comment explains; it does not handle. The comment text is kept in `guarded`, so an
+ * allow-list key can name it.
+ */
+function statementCatches(src) {
   const out = [];
-  for (const m of src.matchAll(/catch\s*(?:\(\s*\w+\s*\))?\s*\{\s*\}/g)) {
+  const re = /catch\s*(?:\(\s*\w+\s*\))?\s*\{((?:\s|\/\*[\s\S]*?\*\/|\/\/[^\n]*)*)\}/g;
+  for (const m of src.matchAll(re)) {
     const before = src.slice(Math.max(0, m.index - 400), m.index);
-    // The nearest preceding `try{` starts the guarded region.
-    const tryAt = before.lastIndexOf('try{');
-    const guarded = tryAt >= 0 ? before.slice(tryAt + 4) : before.slice(-80);
-    out.push({
-      line: src.slice(0, m.index).split('\n').length,
-      guarded: guarded.replace(/\s+/g, ' ').trim(),
-    });
+    // The nearest preceding `try {` starts the guarded region.
+    const trys = [...before.matchAll(/try\s*\{/g)];
+    const last = trys[trys.length - 1];
+    const guarded = last ? before.slice(last.index + last[0].length) : before.slice(-80);
+    out.push({ line: lineOf(src, m.index), guarded: squash(guarded + ' ' + m[1]) });
   }
   return out;
 }
 
-const FILES = ['index.html', 'sw.js'];
+/**
+ * Promise form: `.catch(handler)` where the handler takes no argument, so it cannot report
+ * the error whatever its body does, or takes one and does nothing with it (`e => {}`).
+ * `guarded` is the expression the `.catch` hangs off.
+ */
+function promiseCatches(src) {
+  const out = [];
+  const re = /\.catch\(\s*(?:\(\s*\)\s*=>|function\s*\(\s*\)|\(?\s*\w+\s*\)?\s*=>\s*\{\s*\})/g;
+  for (const m of src.matchAll(re)) {
+    out.push({ line: lineOf(src, m.index), guarded: squash(src.slice(Math.max(0, m.index - 80), m.index)) });
+  }
+  return out;
+}
+
+const FILES = ['index.html', 'sw.js', '_worker.js'];
 
 describe('nothing swallows an error without a stated reason', () => {
-  const found = FILES.flatMap(f =>
-    emptyCatches(readFileSync(join(root, f), 'utf8')).map(c => ({ ...c, file: f })));
+  const scan = (fn) => FILES.flatMap(f =>
+    fn(readFileSync(join(root, f), 'utf8')).map(c => ({ ...c, file: f })));
+  const statements = scan(statementCatches);
+  const promises = scan(promiseCatches);
+  const found = [...statements, ...promises];
 
-  it('there are empty catches to check (the matcher is not silently finding none)', () => {
-    expect(found.length).toBeGreaterThan(5);
+  it('there are catches of each shape to check (neither matcher is silently finding none)', () => {
+    expect(statements.length).toBeGreaterThan(5);
+    expect(promises.length).toBeGreaterThan(3);
+  });
+
+  it('every script that ships is scanned', () => {
+    // _worker.js was left out until round 102.
+    for (const f of FILES) expect(readFileSync(join(root, f), 'utf8').length).toBeGreaterThan(0);
+    expect(found.some(c => c.file === '_worker.js')).toBe(true);
   });
 
   it('every empty catch is on the allow-list', () => {
