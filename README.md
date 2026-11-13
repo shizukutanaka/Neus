@@ -295,7 +295,3 @@ MIT © shizukutanaka
 ---
 
 *Neus = NEWS + you*
-
-## 情報検索について
-
-調査時の情報検索先の1つとして、X（旧Twitter）の投稿を fxtwitter 経由で取得します（`https://api.fxtwitter.com/{ユーザー名}/status/{投稿ID}` で本文を JSON 取得）。
