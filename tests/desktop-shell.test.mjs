@@ -57,7 +57,11 @@ describe('Electron shell', () => {
     expect(electron.net.fetch).toHaveBeenCalledTimes(4);
     const ollama = { url: 'http://localhost:11434/api/chat', method: 'POST' };
     await serve(ollama);
-    expect(electron.net.fetch).toHaveBeenLastCalledWith(ollama, { bypassCustomProtocolHandlers: true });
+    expect(electron.net.fetch).toHaveBeenLastCalledWith(ollama, {
+      bypassCustomProtocolHandlers: true,
+      credentials: 'omit',
+      redirect: 'error',
+    });
   });
 
   it('isolates the renderer and denies external navigation and new windows', async () => {

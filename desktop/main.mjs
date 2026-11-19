@@ -15,7 +15,14 @@ function serveApp(request) {
   const url = new URL(request.url);
   // Chromium treats .localhost as secure and Cache Storage requires HTTP(S).
   // Electron handles this origin internally, without a listening socket.
-  if (url.origin !== APP_ORIGIN) return net.fetch(request, { bypassCustomProtocolHandlers: true });
+  if (url.origin !== APP_ORIGIN) {
+    // Preserve direct HTTP calls (such as Ollama) without following redirects in the main process.
+    return net.fetch(request, {
+      bypassCustomProtocolHandlers: true,
+      credentials: 'omit',
+      redirect: 'error',
+    });
+  }
 
   const file = APP_FILES.get(url.pathname);
   if (!file || request.method !== 'GET') return new Response(null, { status: 404 });
