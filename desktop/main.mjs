@@ -71,7 +71,10 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     protocol.handle('http', serveApp);
     app.on('activate', showApp);
-    app.on('second-instance', showApp);
+    app.on('second-instance', () => {
+      showApp();
+      if (process.platform === 'darwin') app.focus({ steal: true });
+    });
     showApp();
   });
 

@@ -9,6 +9,7 @@ const electron = vi.hoisted(() => ({
     requestSingleInstanceLock: vi.fn(),
     whenReady: vi.fn(async () => {}),
     getAppPath: vi.fn(() => process.cwd()),
+    focus: vi.fn(),
     on: vi.fn(),
     quit: vi.fn(),
   },
@@ -100,9 +101,11 @@ describe('Electron shell', () => {
     await import('../desktop/main.mjs');
     electron.BrowserWindow.getAllWindows.mockReturnValue([window]);
     const [, onSecondInstance] = electron.app.on.mock.calls.find(([event]) => event === 'second-instance');
+    expect(electron.app.focus).not.toHaveBeenCalled();
     onSecondInstance();
     expect(window.restore).toHaveBeenCalledOnce();
     expect(window.focus).toHaveBeenCalledOnce();
+    expect(electron.app.focus.mock.calls).toEqual(process.platform === 'darwin' ? [[{ steal: true }]] : []);
     expect(electron.BrowserWindow).toHaveBeenCalledOnce();
   });
 });
