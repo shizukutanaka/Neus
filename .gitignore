@@ -2,6 +2,7 @@
 node_modules/
 
 # Build/coverage artifacts
+dist/desktop/
 coverage/
 *.log
 .DS_Store

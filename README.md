@@ -4,9 +4,33 @@
 
 サーバーレスの個人情報ハブ。RSS・共有・Bookmarkletで集約し、BYOK要約・タグ付け・全文検索・Obsidian書き出しで再構築する。端末内完結、個人データのサーバー送信ゼロ。
 
+## デスクトップ版
+
+Neus の正規の配布形態は Electron デスクトップアプリです。次のコマンドは Node.js 22.12 以降で実行できます。
+
+```sh
+npm ci
+npm run desktop
+npm run desktop:build
+```
+
+`npm run desktop` で起動し、`npm run desktop:build` で実行した OS 向けの配布物を `dist/desktop/` に生成します。
+
+| OS | 配布形式 |
+|---|---|
+| Windows | インストール不要の portable `.exe` |
+| macOS | `Neus.app` を収録した `.zip` |
+| Linux | `.AppImage` |
+
+配布物には開発元証明書による署名がないため、Windows の SmartScreen や macOS の Gatekeeper が初回起動時に警告を表示する場合があります。
+
+デスクトップ版と Web/PWA 版の保存領域は別です。既存データの移行には設定画面の JSON バックアップと復元を使用できます。OS の共有メニューから取り込む Share Target と、外部ブラウザーから取り込む Bookmarklet を利用する場合は Web/PWA 版を使用してください。
+
+RSS 取得を有効にするには、配布物のビルド前に `index.html` の `CONFIG.proxy` に稼働中の Worker URL を設定し、`npm run build:csp` を実行してください。
+
 ## 特徴
 
-- **ゼロ依存** — 外部ライブラリなし、Web Standard APIのみ
+- **アプリ本体はゼロ依存** — Web Standard API のみ
 - **BYOK要約** — OpenAI / Anthropic / Gemini、キーは端末内暗号化(AES-GCM)
 - **全文検索** — N-gram反転索引 + IDF重み付け、稀少語を優先
 - **興味の自動学習** — STAR/ARCHIVEの行動から「欲しい/いらない」を学習しスコア補正
@@ -26,7 +50,7 @@
 - **JA/EN対応** — 起動時言語選択、後から変更可
 - **月額$0** — Cloudflare Pages+Workersの無料枠内で完全稼働
 
-## 動作環境
+## Web/PWA 版の動作環境
 
 | 環境 | 対応 |
 |---|---|
@@ -35,13 +59,13 @@
 | Safari 16.4+ | File System Access制限あり |
 | iOS / Android PWA | Share Target、ホーム画面追加 |
 
-## 依存関係(本番)
+## アプリ本体の依存関係
 
 なし。`_worker.js` / `index.html` / `sw.js` はWeb Standard APIのみ使用。
 
-devDependencies(ビルド・テストのみ): vitest, wrangler
+Electron と electron-builder はデスクトップ版の起動・ビルド用の開発依存です。
 
-## セットアップ(ローカル確認)
+## Web/PWA 版のセットアップ(ローカル確認)
 
 ```bash
 git clone https://github.com/shizukutanaka/neus.git
@@ -52,7 +76,7 @@ python3 -m http.server 8080
 
 > Vault書き出し・Share Target は HTTPS 環境(Cloudflare Pages等)でのみ動作。
 
-## デプロイ
+## Web/PWA 版のデプロイ
 
 ```bash
 # 1. Cloudflareアカウント設定
@@ -146,6 +170,7 @@ APIキーは端末内のIndexedDBにのみ保存される。パスフレーズ�
 
 ```
 neus/
+  desktop/main.mjs    # Electron の起動・ウィンドウ管理
   index.html          # PWA本体 (~277KB、全ロジックインライン)
   _worker.js          # Cloudflare Worker CORSプロキシ (/rss, /json)
   sw.js               # Service Worker
@@ -284,7 +309,6 @@ LATER は時限的キュー、STARRED は長期コレクションとして使い
 
 ## v1.1 予定
 
-- Tauri 2デスクトップシェル(Win/Mac/Linux)
 - Bonsai 1.7B(1-bit, 290MB) WebGPU オンデバイス推論(BYOK代替)
 - ベクトル検索・グラフビュー・通知
 

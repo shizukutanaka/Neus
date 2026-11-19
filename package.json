@@ -1,8 +1,10 @@
 {
   "name": "neus",
+  "productName": "Neus",
   "version": "0.13.0",
   "description": "Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.",
   "type": "module",
+  "main": "desktop/main.mjs",
   "license": "MIT",
   "author": "shizukutanaka",
   "homepage": "https://github.com/shizukutanaka/neus",
@@ -12,7 +14,9 @@
   },
   "scripts": {
     "dev": "python3 -m http.server 8080",
-    "lint": "node --check _worker.js && node --check sw.js && echo 'lint: OK'",
+    "desktop": "electron .",
+    "desktop:build": "electron-builder --publish never",
+    "lint": "node --check _worker.js && node --check sw.js && node --check desktop/main.mjs && echo 'lint: OK'",
     "lint:html": "node scripts/check-html.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -34,10 +38,39 @@
     "test:perf": "playwright test --config playwright.config.mjs browser-perf",
     "g10": "node scripts/g10.mjs"
   },
+  "build": {
+    "appId": "io.github.shizukutanaka.neus",
+    "directories": {
+      "output": "dist/desktop"
+    },
+    "files": [
+      "desktop/main.mjs",
+      "index.html",
+      "manifest.json",
+      "sw.js",
+      "!node_modules/@rollup/rollup-win32-x64-msvc/**"
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": "portable",
+      "signExecutable": false
+    },
+    "mac": {
+      "target": "zip",
+      "identity": null,
+      "notarize": false
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Office"
+    }
+  },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@vitest/coverage-v8": "^4.1.6",
     "axe-core": "^4.11.4",
+    "electron": "44.11.5",
+    "electron-builder": "26.18.0",
     "jsdom": "^29.1.1",
     "vitest": "^4.1.6",
     "wrangler": "^4.120.1"
