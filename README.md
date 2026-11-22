@@ -161,7 +161,7 @@ APIキーは端末内のIndexedDBにのみ保存される。パスフレーズ�
 - **SSRF防止** — プライベートIP(10.x, 192.168.x等)をWorker側でブロック
 - **Content-Type検証** — RSS/Atom以外はWorkerが拒否
 - **AES-GCM暗号化** — PBKDF2(300,000 iterations) + 256bit鍵
-- **CSP** — `script-src 'self' 'unsafe-inline'`(将来: 外部JSファイル化で`unsafe-inline`除去予定)
+- **CSP** — ハッシュベース。`script-src` は sha256 ハッシュ指定で `unsafe-inline` なし(残る `unsafe-inline` は `style-src` のみ)
 - **シークレット** — gitleaks でコミット前スキャン
 
 詳細: `docs/adr/` および `_headers` を参照
