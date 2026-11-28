@@ -146,7 +146,8 @@ async function seed(page) {
     req.onsuccess = () => {
       const tx = req.result.transaction(['words'], 'readwrite');
       tx.objectStore('words').put({ id: 'w-seed', term: 'rust', normalized: 'rust', createdAt: 1,
-        questions: [], verdict: { status: 'open', note: '' }, sources: {}, enabled: true });
+        questions: [], verdict: { status: 'open', note: '' }, sources: {}, enabled: true,
+        wiki: null, lastErrors: null });
       tx.oncomplete = resolve;
     };
   }));
