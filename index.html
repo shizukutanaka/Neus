@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-5pW+XzCumubZN8eKOwY1hsl7I3O6OMY19/x9yuSybP4='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-tREifrDxjCw+SFsQeJpiVo7MCEN30s9jvc1OQpefKx4=' 'sha256-WPgQqQLA9v0dwCzQ0vwatAZT5s0vDUGH/Az77yjpVnI='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:11434 https://api.anthropic.com https://api.openai.com https://dashscope.aliyuncs.com https://generativelanguage.googleapis.com https://open.bigmodel.cn https://*.workers.dev; img-src 'self' data: blob: https://upload.wikimedia.org; media-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
 <title>Neus — Personal Information Hub</title>
 <meta name="description" content="Serverless personal information hub. Local-first, encryption-ready, plugin-extensible.">
 <meta name="application-name" content="Neus">
@@ -4981,12 +4981,20 @@ $('#restore-file').addEventListener('change',async(e)=>{
   // 並びが不定になる。復元は既存データを消してから書き込むため、ここで通してしまうと
   // 壊れたデータで上書きされた状態から戻せない(この検証が「消す前」にある理由そのもの)。
   const isObj=(o)=>o!==null&&typeof o==='object'&&!Array.isArray(o);
+  const isStrArray=(a)=>Array.isArray(a)&&a.every(x=>typeof x==='string');
+  const optStrArray=(a)=>a===undefined||isStrArray(a);
+  const optNum=(n)=>n===undefined||n===null||Number.isFinite(n);
   const validEvent=(ev)=>{
     if(!isObj(ev)||typeof ev.id!=='string'||!ev.id)return false;
     if(!isObj(ev.content)||!isObj(ev.source)||!isObj(ev.state)||!isObj(ev.meta))return false;
     if(!Number.isFinite(ev.timestamp))return false;
     if(ev.publishedAt!==undefined&&!Number.isFinite(ev.publishedAt))return false;
     if(ev.content.title!==undefined&&typeof ev.content.title!=='string')return false;
+    if(!optStrArray(ev.meta.userTags)||!optStrArray(ev.meta.autoTags)||!optStrArray(ev.links))return false;
+    if(ev.meta.keywordMatched!==undefined){
+      const km=ev.meta.keywordMatched;
+      if(!isObj(km)||!optStrArray(km.watch)||!optStrArray(km.block))return false;
+    }
     if(ev.url)ev.url=safeHref(ev.url);  // sanitize imported event URLs
     return true;
   };
@@ -4996,7 +5004,14 @@ $('#restore-file').addEventListener('change',async(e)=>{
     // 収集と書き出しが恒久的に throw する**。id/normalized だけ見ていて term が抜けていた。
     if(!isObj(w)||typeof w.id!=='string'||!w.id||typeof w.normalized!=='string'||typeof w.term!=='string')return false;
     if(w.createdAt!==undefined&&!Number.isFinite(w.createdAt))return false;
-    if(w.wiki!==undefined&&!isObj(w.wiki))return false;
+    if(w.wiki!=null&&!isObj(w.wiki))return false;
+    if(w.lastErrors!=null&&!isObj(w.lastErrors))return false;
+    if(w.sources!==undefined&&!isObj(w.sources))return false;
+    if(w.note!==undefined&&typeof w.note!=='string')return false;
+    if(w.falsifier!==undefined&&typeof w.falsifier!=='string')return false;
+    if(w.questions!==undefined&&!(Array.isArray(w.questions)&&w.questions.every(q=>isObj(q)&&typeof q.id==='string'&&typeof q.text==='string'&&optNum(q.createdAt)&&optNum(q.resolvedAt))))return false;
+    if(w.questionHistory!==undefined&&!(Array.isArray(w.questionHistory)&&w.questionHistory.every(q=>isObj(q)&&typeof q.text==='string'&&optNum(q.at))))return false;
+    if(w.verdictHistory!==undefined&&!(Array.isArray(w.verdictHistory)&&w.verdictHistory.every(v=>isObj(v)&&typeof v.status==='string'&&(v.note===undefined||typeof v.note==='string')&&optNum(v.at))))return false;
     if(w.wiki){if(w.wiki.url)w.wiki.url=safeHref(w.wiki.url);if(w.wiki.thumbnail)w.wiki.thumbnail=safeHref(w.wiki.thumbnail);}
     return true;
   };
